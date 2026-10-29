@@ -1,95 +1,125 @@
-"""Pine v6 visualization only: gamma is already calculated in Python.
-
-Generates either single 0DTE, single Weekly, or side-by-side profiles.
-No future/live Cboe data is read by Pine. 500-future-bar constraints are checked.
+"""Pine v6 per NDX/NQ: stessa interfaccia dei Pine Serafini SPX.
+Solo disegno dei NET GAMMA gia' calcolati. Ticker consentiti: NQ e MNQ.
 """
-import math
+from math import ceil, isfinite
 from datetime import date
 
 
-def _numbers(rows, key, offset=0.0):
-    return ', '.join(format(float(row[key]) + offset, '.6f') for row in rows)
+def _pine_array(rows, field, offset=0.0):
+    values=[]
+    for row in rows:
+        v=float(row[field]) + (offset if field == "strike_index" else 0.0)
+        if not isfinite(v):
+            raise ValueError("Valore Gamma / strike non finito.")
+        formatted=f"{v:.8f}".rstrip("0").rstrip(".")
+        values.append(formatted if "." in formatted else formatted+".0")
+    if not values:
+        return "array.new_float()"
+    return "array.from(\n        "+",\n        ".join(
+        ", ".join(values[i:i+8]) for i in range(0,len(values),8)
+    )+"\n    )"
 
 
-def _safe_scale(profiles):
-    minimum = 0.01
-    for profile, center in profiles:
-        pos = max((max(0, float(r['net_gamma'])) for r in profile['rows']), default=0)
-        neg = max((max(0,-float(r['net_gamma'])) for r in profile['rows']), default=0)
-        minimum=max(minimum,pos/max(1,480-center),neg/(9500+center))
-    # Rounded up for safety; no net_gamma value is changed.
-    return math.ceil(minimum*100 - 1e-9)/100.0
+def _initial_manual_scale(profiles):
+    # Nessun ricalcolo del Gamma: solo valore iniziale suggerito per la UI.
+    minimum=0.01
+    for group,center in profiles:
+        vals=[float(r["net_gamma"]) for r in group["rows"]]
+        if not vals:
+            continue
+        necessary=max(max(0.0,max(vals))/float(480-center),
+                      max(0.0,-min(vals))/float(9500+center))
+        minimum=max(minimum,necessary)
+    return ceil(minimum*100-1e-9)/100.0
 
 
 def make_pine(profiles: dict, basis: float, target: date, label: str) -> str:
-    if not profiles:
-        raise ValueError('Nessun profilo da esportare')
-    if not math.isfinite(basis):
-        raise ValueError('Differenziale NQ-NDX non valido')
-    positions = {'0DTE':75, 'Weekly':260} if len(profiles)==2 else {next(iter(profiles)):90}
-    draw = [(profiles[k],positions[k]) for k in profiles]
-    # Pine permette al massimo 500 oggetti line. Lasciamo margine per
-    # le max 12 linee macro, senza rimuovere strike dal profilo all'insaputa.
-    total_strikes = sum(len(p['rows']) for p, _ in draw)
-    if any(not p['rows'] for p, _ in draw):
-        raise ValueError('Esportazione bloccata: profilo privo di strike nella fascia selezionata.')
-    if total_strikes > 480:
+    if not profiles or not isfinite(float(basis)):
+        raise ValueError("NET GAMMA o differenziale NQ-NDX non valido.")
+    if any(name not in ("0DTE","Weekly") for name in profiles):
+        raise ValueError("Profilo Pine sconosciuto.")
+    for group in profiles.values():
+        if not group.get("rows"):
+            raise ValueError("Nessuno strike reale nella fascia.")
+    # 500 linee massime: un margine per basi, eventi macro e guide.
+    total=sum(len(group["rows"]) for group in profiles.values())
+    if total>480:
         raise ValueError(
-            f'Pine richiede {total_strikes} linee Gamma (limite prudenziale: 480, '
-            'incluso margine per le news). Nessuno strike viene escluso '
-            'automaticamente: occorre una soluzione di visualizzazione dedicata.'
+            f"Pine richiede {total} linee Gamma (massimo 480 con margine "
+            "per news e basi). Nessuno strike escluso automaticamente: "
+            "riduci la percentuale oppure usa i Pine separati 0DTE/Weekly."
         )
-    scale=_safe_scale(draw)
-    lines=[
-        '//@version=6',
-        f'indicator("Multi-Market NET GAMMA · NDX/NQ · {label} · {target.isoformat()}", overlay=true, max_lines_count=500, max_labels_count=30)',
-        f'// NDX/NQ · Snapshot {label}; prezzi = strike NDX + basis {basis:.4f}; '
-        f'fascia dal close precedente +/- {next(iter(profiles.values())).get("band_pct", 1.5):g}%',
-        '// Formula sperimentale NDX: Call (OI+Volume)*Gamma - Put (OI+Volume)*Gamma.',
-        '// Questi sono dati statici esportati, NON un feed Pine automatico.',
-        f'gammaPerBar = input.float({scale:.2f}, "Scala GAMMA manuale", minval=0.01, step=0.01)',
-        'showTitles = input.bool(true, "Mostra titoli")',
-        'var array<line> allLines = array.new_line()',
-        'var array<label> allLabels = array.new_label()',
-    ]
-    for kind,p in profiles.items():
-        lines += [
-            f'var array<float> levels{kind} = array.from({_numbers(p["rows"],"strike_index",basis)})',
-            f'var array<float> values{kind} = array.from({_numbers(p["rows"],"net_gamma")})',
-        ]
-    lines += [
-        'drawGroup(array<float> levels, array<float> gamma, int xcenter, string name) =>',
-        '    float top = array.max(levels)',
-        '    float bottom = array.min(levels)',
-        '    float room = math.max((top - bottom) * 0.075, syminfo.mintick * 20)',
-        '    float required = 0.01',
-        '    for g in gamma',
-        '        required := math.max(required, g > 0 ? g / (480.0 - xcenter) : -g / (9500.0 + xcenter))',
-        '    if showTitles',
-        '        label title = label.new(bar_index + xcenter, top + room, name, xloc=xloc.bar_index, style=label.style_label_down, color=color.new(color.gray, 25), textcolor=color.white, size=size.normal)',
-        '        array.push(allLabels, title)',
-        '    if gammaPerBar >= required',
-        '        for j=0 to array.size(levels)-1',
-        '            float price = array.get(levels,j)',
-        '            float g = array.get(gamma,j)',
-        '            int targetX = bar_index + xcenter + int(math.round(g/gammaPerBar))',
-        '            line ln = line.new(bar_index+xcenter, price, targetX, price, xloc=xloc.bar_index, color=g>=0?color.lime:color.red, width=3)',
-        '            array.push(allLines,ln)',
-        '    else',
-        '        label warn = label.new(bar_index+xcenter, top+2*room, "Scala ottimale " + str.tostring(math.ceil(required*100)/100.0, "#.##"), xloc=xloc.bar_index, style=label.style_label_down, color=color.orange, textcolor=color.black, size=size.normal)',
-        '        array.push(allLabels,warn)',
-        'if barstate.islast',
-        '    for ln in allLines',
-        '        line.delete(ln)',
-        '    array.clear(allLines)',
-        '    for lb in allLabels',
-        '        label.delete(lb)',
-        '    array.clear(allLabels)',
-    ]
-    for kind, group in profiles.items():
-        # Ogni intestazione usa la scadenza REALE del suo profilo;
-        # la data dello snapshot non coincide sempre con quella Weekly.
-        expiry_label = date.fromisoformat(group['expiry']).strftime('%d/%m')
-        title = f'{kind} {expiry_label}'
-        lines.append(f'    drawGroup(levels{kind}, values{kind}, {positions[kind]}, "{title}")')
-    return '\n'.join(lines)+'\n'
+    odte=profiles.get("0DTE",{"rows":[],"expiry":""})
+    weekly=profiles.get("Weekly",{"rows":[],"expiry":""})
+    scale=_initial_manual_scale([(odte,60),(weekly,160)])
+    first=date.fromisoformat(odte["expiry"]).strftime("%d/%m") if odte["rows"] else ""
+    second=date.fromisoformat(weekly["expiry"]).strftime("%d/%m") if weekly["rows"] else ""
+    band=next(iter(profiles.values())).get("band_pct",3.0)
+    return f'''//@version=6
+indicator("Multi-Market NET GAMMA · NDX/NQ · {target.isoformat()} · {label}", overlay=true, max_lines_count=500, max_labels_count=35)
+// Visualizzazione statica dei NET GAMMA calcolati dall'app, mai in Pine.
+// Valido esclusivamente per i futures NQ / MNQ; altri strumenti: nessun disegno.
+// Fascia di selezione: +/-{band:g}% dal close NDX precedente.
+// Differenziale NQ–NDX gia' applicato agli strike: {basis:.4f}
+// Formula INVARIATA: Call (OI+Volume)*Gamma - Put (OI+Volume)*Gamma.
+// Stessa interfaccia del generatore Serafini SPX.
+validTicker = syminfo.type == "futures" and (syminfo.root == "NQ" or syminfo.root == "MNQ")
+
+gammaPerCandle = input.float({scale:.2f}, "Scala MANUALE · Gamma/barra", minval=0.001, step=0.01, tooltip="Scala comune e sempre manuale: nessun adattamento automatico dei NET GAMMA.")
+offsetOdte = input.int(60, "Distanza 0DTE da ultima candela", minval=45, maxval=170)
+offsetWeekly = input.int(160, "Distanza Weekly da ultima candela", minval=55, maxval=300)
+positiveColor = input.color(color.rgb(0, 230, 117), "NET GAMMA positivo")
+negativeColor = input.color(color.rgb(242, 54, 69), "NET GAMMA negativo")
+showTitles = input.bool(true, "Mostra intestazioni")
+
+var array<line> drawnLines = array.new_line()
+var array<label> drawnLabels = array.new_label()
+var array<float> odteLevels = {_pine_array(odte["rows"],"strike_index",basis)}
+var array<float> odteValues = {_pine_array(odte["rows"],"net_gamma")}
+var array<float> weeklyLevels = {_pine_array(weekly["rows"],"strike_index",basis)}
+var array<float> weeklyValues = {_pine_array(weekly["rows"],"net_gamma")}
+
+requiredScale(array<float> gamma, int offsetBars) =>
+    float maxPos = 0.0
+    float maxNeg = 0.0
+    for g in gamma
+        maxPos := math.max(maxPos, g)
+        maxNeg := math.max(maxNeg, -g)
+    math.max(maxPos / float(480 - offsetBars), maxNeg / float(9500 + offsetBars))
+
+renderProfile(array<float> levels, array<float> gamma, int center, string heading, float actualScale) =>
+    int count = array.size(levels)
+    if count > 0
+        float bottom = array.get(levels, 0)
+        float top = array.get(levels, count - 1)
+        line baseline = line.new(center, bottom, center, top, xloc=xloc.bar_index, extend=extend.none, color=color.gray, style=line.style_dotted, width=1)
+        array.push(drawnLines, baseline)
+        for j = 0 to count - 1
+            float level = array.get(levels, j)
+            float g = array.get(gamma, j)
+            int length = g != 0 ? math.max(1, int(math.round(math.abs(g) / actualScale))) : 0
+            if length > 0
+                int farX = center + (g > 0 ? length : -length)
+                line segment = line.new(center, level, farX, level, xloc=xloc.bar_index, extend=extend.none, color=g >= 0 ? positiveColor : negativeColor, width=5)
+                array.push(drawnLines, segment)
+        if showTitles
+            float spacing = count > 1 ? math.max(5.0, (top - bottom) / 20.0) : 10.0
+            label t = label.new(center, top + spacing, heading, xloc=xloc.bar_index, yloc=yloc.price, color=color.new(color.black, 50), textcolor=color.white, style=label.style_label_down, size=size.normal)
+            array.push(drawnLabels, t)
+
+if barstate.islast and validTicker
+    for ln in drawnLines
+        line.delete(ln)
+    array.clear(drawnLines)
+    for lb in drawnLabels
+        label.delete(lb)
+    array.clear(drawnLabels)
+    float actualScale = gammaPerCandle
+    float minimumSafe = math.max(requiredScale(odteValues, offsetOdte), requiredScale(weeklyValues, offsetWeekly))
+    if actualScale + 0.000001 < minimumSafe
+        label unsafe = label.new(bar_index + 10, close, "Scala manuale troppo piccola. Imposta almeno " + str.tostring(math.ceil(minimumSafe * 100) / 100.0, "#.##") + " G/bar", xloc=xloc.bar_index, yloc=yloc.price, style=label.style_label_left, color=color.orange, textcolor=color.black, size=size.small)
+        array.push(drawnLabels, unsafe)
+    else
+        {'renderProfile(odteLevels, odteValues, bar_index + offsetOdte, "0DTE '+first+'", actualScale)' if odte["rows"] else '// 0DTE non incluso in questa esportazione'}
+        {'renderProfile(weeklyLevels, weeklyValues, bar_index + offsetWeekly, "Weekly '+second+'", actualScale)' if weekly["rows"] else '// Weekly non incluso in questa esportazione'}
+'''
