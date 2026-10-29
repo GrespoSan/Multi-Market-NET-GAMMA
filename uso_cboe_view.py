@@ -237,4 +237,6 @@ def render_uso_cboe():
                                mime="text/csv", on_click="ignore")
     st.caption("Questi grafici non rappresentano Gamma monetario/dealer GEX, "
                "non individuano automaticamente Gamma Flip e non sono livelli CL.")
-    render_etf_pine_exports("USO", groups, reference, base_day)
+    render_etf_pine_exports("USO", groups, reference, base_day,
+                            source_sha=st.session_state.get("uso_cboe_sha256", ""),
+                            cboe_stamp=stamp)
