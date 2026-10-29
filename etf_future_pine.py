@@ -95,7 +95,6 @@ indicator("Multi-Market NET GAMMA · @SYMBOL@ → @MARKET@ · @DATE@ · @LABEL@"
 // Gli ETF non sono quotati durante tutta la sessione dei futures: blocca l'ultimo ratio valido.
 validTicker = syminfo.type == "futures" and (@VALID_ROOTS@)
 modeRatio = input.string("Bloccato", "Rapporto ETF/future", options=["Bloccato", "Dinamico"], tooltip="Bloccato usa esattamente i prezzi abbinati della fotografia. Dinamico usa gli ultimi prezzi ETF e future delle stesse barre 5m completate; puo' spostare tutti i livelli. Non usare Dinamico come livelli fissi dello snapshot.")
-showContext = input.bool(true, "Mostra avviso rapporto e contratto")
 float lockedRatio = @LOCKED_RATIO@
 string etfTicker = "@ETF_TV@"
 string contractTicker = "@FUT_TV@"
@@ -168,10 +167,6 @@ if barstate.islast
         else
             @RENDER_MAIN@
             @RENDER_WEEKLY@
-        if showContext
-            string refType = dynamicAvailable ? "Dinamico - 5m abbinati" : "BLOCCATO alla fotografia"
-            string modeWarning = modeRatio == "Dinamico" and not dynamicAvailable ? " | dinamico non disponibile" : ""
-            label notice = label.new(bar_index + 3, close, "@SYMBOL@ → @MARKET@ | ratio " + refType + modeWarning + "\\n" + "@FUT_TV@: " + str.tostring(ratioToDraw, "#.########") + " | ETF Gamma, NON CME/NYMEX", style=label.style_label_left, color=color.new(color.orange, 60), textcolor=color.white, size=size.tiny)
             array.push(drawnLabels, notice)
 """
     substitutions = {
