@@ -5,7 +5,7 @@
 ## Current scope
 
 - Six-instrument selector: Nasdaq / DAX / Gold / WTI / EURUSD / ZB.
-- **Nasdaq NDX/NQ remains enabled.** Gold GLD (ETF) has a separate **Cboe original-file NET GAMMA** mode with no Alpaca dependency; DAX, WTI, EURUSD and ZB remain disabled. GLD levels are NOT Gold future GC levels.
+- **Nasdaq NDX/NQ remains enabled.** Gold GLD (ETF) has a separate **Cboe on-demand NET GAMMA** mode with no Alpaca dependency; DAX, WTI, EURUSD and ZB remain disabled. GLD levels are NOT Gold future GC levels.
 - Cboe `_NDX.json` fetch *on demand* or imported `.json` / `.json.gz` original file.
 - NDX and NDXP contracts parsed using expiry, put/call and strike from original OCC code.
 - `(OI+Volume)*Gamma` Call minus Put unchanged; all real NDX strikes in a **user-adjustable ±% band** centered on the previous NDX close (default ±3%; same band for 0DTE and Weekly).
@@ -21,13 +21,13 @@
 ## GLD mode (Cboe original-file only)
 
 - Select **Gold · GLD (Cboe)** in the Multi-Market Streamlit selector.
-- Open the original [Cboe GLD.json](https://cdn.cboe.com/api/global/delayed_quotes/options/GLD.json) manually and save its original bytes as GLD.json. Import that JSON (or its .json.gz compression) using the file uploader in the Gold module.
+- Click **Aggiorna fotografia GLD da Cboe** to request and validate the original GLD.json directly inside Streamlit (one user action; no polling). If the hosting server is blocked by Cboe, expand **Importazione manuale del JSON originale** and import GLD.json (or original .json.gz), available at [Cboe GLD.json](https://cdn.cboe.com/api/global/delayed_quotes/options/GLD.json).
 - No Alpaca credentials, requests, Greek approximation, weekly IV proxy or Open Interest-only fallback are used; the prior Alpaca GLD code and tests have been deleted.
 - Cboe GLD input is strictly validated: GLD OCC contract root only, actual expiration, true Cboe Gamma, OI and Volume, no synthetic strikes/expiry, and no missing inputs silently substituted with zero.
 - The formula is **NET = [(OI+Volume)×Gamma] Call − [(OI+Volume)×Gamma] Put**, directly from the imported GLD option chain. It is not cash gamma exposure, inferred dealer inventory, or GC futures gamma.
 - The user selects the **primary expiration**; it is labeled 0DTE only when it matches today's date in **America/New_York**. Weekly is the next real Friday expiration present in the chain, or marked unavailable. Both plots share the same user-adjustable ±% strike window (from previous close) and x-axis scale.
 - Display original file timestamp **without inferring its timezone**, local import time separately, coverage, missing fields and a CSV export for each usable expiry. The import timestamp does not certify the age of the chain.
-- Cboe's delayed-quote web page explicitly restricts programmatic extraction. Consequently, this module does **not** automatically fetch GLD.json, create cron/GitHub workflows, or copy SPX's existing Cboe downloader. Automated collection requires a permissible/licensed source. The existing Serafini SPX and Nasdaq NDX modules are unchanged.
+- Cboe places restrictions on automated extraction of delayed quotes. A single **user-triggered** request now follows the same interaction pattern as Nasdaq's Cboe button; no unattended/scheduled job, scraping loop, bypass, or Cboe API authentication is introduced. Use of the data remains subject to Cboe terms. The existing Serafini SPX and Nasdaq NDX modules are unchanged.
 - No historical replay, Pine GLD overlay, GLD-to-GC conversion, gamma flip or scheduled snapshots are implemented in GLD mode.
 
 ## Run
@@ -41,9 +41,9 @@ Or deploy this folder as a new independent Streamlit application; main file `app
 
 ## Important technical limitations
 
-1. GLD Cboe original-file validation is unit-tested with fixtures, but its live JSON field layout and its 0DTE Gamma completeness must still be confirmed with a fresh real file in Streamlit. NDX live feed limitations remain separately documented.
+1. GLD Cboe parsing and one-click fetch are unit-tested with fixtures, but server access, the live JSON layout and its 0DTE Gamma completeness must still be confirmed in Streamlit with a fresh real snapshot. NDX live feed limitations remain separately documented.
 2. The formula and adjustable percentage strike band are a cross-market study choice, **not independently validated for Nasdaq by Serafini**. We do not apply the 60% 0DTE / 23% Weekly SPX percentages to Nasdaq.
-3. No automated schedule, archive, replay, Supabase link or new GitHub repo is created at this stage; GLD data is manually imported.
+3. No automated schedule, archive, replay, Supabase link or new GitHub repo is created at this stage; GLD refresh is user-triggered, with optional manual import fallback.
 4. The Cboe timestamp is shown as supplied; no timezone is inferred. Importing a file does not claim to know the original download time.
 5. No cross-instrument multiplier normalization or claim about monetary GEX.
 6. This prototype must be tested on live NDX and with a Pine v6 editor before operational trading.
