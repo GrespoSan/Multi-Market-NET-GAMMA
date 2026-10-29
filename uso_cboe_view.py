@@ -8,7 +8,7 @@ import hashlib
 import io
 
 import streamlit as st
-import plotly.graph_objects as go
+from gamma_chart_style import profile_chart, top_levels
 
 from etf_pine_view import render_etf_pine_exports
 
@@ -27,31 +27,7 @@ def _to_csv(rows):
 
 
 def _plot(p, reference, common_x, shared_y):
-    rows = p["rows"]
-    fig = go.Figure()
-    fig.add_trace(go.Bar(
-        x=[r["net"] for r in rows],
-        y=[r["strike"] for r in rows],
-        orientation="h",
-        marker_color=["#22c55e" if r["net"] >= 0 else "#ef4444" for r in rows],
-        customdata=[[r["call"], r["put"], r["call_gamma"], r["put_gamma"]] for r in rows],
-        hovertemplate="Strike USO %{y:,.2f}<br>NET %{x:+.4f}"
-                      "<br>Call ponderata %{customdata[0]:.4f}"
-                      "<br>Put ponderata %{customdata[1]:.4f}"
-                      "<br>Gamma Call %{customdata[2]:.6f}"
-                      "<br>Gamma Put %{customdata[3]:.6f}<extra></extra>"))
-    diffs = [r1["strike"] - r0["strike"] for r0, r1 in zip(rows, rows[1:])]
-    if diffs:
-        fig.update_traces(width=min(0.8, max(0.01, min(diffs) * 0.75)))
-    fig.add_vline(x=0, line_color="#6b7280")
-    fig.add_hline(y=reference, line_color="#eabf65", line_dash="dash", line_width=1.5)
-    fig.update_layout(
-        template="plotly_dark", height=690,
-        margin=dict(l=5, r=5, b=20, t=14), showlegend=False,
-        xaxis=dict(title="NET (OI + Volume) × Gamma Cboe", range=common_x),
-        yaxis=dict(title="Strike USO (USD)", range=shared_y, autorange=False),
-    )
-    return fig
+    return profile_chart(p["rows"], "USO", reference, common_x, shared_y)
 
 
 def _save_snapshot(raw, filename, source):
@@ -230,6 +206,15 @@ def render_uso_cboe():
                            f"meno di due strike completi o copertura inferiore al "
                            f"{MIN_VALID_COVERAGE:.0%}. Nessun livello inventato.")
                 continue
+            levels = top_levels(p["rows"], "strike", "net")
+            best_plus, best_minus = levels["positive"], levels["negative"]
+            c_pos, c_neg = st.columns(2)
+            with c_pos:
+                st.metric("Gamma positivo più marcato",
+                          f"{best_plus[0]:,.2f}" if best_plus else "—")
+            with c_neg:
+                st.metric("Gamma negativo più marcato",
+                          f"{best_minus[0]:,.2f}" if best_minus else "—")
             st.plotly_chart(_plot(p, reference, xlim, ylim), use_container_width=True)
             st.download_button(f"Esporta CSV USO · {title}",
                                data=_to_csv(p["rows"]),
