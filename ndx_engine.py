@@ -112,8 +112,9 @@ def profile(doc: dict, expiry: date, reference: float, band_pct: float = DEFAULT
         raise ValueError(f'{expiry:%d/%m/%Y}: Gamma tutti zero/assenti. Profilo non utilizzabile.')
     if not math.isfinite(band_pct) or not (0 < band_pct <= 100):
         raise ValueError('Ampiezza percentuale non valida.')
-    lower = reference * (1 - band_pct / 100.0)
-    upper = reference * (1 + band_pct / 100.0)
+    # Evita errori floating-point proprio sui due strike di confine.
+    lower = round(reference * (1 - band_pct / 100.0), 10)
+    upper = round(reference * (1 + band_pct / 100.0), 10)
     selected = sorted(k for k in raw if lower <= k <= upper)
     if not selected:
         raise ValueError(
