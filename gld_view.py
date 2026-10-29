@@ -6,7 +6,7 @@ import os
 import plotly.graph_objects as go
 import streamlit as st
 
-from gld_alpaca import calculate_profile, fetch_gld, MIN_COVERAGE
+from gld_alpaca import calculate_profile, calculate_open_interest, fetch_gld, MIN_COVERAGE
 
 
 def _credentials():
@@ -27,6 +27,35 @@ def _csv(rows):
     writer.writeheader()
     writer.writerows(rows)
     return out.getvalue()
+
+
+def _draw_oi(rows, lower, upper, close):
+    """OI-only visualization: green call OI and red negative put OI, NOT Gamma."""
+    strikes = [r["strike"] for r in rows]
+    fig = go.Figure()
+    fig.add_trace(go.Bar(
+        x=[r["call_oi"] for r in rows], y=strikes,
+        name="OI Call", orientation="h", marker_color="#22c55e",
+        hovertemplate="Strike GLD %{y:,.2f}<br>Call OI %{x:,.0f} contratti<extra></extra>"))
+    fig.add_trace(go.Bar(
+        x=[-r["put_oi"] for r in rows], y=strikes,
+        name="OI Put", orientation="h", marker_color="#ef4444",
+        customdata=[r["put_oi"] for r in rows],
+        hovertemplate="Strike GLD %{y:,.2f}<br>Put OI %{customdata:,.0f} contratti<extra></extra>"))
+    steps = [b - a for a, b in zip(strikes, strikes[1:]) if b > a]
+    if steps:
+        fig.update_traces(width=min(.8, min(steps) * .75))
+    fig.add_vline(x=0, line_color="#6b7280", line_width=1)
+    fig.add_hline(y=close, line_color="#f0cc65", line_dash="dash")
+    mx = max([1.0] + [r["call_oi"] for r in rows] + [r["put_oi"] for r in rows])
+    fig.update_layout(template="plotly_dark", height=620,
+                      margin=dict(l=8, r=8, t=10, b=15), showlegend=True,
+                      legend=dict(orientation="h", y=1.07, x=0),
+                      xaxis=dict(title="OPEN INTEREST · contratti (non Gamma)",
+                                 range=[-mx * 1.12, mx * 1.12]),
+                      yaxis=dict(title="Strike ETF GLD · USD",
+                                 range=[lower, upper], autorange=False))
+    st.plotly_chart(fig, use_container_width=True)
 
 
 def render_gld():
@@ -85,8 +114,22 @@ def render_gld():
     lo, hi = min([0.0] + values), max([0.0] + values)
     span = max(hi - lo, 1e-6)
     horizontal = [lo - span * .06, hi + span * .06]
-    columns = st.columns(2, gap="large")
-    for label, column in zip(["0DTE", "Weekly"], columns):
+    oi_fallback = None
+    zero_day = profiles.get("0DTE")
+    if zero_day and not zero_day["usable"] and zero_day["eligible"] > 0:
+        # Every missing Gamma can be observed directly in the source; OI is separate.
+        try:
+            oi_fallback = calculate_open_interest(data["groups"]["0DTE"], lower, upper)
+        except Exception as exc:
+            st.warning(f"OI 0DTE non utilizzabile: {str(exc)[:180]}")
+    have_oi = bool(oi_fallback and oi_fallback["usable"])
+    single_weekly = bool(zero_day and not zero_day["usable"] and not have_oi)
+    if single_weekly:
+        st.info("0DTE: NET GAMMA non disponibile per la scadenza odierna; "
+                "Alpaca non ha restituito Gamma sufficiente e nemmeno OI completo da rappresentare.")
+    labels = ["Weekly"] if single_weekly else ["0DTE", "Weekly"]
+    columns = [st.container()] if single_weekly else st.columns(2, gap="large")
+    for label, column in zip(labels, columns):
         with column:
             p = profiles.get(label)
             if p is None:
@@ -95,13 +138,23 @@ def render_gld():
             st.caption(f"{p['eligible']} contratti rilevati · {p['valid_contracts']} con tutti i dati · "
                        f"{p['complete_strikes']} strike con entrambe le opzioni · "
                        f"copertura contratti {p['coverage']:.0%}")
-            if p["oi_dates"]:
-                st.caption("Date Open Interest: " + ", ".join(p["oi_dates"]))
-                if p["oi_dates"][-1] < data["as_of_ny"]:
-                    st.warning("OI non aggiornato alla seduta corrente: profilo sperimentale.")
+            dates = p["oi_dates"] or (oi_fallback["oi_dates"] if label == "0DTE" and have_oi else [])
+            if dates:
+                st.caption("Date Open Interest: " + ", ".join(dates))
+                if dates[-1] < data["as_of_ny"]:
+                    st.warning("OI precedente alla seduta: fotografia sperimentale.")
             if p["missing"]:
                 st.caption("Dati assenti/scartati: " + ", ".join(f"{k} {v}" for k, v in p["missing"].items()))
             if not p["usable"]:
+                if label == "0DTE" and have_oi:
+                    st.info("Alpaca non fornisce Gamma per le opzioni 0DTE di questa fotografia. "
+                            "NET GAMMA non calcolabile: sotto compare SOLO Open Interest, "
+                            "non una misura Gamma né un segnale GC.")
+                    st.caption(f"OPEN INTEREST 0DTE · {oi_fallback['complete_pairs']} strike Call/Put "
+                               f"· copertura OI {oi_fallback['coverage']:.0%} "
+                               f"· OI mancanti {oi_fallback['missing_oi']}")
+                    _draw_oi(oi_fallback["rows"], lower, upper, close)
+                    continue
                 st.warning(f"Profilo non pubblicabile: servono almeno 2 strike Call/Put completi e "
                            f"copertura contratti ≥{MIN_COVERAGE:.0%}. Nessun livello simulato.")
                 continue
@@ -121,7 +174,7 @@ def render_gld():
             steps = [b["strike"] - a["strike"] for a, b in zip(rows, rows[1:])]
             if steps:
                 fig.update_traces(width=min(.8, min(steps) * .75))
-            fig.update_layout(template="plotly_dark", height=660,
+            fig.update_layout(template="plotly_dark", height=620,
                               margin=dict(l=5, r=5, t=12, b=15), showlegend=False,
                               xaxis=dict(title="Net (OI + Volume) × Gamma", range=horizontal),
                               yaxis=dict(title="Prezzo ETF GLD (USD)", range=[lower, upper], autorange=False))
@@ -129,6 +182,6 @@ def render_gld():
             st.download_button(f"Scarica CSV GLD · {label}", data=_csv(rows),
                                file_name=f"GLD_{p['expiry']}_{label}.csv",
                                mime="text/csv", on_click="ignore")
-    st.caption("Formula esplorativa: Call [(OI+Volume) × Gamma] − Put [(OI+Volume) × Gamma]. "
+    st.caption("Formula esplorativa, solo dove Gamma è presente: Call [(OI+Volume) × Gamma] − Put [(OI+Volume) × Gamma]. "
                "Tutti gli strike visualizzati sono GLD; non vengono calcolati livelli GC, "
                "Gamma Flip, né esposizioni in dollari. Nessuna operazione di trading eseguita.")
