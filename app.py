@@ -20,7 +20,7 @@ from nq_price_panel import load_nq_candles, chart_compare_nq
 ROME=ZoneInfo('Europe/Rome')
 st.set_page_config(page_title='Multi-Market NET GAMMA', layout='wide')
 st.title('Multi-Market NET GAMMA')
-st.caption('App separata da Serafini SPX · primo modulo NDX/NQ · 6 mercati nel selettore')
+st.caption('App separata da Serafini SPX · moduli NDX/NQ, GLD e USO · 6 mercati nel selettore')
 
 market_key=st.selectbox('Sottostante', list(MARKETS.keys()),
                         format_func=lambda x: MARKETS[x].label)
@@ -28,11 +28,18 @@ market=MARKETS[market_key]
 if market_key == 'GOLD':
     st.caption('Sottostante ETF GLD (USD) · Opzioni GLD Cboe · '
                'NON future CME GC · livelli soltanto GLD.')
+elif market_key == 'WTI':
+    st.caption('Sottostante ETF USO (USD) · Opzioni USO Cboe · '
+               'NON future NYMEX CL/MCL · livelli soltanto USO.')
 else:
     st.caption(f'Opzioni: {market.options} · Future: {market.futures} · Differenziale: {market.basis}')
 if market_key == 'GOLD':
     from gld_cboe_view import render_gld_cboe
     render_gld_cboe()
+    st.stop()
+if market_key == 'WTI':
+    from uso_cboe_view import render_uso_cboe
+    render_uso_cboe()
     st.stop()
 
 if not market.enabled:
