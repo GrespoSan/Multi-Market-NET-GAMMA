@@ -21,17 +21,20 @@ def _pine_array(rows, field, offset=0.0):
 
 
 def _initial_manual_scale(profiles):
-    # Nessun ricalcolo del Gamma: solo valore iniziale suggerito per la UI.
-    minimum=0.01
-    for group,center in profiles:
-        vals=[float(r["net_gamma"]) for r in group["rows"]]
-        if not vals:
-            continue
-        necessary=max(max(0.0,max(vals))/float(480-center),
-                      max(0.0,-min(vals))/float(9500+center))
-        minimum=max(minimum,necessary)
-    return ceil(minimum*100-1e-9)/100.0
+    """Stessa identica regola iniziale del generatore Serafini SPX.
 
+    Il valore è in Gamma/barra reale, senza normalizzazioni NDX.
+    """
+    minimum = 1.0
+    for group, center in profiles:
+        positives = [max(0.0, float(row["net_gamma"])) for row in group["rows"]]
+        negatives = [max(0.0, -float(row["net_gamma"])) for row in group["rows"]]
+        if not positives:
+            continue
+        needed = max(max(positives) / float(480 - center),
+                     max(negatives) / float(9500 + center))
+        minimum = max(minimum, needed)
+    return ceil(minimum * 10.0 - 1e-8) / 10.0
 
 def make_pine(profiles: dict, basis: float, target: date, label: str) -> str:
     if not profiles or not isfinite(float(basis)):
@@ -65,7 +68,7 @@ indicator("Multi-Market NET GAMMA · NDX/NQ · {target.isoformat()} · {label}",
 // Stessa interfaccia del generatore Serafini SPX.
 validTicker = syminfo.type == "futures" and (syminfo.root == "NQ" or syminfo.root == "MNQ")
 
-gammaPerCandle = input.float({scale:.2f}, "Scala MANUALE · Gamma/barra", minval=0.001, step=0.01, tooltip="Scala comune e sempre manuale: nessun adattamento automatico dei NET GAMMA.")
+gammaPerCandle = input.float({scale:.1f}, "Scala MANUALE · Gamma/barra", minval=0.1, step=0.1, tooltip="Sempre applicata esattamente come impostata. Se troppo bassa, il grafico segnala di aumentarla: nessuna modifica automatica.")
 offsetOdte = input.int(60, "Distanza 0DTE da ultima candela", minval=45, maxval=170)
 offsetWeekly = input.int(160, "Distanza Weekly da ultima candela", minval=55, maxval=300)
 positiveColor = input.color(color.rgb(0, 230, 117), "NET GAMMA positivo")
