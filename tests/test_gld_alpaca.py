@@ -2,7 +2,7 @@
 import unittest
 from datetime import date
 
-from gld_alpaca import calculate_profile, next_friday, fetch_gld
+from gld_alpaca import calculate_profile, calculate_open_interest, next_friday, fetch_gld
 
 
 def chain():
@@ -61,6 +61,31 @@ class GldEngineTests(unittest.TestCase):
         result = calculate_profile(fixture, 364, 368)
         self.assertEqual(result["missing"]["multiplier"], 1)
         self.assertNotIn(365, [r["strike"] for r in result["rows"]])
+
+    def test_0dte_oi_fallback_without_greeks(self):
+        fixture = chain()
+        for snap in fixture["snapshots"].values():
+            snap.pop("greeks", None)
+        net = calculate_profile(fixture, 364, 368)
+        oi = calculate_open_interest(fixture, 364, 368)
+        self.assertFalse(net["usable"])
+        self.assertEqual(net["missing"]["gamma"], 6)
+        self.assertTrue(oi["usable"])
+        self.assertEqual(oi["complete_pairs"], 3)
+        self.assertEqual(oi["rows"][0]["call_oi"], 10)
+        self.assertEqual(oi["rows"][0]["put_oi"], 5)
+        self.assertEqual(oi["oi_dates"], ["2026-10-27"])
+        self.assertNotIn("net", oi["rows"][0])
+
+    def test_oi_fallback_rejects_missing_oi(self):
+        fixture = chain()
+        for contract in fixture["contracts"]:
+            if contract["type"] == "put":
+                contract["open_interest"] = None
+        oi = calculate_open_interest(fixture, 364, 368)
+        self.assertFalse(oi["usable"])
+        self.assertEqual(oi["missing_oi"], 3)
+        self.assertEqual(oi["rows"], [])
 
     def test_no_live_expiry_does_not_create_data(self):
         result = calculate_profile({"expiry": "2026-10-29", "contracts": [],
