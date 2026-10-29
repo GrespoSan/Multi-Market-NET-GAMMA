@@ -75,11 +75,12 @@ then validated for **Nasdaq NQ/MNQ, Gold GC/MGC, Petrolio CL/MCL** together.
 
 ## Nuovo cruscotto e rilevamenti programmati
 
-### Restyling grafico
+### Grafici identici a Serafini SPX
 
-- `gamma_chart_style.py` definisce l'unico tema scuro Plotly di **Nasdaq, Gold e Petrolio**: scale Gamma e prezzo identiche tra 0DTE e Weekly, barre positive verdi / negative rosse, linea del close precedente gialla, griglia discreta, hover con Gamma / OI / Volume quando disponibili.
-- L'app indica il livello strike del **Gamma positivo** e **Gamma negativo** più marcato per ciascuna scadenza. Sono massimi e minimi della formula esistente, NON gamma flip o dealer walls.
-- `pine_spx_visual.py` resta il modello comune per i Pine: questa modifica riguarda il grafico web, NON ricalcola Gamma o sposta i livelli.
+- **Riferimento ufficiale:** `GrespoSan/Serafini-SPX-Dashboard/gamma_section.py` (profilo NET GAMMA 0DTE/Weekly). L'unico renderer `gamma_chart_style.py` applica la stessa gerarchia titolo/sottotitolo, nero di fondo, barra verde `#2dbb72` / rossa `#e45757`, zero verticale chiaro, asse X comune con margine **8% dello spread**, asse Y comune e chiusura precedente gialla tratteggiata con guide ±0,5%, ±1,0%, ±1,5%.
+- I pannelli sono affiancati a pagina intera; **nessuna card metrica** ruba spazio sopra il grafico. Le barre rimangono sottili (circa **7 px verticali**), anche quando GLD o USO presentano molti meno strike dei 50 previsti dal grafico SPX. Non si applica normalizzazione o compressione ai valori NET GAMMA: soltanto uno spessore di disegno limitato.
+- **Intestazione per pannello:** tipo di profilo, data nel timestamp originale Cboe (senza ipotizzare il fuso), ora di download a Roma soltanto se effettivamente registrata, scadenza, contratti e strike. Una sessione principale futura **non è etichettata 0DTE corrente**.
+- Il grafico usa soltanto strike presenti nella catena. Gamma, OI, Volume, differenziale NQ−NDX e rapporto GLD/GC o USO/CL utilizzato dal Pine restano completamente invariati. Il Pine continua a usare il suo renderer SPX indipendente (`pine_spx_visual.py`).
 
 ### Tre orari Europe/Rome, lunedì–venerdì
 
