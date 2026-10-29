@@ -10,6 +10,8 @@ import io
 import streamlit as st
 import plotly.graph_objects as go
 
+from etf_pine_view import render_etf_pine_exports
+
 from gld_cboe import (GLD_URL, download_gld, read_gld, expirations, next_weekly,
                       close_previous, current_price, profile, MIN_VALID_COVERAGE)
 
@@ -228,3 +230,4 @@ def render_gld_cboe():
                                mime="text/csv", on_click="ignore")
     st.caption("Questi grafici non rappresentano Gamma monetario/dealer GEX, "
                "non individuano automaticamente Gamma Flip e non sono livelli GC.")
+    render_etf_pine_exports("GLD", groups, reference, base_day)
