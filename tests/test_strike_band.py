@@ -49,6 +49,8 @@ class TestPercentageStrikeSelection(unittest.TestCase):
         self.assertIn('syminfo.root == "MNQ"', code)
         self.assertIn("if barstate.islast and validTicker", code)
         self.assertIn('Scala MANUALE · Gamma/barra', code)
+        # Stesso valore predefinito, minimo e passo del Pine Serafini SPX.
+        self.assertIn('gammaPerCandle = input.float(1.0, "Scala MANUALE · Gamma/barra", minval=0.1, step=0.1', code)
         self.assertIn('Distanza Weekly da ultima candela', code)
         self.assertIn('NET GAMMA positivo', code)
         self.assertIn("0DTE 29/10", code)
