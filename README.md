@@ -5,6 +5,7 @@
 ## Current scope
 
 - Three-market selector: **Nasdaq NDX/NQ**, **Gold GLD (ETF)** and **Petrolio USO (ETF)**.
+- Pine exports now available per futures chart: **Nasdaq NQ/MNQ** (existing NDX−NQ basis), **Gold GC/MGC** (GLD option data mapped by percentage), and **Petrolio CL/MCL** (USO option data mapped by percentage). Original Cboe Gamma is never changed; ETF levels on futures are illustrative, not true native options-Gamma levels.
 - **Nasdaq NDX/NQ remains enabled.** Gold GLD (ETF) and Petrolio USO (ETF) have separate **Cboe on-demand NET GAMMA** modes with no Alpaca dependency. Neither GLD nor USO strikes are native futures-option strikes (GC / CL).
 - Cboe `_NDX.json` fetch *on demand* or imported `.json` / `.json.gz` original file.
 - NDX and NDXP contracts parsed using expiry, put/call and strike from original OCC code.
@@ -28,7 +29,7 @@
 - The user selects the **primary expiration**; it is labeled 0DTE only when it matches today's date in **America/New_York**. Weekly is the next real Friday expiration present in the chain, or marked unavailable. Both plots share the same user-adjustable ±% strike window (from previous close) and x-axis scale.
 - Display original file timestamp **without inferring its timezone**, local import time separately, coverage, missing fields and a CSV export for each usable expiry. The import timestamp does not certify the age of the chain.
 - Cboe places restrictions on automated extraction of delayed quotes. A single **user-triggered** request now follows the same interaction pattern as Nasdaq's Cboe button; no unattended/scheduled job, scraping loop, bypass, or Cboe API authentication is introduced. Use of the data remains subject to Cboe terms. The existing Serafini SPX and Nasdaq NDX modules are unchanged.
-- No historical replay, Pine GLD overlay, GLD-to-GC conversion, gamma flip or scheduled snapshots are implemented in GLD mode.
+- The app now exports **Pine Script v6 for GC/MGC futures** (main/0DTE, Weekly, or both), with a clearly labeled **percentage price mapping** of Cboe GLD ETF strikes. This is **not native GC gamma**. The exporter never modifies the original NET GAMMA. No historical replay, Gamma Flip or scheduled snapshots are implemented in GLD mode.
 
 ## Petrolio USO (Cboe ETF options)
 
@@ -40,6 +41,19 @@
 - **OVX context:** https://www.cboe.com/us/indices/dashboard/ovx/ . OVX is the Cboe 30-day implied-volatility index derived from USO options; currently linked for context only, not used in the NET GAMMA arithmetic. No OVX value is guessed.
 - Identical source access limits as GLD: Cboe restrictions remain relevant, the automatic/unattended 07:30 and 15:50 captures are **not** implemented for USO. No Serafini SPX, NDX or GLD code/market logic is modified by this addition.
 - USO engine and original-file importer are unit-tested with illustrative **synthetic fixtures**, not a certification that the live server currently accepts Streamlit requests or that all 0DTE options supply usable Gamma. Run a fresh USO capture in the deployed app to validate.
+- The app now exports **Pine Script v6 for CL/MCL futures** (main/0DTE, Weekly, or both), using a labeled percentage mapping of USO ETF strike prices, **not native CL gamma**.
+
+## ETF Gamma display on corresponding futures (Pine v6)
+
+For both Gold and Petrolio, after a Cboe profile is usable, choose one of three downloadable scripts: principal/0DTE only, Weekly only, or principal/0DTE + Weekly. The code is also visible for copy/paste. Each script shows on **its own futures root only**:
+
+- GLD Cboe options → COMEX **GC/MGC** TradingView futures.
+- USO Cboe options → NYMEX **CL/MCL** TradingView futures.
+- Nasdaq NDX → **NQ/MNQ** continues using its original independent Pine exporter.
+
+**This is not a direct strike translation.** By default TradingView supplies the previous completed Daily futures close and the Pine plots `future_reference × (ETF_option_strike / ETF_previous_close)`. A manually supplied future reference (from the same reference session as the ETF close) locks the plotted levels to that reference. With automatic Daily reference the mapping can shift next session, and futures/ETF trading sessions are not perfectly synchronized.
+
+Thus the resulting levels are **percentage-projected positions of ETF Gamma, not CME/NYMEX options levels or validated support/resistance on the future**. All profiles are labeled accordingly. No fabricated CME/NYMEX contracts, no conversion of Gamma weights, and no supposed equality of USO and CL prices. Inspect the mapping before trading. The Pine scripts are syntactically generated and regression-tested, but must still be checked in the TradingView Pine editor.
 
 ## Run
 
