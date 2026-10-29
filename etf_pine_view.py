@@ -21,9 +21,16 @@ def _source_day(stamp, fallback):
 
 
 def render_etf_pine_exports(symbol, calculated, reference, day,
-                            source_sha="", cboe_stamp=None):
+                            source_sha=None, cboe_stamp=None):
     if symbol not in ASSETS:
         raise ValueError("Modulo Pine non supportato.")
+    # Read optional snapshot metadata from the Streamlit session, keeping the
+    # public 4-argument interface backward compatible with live page reloads.
+    prefix = symbol.lower() + "_cboe_"
+    if source_sha is None:
+        source_sha = st.session_state.get(prefix + "sha256", "")
+    if cboe_stamp is None:
+        cboe_stamp = st.session_state.get(prefix + "timestamp")
     market = ASSETS[symbol]["label"]
     st.subheader(f"Esportazione Pine Script v6 · {market}")
     st.caption("Fonte dei Gamma: opzioni ETF Cboe, NON opzioni sui futures. "
