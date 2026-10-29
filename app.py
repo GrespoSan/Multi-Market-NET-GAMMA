@@ -173,6 +173,14 @@ st.caption('Formula: NET = [(OI+Volume)×Gamma] Call − [(OI+Volume)×Gamma] Pu
            '50 strike (25 sopra e 25 sotto la chiusura NDX). Non equivale al GEX monetario.')
 if basis is None:
     st.warning('Differenziale assente: vengono rappresentati gli strike NDX; esportazione NQ disabilitata.')
+else:
+    # Identico riferimento grafico SPX/ES: close indice precedente + basis future.
+    # E' solo un livello guida e non interviene nel calcolo dei NET GAMMA.
+    previous_close_nq = reference + basis
+    st.caption(
+        f'**Close NQ precedente (stimato)** = Chiusura NDX {reference:,.4f} '
+        f'+ differenziale NQ–NDX {basis:+,.4f} = **{previous_close_nq:,.2f}**'
+    )
 
 cols=st.columns(len(profiles),gap='large')
 for (kind,group),column in zip(profiles.items(),cols):
@@ -188,6 +196,17 @@ for (kind,group),column in zip(profiles.items(),cols):
                             customdata=[[r['strike_index'],r['call_gamma'],r['put_gamma']] for r in rows],
                             hovertemplate='Livello %{y:,.2f}<br>Strike NDX %{customdata[0]:,.2f}<br>NET %{x:+.4f}<br>Call %{customdata[1]:.4f}<br>Put %{customdata[2]:.4f}<extra></extra>'))
         fg.add_vline(x=0,line_color='#6b7280',line_width=1)
+        if basis is not None:
+            # Close NDX precedente + differenziale NQ−NDX; stessa linea in
+            # entrambi i grafici. Non altera Gamma, strike o scala delle barre.
+            fg.add_hline(y=previous_close_nq, line_dash='dash',
+                         line_width=1.5, line_color='#f0cc65')
+            fg.add_annotation(x=0.995, xref='paper',
+                              y=previous_close_nq, yref='y',
+                              text=f'Close prec. NQ {previous_close_nq:,.2f}',
+                              showarrow=False, xanchor='right', yanchor='bottom',
+                              font=dict(color='#f0cc65',size=11),
+                              bgcolor='rgba(13,17,23,0.85)',borderpad=2)
         fg.update_layout(height=760,margin=dict(l=10,r=10,b=25,t=15),
                          template='plotly_dark',showlegend=False,
                          xaxis_title='NET gamma · unità formula sperimentale',
