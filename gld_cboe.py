@@ -1,7 +1,7 @@
-"""Read-only Cboe GLD original JSON/.json.gz parser and NET GAMMA engine.
+"""Cboe GLD original JSON/.json.gz parser, on-demand fetch, and NET GAMMA.
 
-This module deliberately performs no automated Cboe HTTP requests.
-It does not alter the Serafini SPX or Nasdaq NDX projects.
+The data loader only runs from the explicit user refresh action; no cron,
+background polling, or login/captcha bypass. Nasdaq and SPX are untouched.
 """
 from collections import defaultdict
 from datetime import date, timedelta
@@ -9,12 +9,49 @@ import gzip
 import json
 import math
 import re
+import requests
 
 GLD_URL = "https://cdn.cboe.com/api/global/delayed_quotes/options/GLD.json"
 GLD_OCC = re.compile(r"^GLD(\d{6})([CP])(\d{8})$")
 MAX_RAW_BYTES = 50 * 1024 * 1024
 MIN_VALID_COVERAGE = 0.70
 
+
+
+def download_gld(limit_mb=50, session=None) -> bytes:
+    """One explicit, bounded Cboe GLD request (no unattended collection).
+
+    Preserve the response bytes; validate GLD chain before exposing it.
+    If the provider restricts server-side access, surface the error and
+    leave manual source import available.
+    """
+    session = session or requests
+    headers = {"User-Agent": "Mozilla/5.0", "Accept": "application/json",
+               "Cache-Control": "no-cache"}
+    try:
+        with session.get(GLD_URL, headers=headers, timeout=(8, 55), stream=True) as response:
+            if response.status_code in (401, 403, 429):
+                raise RuntimeError(
+                    f"Cboe HTTP {response.status_code}: acquisizione diretta non consentita "
+                    "da questo server. Usa l'importazione del JSON originale."
+                )
+            response.raise_for_status()
+            chunks = []
+            total = 0
+            for chunk in response.iter_content(chunk_size=1024 * 1024):
+                if not chunk:
+                    continue
+                total += len(chunk)
+                if total > min(limit_mb * 1024 * 1024, MAX_RAW_BYTES):
+                    raise ValueError("GLD.json supera il limite di 50 MB; download annullato.")
+                chunks.append(chunk)
+    except requests.RequestException as exc:
+        raise RuntimeError(f"Download Cboe GLD non disponibile: {str(exc)[:180]}") from exc
+    if not chunks:
+        raise ValueError("Cboe ha restituito un file GLD vuoto.")
+    blob = b"".join(chunks)
+    read_gld(blob)  # blocks HTML, NDX/SPX and malformed/empty option chains
+    return blob
 
 def read_gld(blob: bytes) -> dict:
     if not isinstance(blob, bytes) or not blob or len(blob) > MAX_RAW_BYTES:
