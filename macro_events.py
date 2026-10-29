@@ -242,5 +242,5 @@ def events_for_pine(day):
     raw = _fetch((day - timedelta(days=1)).isoformat(), day.isoformat())
     news = _prepare(raw, day)
     return [event for event in news if event["day"] == day
-            and re.fullmatch(r"\\d{2}:\\d{2}", event["clock"])
+            and re.fullmatch("[0-9]{2}:[0-9]{2}", event["clock"])
             and event.get("status") != "cancelled"]
