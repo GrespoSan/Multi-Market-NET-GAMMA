@@ -6,6 +6,7 @@ claims native GC/CL options levels, and raw Gamma is never rescaled.
 from datetime import date
 from math import isfinite
 from pine_export import _pine_array, _initial_manual_scale
+from pine_spx_visual import spx_inputs, SPX_RENDER_FUNCTIONS, spx_last_bar
 
 ASSETS = {
     "GLD": {"roots": ("GC", "MGC"), "label": "Gold GC/MGC"},
@@ -63,7 +64,7 @@ def make_etf_future_pine(symbol: str, profiles: dict, etf_previous_close: float,
         raise ValueError(f"Servono {total} linee (massimo 480): riduci la fascia "
                          "oppure esporta i profili separati; nessuno strike viene nascosto.")
 
-    main_name = "0DTE" if "0DTE" in profiles else "Principale"
+    main_name = "0DTE" if "0DTE" in profiles else ("Principale" if "Principale" in profiles else "0DTE")
     main = profiles.get(main_name, {"rows": [], "expiry": ""})
     weekly = profiles.get("Weekly", {"rows": [], "expiry": ""})
     main_rows, weekly_rows = main["rows"], weekly["rows"]
@@ -81,6 +82,21 @@ def make_etf_future_pine(symbol: str, profiles: dict, etf_previous_close: float,
                   if main_rows else "")
     weekly_label = (f'Weekly {date.fromisoformat(weekly["expiry"]):%d/%m}'
                     if weekly_rows else "")
+    # All three Multi-Market exports use the same Serafini SPX graphical code.
+    # Ratio calculations are isolated here, before the SPX-style renderer.
+    visual_inputs = spx_inputs(
+        n(max(0.000001, scale)), n(max(0.00000001, step)), main_name,
+        "Scala grafica MANUALE comune ai profili. NET GAMMA ETF invariato.")
+    main_call = (f'renderProfile(odteLevels, mainGammaETF, bar_index + offsetOdte, '
+                 f'"{main_label}", actualScale)' if main_rows else "")
+    weekly_call = (f'renderProfile(weeklyLevels, weeklyGammaETF, bar_index + offsetWeekly, '
+                   f'"{weekly_label}", actualScale)' if weekly_rows else "")
+    prepare = (
+        "array<float> odteLevels = mapETF(mainStrikesETF, ratioToDraw)\n"
+        "array<float> weeklyLevels = mapETF(weeklyStrikesETF, ratioToDraw)"
+    )
+    visual_draw = spx_last_bar(main_call, weekly_call,
+                               "mainGammaETF", "weeklyGammaETF", prepare)
     template = """//@version=6
 indicator("Multi-Market NET GAMMA · @SYMBOL@ → @MARKET@ · @DATE@ · @LABEL@", overlay=true, max_lines_count=500, max_labels_count=50)
 // Fonte: opzioni ETF @SYMBOL@ Cboe, Gamma originale. NON opzioni native del future @MARKET@.
@@ -98,12 +114,7 @@ modeRatio = input.string("Bloccato", "Rapporto ETF/future", options=["Bloccato",
 float lockedRatio = @LOCKED_RATIO@
 string etfTicker = "@ETF_TV@"
 string contractTicker = "@FUT_TV@"
-gammaPerCandle = input.float(@GAMMA_SCALE@, "Scala MANUALE · Gamma/barra", minval=0.000001, step=@SCALE_STEP@, tooltip="Scala grafica, il NET GAMMA delle opzioni ETF non viene alterato.")
-offsetOdte = input.int(60, "Distanza profilo principale da ultima candela", minval=45, maxval=170)
-offsetWeekly = input.int(160, "Distanza Weekly da ultima candela", minval=55, maxval=300)
-positiveColor = input.color(color.rgb(0, 230, 117), "NET GAMMA positivo")
-negativeColor = input.color(color.rgb(242, 54, 69), "NET GAMMA negativo")
-showTitles = input.bool(true, "Mostra intestazioni")
+@SPX_INPUTS@
 
 // Coppie CHIUSE a 5 minuti. Il time-key viene dall'inizio della barra:
 // solo stesso timestamp, mai prezzi di sessioni diverse o ETF fermo dopo le 16 NY.
@@ -124,50 +135,17 @@ var array<float> mainGammaETF = @MAIN_GAMMA@
 var array<float> weeklyStrikesETF = @WEEKLY_STRIKES@
 var array<float> weeklyGammaETF = @WEEKLY_GAMMA@
 
-requiredScale(array<float> values, int centerDistance) =>
-    float p = 0.0
-    float n = 0.0
-    for g in values
-        p := math.max(p, g)
-        n := math.max(n, -g)
-    math.max(p / float(480 - centerDistance), n / float(9500 + centerDistance))
+// Conversione dello strike ETF al prezzo del future PRIMA del disegno.
+// Nessuna variazione al Gamma: il rendering sotto e' quello comune SPX.
+mapETF(array<float> etfLevels, float ratio) =>
+    array<float> resultLevels = array.new_float()
+    for etfStrike in etfLevels
+        array.push(resultLevels, etfStrike * ratio)
+    resultLevels
 
-renderProfile(array<float> strikes, array<float> values, int center, string heading, float scale, float ratio) =>
-    int count = array.size(strikes)
-    if count > 0
-        float firstY = array.get(strikes, 0) * ratio
-        float lastY = array.get(strikes, count - 1) * ratio
-        line base = line.new(center, firstY, center, lastY, xloc=xloc.bar_index, color=color.gray, style=line.style_dotted)
-        array.push(drawnLines, base)
-        for j = 0 to count - 1
-            float etfStrike = array.get(strikes, j)
-            float yPrice = etfStrike * ratio
-            float g = array.get(values, j)
-            int length = g != 0 ? math.max(1, int(math.round(math.abs(g) / scale))) : 0
-            if length > 0
-                line ln = line.new(center, yPrice, center + (g > 0 ? length : -length), yPrice, xloc=xloc.bar_index, color=g >= 0 ? positiveColor : negativeColor, width=5)
-                array.push(drawnLines, ln)
-        if showTitles
-            float spacing = count > 1 ? math.max(syminfo.mintick * 20, (lastY - firstY) / 20.0) : syminfo.mintick * 20
-            label title = label.new(center, lastY + spacing, heading, xloc=xloc.bar_index, yloc=yloc.price, color=color.new(color.black, 50), textcolor=color.white, style=label.style_label_down)
-            array.push(drawnLabels, title)
+@SPX_RENDER_FUNCTIONS@
 
-if barstate.islast
-    for ln in drawnLines
-        line.delete(ln)
-    array.clear(drawnLines)
-    for lb in drawnLabels
-        label.delete(lb)
-    array.clear(drawnLabels)
-    if validTicker
-        float minSafe = math.max(requiredScale(mainGammaETF, offsetOdte), requiredScale(weeklyGammaETF, offsetWeekly))
-        if gammaPerCandle < minSafe * 0.999999
-            label invalidScale = label.new(bar_index + 10, close, "Scala Gamma/barra troppo piccola: minimo " + str.tostring(minSafe, "#.########"), style=label.style_label_left, color=color.orange, textcolor=color.black)
-            array.push(drawnLabels, invalidScale)
-        else
-            @RENDER_MAIN@
-            @RENDER_WEEKLY@
-            array.push(drawnLabels, notice)
+@SPX_DRAW@
 """
     substitutions = {
         "@SYMBOL@": symbol,
@@ -183,14 +161,13 @@ if barstate.islast
         "@CAPTURE_FUTURE@": f"{fut_price:.5f}",
         "@CAPTURE_TIME@": str(mapping["bar_ny"]),
         "@CAPTURE_SOURCE@": str(mapping.get("source", "")).replace("\n", " ")[:120],
-        "@GAMMA_SCALE@": n(max(0.000001, scale)),
-        "@SCALE_STEP@": n(max(0.00000001, step)),
+        "@SPX_INPUTS@": visual_inputs,
+        "@SPX_RENDER_FUNCTIONS@": SPX_RENDER_FUNCTIONS,
+        "@SPX_DRAW@": visual_draw,
         "@MAIN_STRIKES@": _pine_array(main_rows, "strike"),
         "@MAIN_GAMMA@": _pine_array(main_rows, "net"),
         "@WEEKLY_STRIKES@": _pine_array(weekly_rows, "strike"),
         "@WEEKLY_GAMMA@": _pine_array(weekly_rows, "net"),
-        "@RENDER_MAIN@": f'renderProfile(mainStrikesETF, mainGammaETF, bar_index + offsetOdte, "{main_label}", gammaPerCandle, ratioToDraw)' if main_rows else '// Profilo principale assente',
-        "@RENDER_WEEKLY@": f'renderProfile(weeklyStrikesETF, weeklyGammaETF, bar_index + offsetWeekly, "{weekly_label}", gammaPerCandle, ratioToDraw)' if weekly_rows else '// Weekly assente',
     }
     for key, val in substitutions.items():
         template = template.replace(key, str(val))
