@@ -15,6 +15,7 @@ from ndx_basis import fetch_basis
 from pine_export import make_pine
 from macro_events import events_for_pine, CREDITS as MACRO_CREDITS
 from pine_news_overlay import append_news
+from nq_price_panel import load_nq_candles, chart_compare_nq
 
 ROME=ZoneInfo('Europe/Rome')
 st.set_page_config(page_title='Multi-Market NET GAMMA', layout='wide')
@@ -157,11 +158,18 @@ if st.session_state.get('ndx_basis_result'):
                f"{res['bar_count']} barre comuni · min {res['minimum']:+.2f} / max {res['maximum']:+.2f}. "
                'Verificare il contratto NQ utilizzato.')
 
+# Fascia comune 0DTE/Weekly: percentuale libera, centrata sul close NDX precedente.
+# Modificare la fascia cambia solo gli strike selezionati, mai la formula Gamma.
+band_pct=st.number_input('Fascia strike ± % dal Close precedente (0DTE e Weekly)',
+                         min_value=0.1, max_value=10.0, value=1.5, step=0.1,
+                         format='%.1f', key='ndx_strike_band_percent',
+                         help='Unica ampiezza percentuale applicata alle due scadenze; '
+                              'include ogni strike reale dentro i limiti.')
 profiles={}
 for kind,exp in [('0DTE',day),('Weekly',weekly_exp)]:
     if exp is None:continue
     try:
-        profiles[kind]=profile(doc,exp,reference)
+        profiles[kind]=profile(doc,exp,reference,band_pct=band_pct)
     except Exception as exc:
         st.warning(f'{kind}: {exc}')
 if not profiles:
@@ -169,7 +177,6 @@ if not profiles:
     st.stop()
 
 # Stessa finestra di prezzo per 0DTE e Weekly, basata sul close indice precedente.
-band_pct = DEFAULT_BAND_PCT
 band_low = reference * (1 - band_pct / 100)
 band_high = reference * (1 + band_pct / 100)
 gamma_values = [r['net_gamma'] for group in profiles.values() for r in group['rows']]
@@ -233,6 +240,33 @@ for (kind,group),column in zip(profiles.items(),cols):
                                     range=shared_price_range, autorange=False),
                          bargap=0.1)
         st.plotly_chart(fg,use_container_width=True)
+
+# Vista confronto facoltativa: la chiamata Yahoo 5m parte soltanto se attivata.
+# I grafici NDX base e il motore Gamma rimangono invariati.
+st.subheader('Confronto NET GAMMA / candele Nasdaq')
+show_candle_compare=st.toggle('Mostra NET GAMMA a sinistra e candele NQ a destra',
+                              value=False, key='ndx_show_candle_compare')
+if show_candle_compare:
+    names=list(profiles)
+    mode=st.radio('Profilo da confrontare con NQ', names,
+                  horizontal=True, key='ndx_candle_profile')
+    if basis is None:
+        st.info('Inserisci il differenziale NQ–NDX per allineare la scala dei prezzi.')
+    else:
+        try:
+            with st.spinner('Lettura candele NQ=F Yahoo 5 minuti...'):
+                candles=load_nq_candles(day)
+            fig=chart_compare_nq(profiles[mode],candles,basis,
+                                 band_low,band_high,previous_close_nq,mode)
+            st.plotly_chart(fig, use_container_width=True,
+                            key=f'ndx_price_gamma_{day}_{mode}')
+            st.caption('Scala prezzi condivisa NQ. Candele NQ=F Yahoo a 5 minuti '
+                       '(possono differire da NQ1! TradingView); nessuna candela simulata. '
+                       'L’intervallo visibile comprende anche le candele quando il '
+                       'mercato esce dalla fascia strike selezionata.')
+        except Exception as exc:
+            st.warning(f'Candele NQ a 5 minuti non disponibili: {str(exc)[:240]}. '
+                       'Il profilo NET GAMMA rimane accessibile sopra.')
 
 st.subheader('Esportazione Pine Script v6')
 if basis is None:
