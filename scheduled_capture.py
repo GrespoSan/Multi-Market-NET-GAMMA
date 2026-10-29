@@ -134,8 +134,9 @@ def capture_one(symbol, now, slot, source_url, authorized=False, token="",
             digest = hashlib.sha256(raw).hexdigest()
             file_key = f"{root}/{name}_{digest[:12]}.json.gz"
             compressed = gzip_original(raw)
-            log.update(status="SCARICATO", data=quality, sha256_original=digest,
-                       "file": file_key, "size_compressed": len(compressed))
+            log.update({"status": "SCARICATO", "data": quality,
+                        "sha256_original": digest, "file": file_key,
+                        "size_compressed": len(compressed)})
             local_path = output / file_key
             local_path.parent.mkdir(parents=True, exist_ok=True)
             local_path.write_bytes(compressed)
