@@ -3,6 +3,7 @@ Solo disegno dei NET GAMMA gia' calcolati. Ticker consentiti: NQ e MNQ.
 """
 from math import ceil, floor, isfinite, log10
 from datetime import date
+from pine_spx_visual import spx_inputs, SPX_RENDER_FUNCTIONS, spx_last_bar
 
 
 def _pine_array(rows, field, offset=0.0):
@@ -82,6 +83,15 @@ def make_pine(profiles: dict, basis: float, target: date, label: str) -> str:
     first=date.fromisoformat(odte["expiry"]).strftime("%d/%m") if odte["rows"] else ""
     second=date.fromisoformat(weekly["expiry"]).strftime("%d/%m") if weekly["rows"] else ""
     band=next(iter(profiles.values())).get("band_pct",3.0)
+    inputs = spx_inputs(scale_text, scale_step_text, "0DTE",
+        "Valore iniziale scelto dalla fotografia NDX per rendere visibili i profili. "
+        "Scala sempre MANUALE; NET GAMMA invariato.")
+    graphics = SPX_RENDER_FUNCTIONS
+    main_call = (f'renderProfile(odteLevels, odteValues, bar_index + offsetOdte, '
+                 f'"0DTE {first}", actualScale)' if odte["rows"] else "")
+    weekly_call = (f'renderProfile(weeklyLevels, weeklyValues, bar_index + offsetWeekly, '
+                   f'"Weekly {second}", actualScale)' if weekly["rows"] else "")
+    draw = spx_last_bar(main_call, weekly_call, "odteValues", "weeklyValues")
     return f'''//@version=6
 indicator("Multi-Market NET GAMMA · NDX/NQ · {target.isoformat()} · {label}", overlay=true, max_lines_count=500, max_labels_count=35)
 // Visualizzazione statica dei NET GAMMA calcolati dall'app, mai in Pine.
@@ -92,12 +102,7 @@ indicator("Multi-Market NET GAMMA · NDX/NQ · {target.isoformat()} · {label}",
 // Stessa interfaccia del generatore Serafini SPX.
 validTicker = syminfo.type == "futures" and (syminfo.root == "NQ" or syminfo.root == "MNQ")
 
-gammaPerCandle = input.float({scale_text}, "Scala MANUALE · Gamma/barra", minval=0.000001, step={scale_step_text}, tooltip="Valore iniziale scelto dalla fotografia NDX per rendere visibili i profili. La scala resta MANUALE: non cambia automaticamente sul grafico. NET GAMMA non modificato.")
-offsetOdte = input.int(60, "Distanza 0DTE da ultima candela", minval=45, maxval=170)
-offsetWeekly = input.int(160, "Distanza Weekly da ultima candela", minval=55, maxval=300)
-positiveColor = input.color(color.rgb(0, 230, 117), "NET GAMMA positivo")
-negativeColor = input.color(color.rgb(242, 54, 69), "NET GAMMA negativo")
-showTitles = input.bool(true, "Mostra intestazioni")
+{inputs}
 
 var array<line> drawnLines = array.new_line()
 var array<label> drawnLabels = array.new_label()
@@ -106,47 +111,7 @@ var array<float> odteValues = {_pine_array(odte["rows"],"net_gamma")}
 var array<float> weeklyLevels = {_pine_array(weekly["rows"],"strike_index",basis)}
 var array<float> weeklyValues = {_pine_array(weekly["rows"],"net_gamma")}
 
-requiredScale(array<float> gamma, int offsetBars) =>
-    float maxPos = 0.0
-    float maxNeg = 0.0
-    for g in gamma
-        maxPos := math.max(maxPos, g)
-        maxNeg := math.max(maxNeg, -g)
-    math.max(maxPos / float(480 - offsetBars), maxNeg / float(9500 + offsetBars))
+{graphics}
 
-renderProfile(array<float> levels, array<float> gamma, int center, string heading, float actualScale) =>
-    int count = array.size(levels)
-    if count > 0
-        float bottom = array.get(levels, 0)
-        float top = array.get(levels, count - 1)
-        line baseline = line.new(center, bottom, center, top, xloc=xloc.bar_index, extend=extend.none, color=color.gray, style=line.style_dotted, width=1)
-        array.push(drawnLines, baseline)
-        for j = 0 to count - 1
-            float level = array.get(levels, j)
-            float g = array.get(gamma, j)
-            int length = g != 0 ? math.max(1, int(math.round(math.abs(g) / actualScale))) : 0
-            if length > 0
-                int farX = center + (g > 0 ? length : -length)
-                line segment = line.new(center, level, farX, level, xloc=xloc.bar_index, extend=extend.none, color=g >= 0 ? positiveColor : negativeColor, width=5)
-                array.push(drawnLines, segment)
-        if showTitles
-            float spacing = count > 1 ? math.max(5.0, (top - bottom) / 20.0) : 10.0
-            label t = label.new(center, top + spacing, heading, xloc=xloc.bar_index, yloc=yloc.price, color=color.new(color.black, 50), textcolor=color.white, style=label.style_label_down, size=size.normal)
-            array.push(drawnLabels, t)
-
-if barstate.islast and validTicker
-    for ln in drawnLines
-        line.delete(ln)
-    array.clear(drawnLines)
-    for lb in drawnLabels
-        label.delete(lb)
-    array.clear(drawnLabels)
-    float actualScale = gammaPerCandle
-    float minimumSafe = math.max(requiredScale(odteValues, offsetOdte), requiredScale(weeklyValues, offsetWeekly))
-    if actualScale < minimumSafe * 0.999999
-        label unsafe = label.new(bar_index + 10, close, "Scala manuale troppo piccola. Imposta almeno " + str.tostring(minimumSafe, "#.########") + " G/bar", xloc=xloc.bar_index, yloc=yloc.price, style=label.style_label_left, color=color.orange, textcolor=color.black, size=size.small)
-        array.push(drawnLabels, unsafe)
-    else
-        {'renderProfile(odteLevels, odteValues, bar_index + offsetOdte, "0DTE '+first+'", actualScale)' if odte["rows"] else '// 0DTE non incluso in questa esportazione'}
-        {'renderProfile(weeklyLevels, weeklyValues, bar_index + offsetWeekly, "Weekly '+second+'", actualScale)' if weekly["rows"] else '// Weekly non incluso in questa esportazione'}
+{draw}
 '''
