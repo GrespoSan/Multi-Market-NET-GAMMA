@@ -55,6 +55,21 @@ class TestPercentageStrikeSelection(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "480"):
             make_pine({"0DTE": a, "Weekly": b}, 154, FIRST, "29/10")
 
+    def test_custom_percentage_changes_both_profiles_not_gamma(self):
+        doc = chain()
+        narrow = profile(doc, FIRST, 30000, band_pct=0.5)
+        wide0 = profile(doc, FIRST, 30000, band_pct=2.0)
+        wideW = profile(doc, WEEKLY, 30000, band_pct=2.0)
+        self.assertEqual((narrow["band_lower"], narrow["band_upper"]),
+                         (29850.0, 30150.0))
+        self.assertEqual((wide0["band_lower"],wide0["band_upper"]),
+                         (29400.0,30600.0))
+        self.assertEqual((wide0["band_lower"],wide0["band_upper"]),
+                         (wideW["band_lower"],wideW["band_upper"]))
+        self.assertGreater(wide0["selected_strikes"],narrow["selected_strikes"])
+        self.assertAlmostEqual(narrow["rows"][0]["net_gamma"],
+                               wide0["rows"][0]["net_gamma"])
+
     def test_empty_band_rejected(self):
         doc = chain(step=5, max_distance=600)
         with self.assertRaisesRegex(ValueError, "nessuno strike"):
