@@ -3,7 +3,7 @@ import unittest
 from datetime import date
 
 from ndx_engine import profile, DEFAULT_BAND_PCT
-from pine_export import make_pine
+from pine_export import make_pine, _initial_manual_scale
 
 
 FIRST = date(2026, 10, 29)
@@ -49,8 +49,15 @@ class TestPercentageStrikeSelection(unittest.TestCase):
         self.assertIn('syminfo.root == "MNQ"', code)
         self.assertIn("if barstate.islast and validTicker", code)
         self.assertIn('Scala MANUALE · Gamma/barra', code)
-        # Stesso valore predefinito, minimo e passo del Pine Serafini SPX.
-        self.assertIn('gammaPerCandle = input.float(1.0, "Scala MANUALE · Gamma/barra", minval=0.1, step=0.1', code)
+        # Stesso controllo MANUALE di SPX, ma scala iniziale derivata dai
+        # valori Gamma NDX: non puo' essere sempre 1 Gamma/bar.
+        scale, step = _initial_manual_scale([(a, 60), (b, 160)])
+        self.assertGreater(scale, 0.0)
+        self.assertLess(scale, 1.0)
+        self.assertAlmostEqual(scale, 0.0048, places=5)
+        self.assertIn('gammaPerCandle = input.float(0.0048, "Scala MANUALE · Gamma/barra", minval=0.000001, step=0.0001', code)
+        self.assertIn('if actualScale < minimumSafe * 0.999999', code)
+        self.assertEqual(a["rows"][0]["net_gamma"], 0.4)
         self.assertIn('Distanza Weekly da ultima candela', code)
         self.assertIn('NET GAMMA positivo', code)
         self.assertIn("0DTE 29/10", code)
