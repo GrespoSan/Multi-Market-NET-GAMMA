@@ -57,7 +57,7 @@ class TestPercentageStrikeSelection(unittest.TestCase):
         self.assertAlmostEqual(scale, 0.0048, places=5)
         self.assertIn('gammaPerCandle = input.float(0.0048, "Scala MANUALE · Gamma/barra", minval=0.000001, step=0.0001', code)
         self.assertIn('if actualScale < minimumSafe * 0.999999', code)
-        self.assertEqual(a["rows"][0]["net_gamma"], 0.4)
+        self.assertAlmostEqual(a["rows"][0]["net_gamma"], 0.4)
         self.assertIn('Distanza Weekly da ultima candela', code)
         self.assertIn('NET GAMMA positivo', code)
         self.assertIn("0DTE 29/10", code)
