@@ -4,6 +4,7 @@ No service-role key is sent to the browser. The archive only appears when
 the owner has configured Streamlit secrets and the separate private bucket.
 """
 from datetime import datetime, timedelta
+import hmac
 from zoneinfo import ZoneInfo
 
 import streamlit as st
@@ -31,6 +32,24 @@ def archive_panel(symbol):
                     "SUPABASE_URL e SUPABASE_SERVICE_ROLE_KEY e il bucket "
                     "multi-market-snapshots. I log delle esecuzioni sono comunque "
                     "visibili in GitHub Actions.")
+            return None
+        try:
+            expected_code = str(st.secrets.get("MM_ARCHIVE_ACCESS_CODE", ""))
+        except Exception:
+            expected_code = ""
+        if not expected_code:
+            st.warning("Accesso all'archivio sospeso: configura MM_ARCHIVE_ACCESS_CODE "
+                       "nei secret Streamlit per proteggere i dati di mercato privati.")
+            return None
+        if not st.session_state.get("mm_archive_unlocked", False):
+            entered = st.text_input("Codice accesso archivio privato",
+                                    type="password", key="mm_archive_passphrase")
+            if st.button("Sblocca archivio", key=f"{key}_archive_unlock"):
+                if hmac.compare_digest(entered, expected_code):
+                    st.session_state["mm_archive_unlocked"] = True
+                    st.rerun()
+                else:
+                    st.error("Codice archivio non valido.")
             return None
         if not st.button("Elenca fotografie archiviate", key=f"{key}_archive_list"):
             # Avoid a hidden network call on every Streamlit rerun.
