@@ -8,7 +8,7 @@
 - **Only Nasdaq NDX/NQ is enabled.** The other five explicitly display status 'not operational' without fabricated levels.
 - Cboe `_NDX.json` fetch *on demand* or imported `.json` / `.json.gz` original file.
 - NDX and NDXP contracts parsed using expiry, put/call and strike from original OCC code.
-- `(OI+Volume)*Gamma` Call minus Put unchanged; all real NDX strikes in a **user-adjustable ±% band** centered on the previous NDX close (default ±1.5%; same band for 0DTE and Weekly).
+- `(OI+Volume)*Gamma` Call minus Put unchanged; all real NDX strikes in a **user-adjustable ±% band** centered on the previous NDX close (default ±3%; same band for 0DTE and Weekly).
 - 0DTE and next Friday Weekly retain only their actual expirations; their graphs share the **same y-price window and x-gamma scale**. No fixed 25+25 cap, interpolation or synthetic strikes.
 - NQ-NDX basis from **synchronized previous-session 15m Yahoo bars**, with adjustable manual input. Yahoo NQ=F may not match the TradingView/broker futures contract; validate before using.
 - Two gamma plots; optional side-by-side **NET GAMMA left + NQ=F 5-minute candlesticks right**, with synchronized NQ price axis. The 5m fetch runs only when the comparison view is activated.
