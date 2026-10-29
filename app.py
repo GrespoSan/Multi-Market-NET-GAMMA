@@ -26,6 +26,11 @@ market_key=st.selectbox('Sottostante', list(MARKETS.keys()),
                         format_func=lambda x: MARKETS[x].label)
 market=MARKETS[market_key]
 st.caption(f'Opzioni: {market.options} · Future: {market.futures} · Differenziale: {market.basis}')
+if market_key == 'GOLD':
+    from gld_view import render_gld
+    render_gld()
+    st.stop()
+
 if not market.enabled:
     st.info(f'{market.label}: modulo predisposto, non ancora operativo. {market.info} '
             'Nessun livello sarà simulato senza una catena opzioni validata.')
