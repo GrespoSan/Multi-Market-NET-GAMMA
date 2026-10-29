@@ -29,15 +29,23 @@ UPLOAD_KEYS = {
 
 PAGE_STYLE = """
 <style>
-/* One responsive page width and vertical rhythm for every market. */
+/* FULL-WIDTH dashboard on desktop: two 0DTE/Weekly charts need room.
+   Applies identically to Nasdaq, Gold, and Petrolio, including Streamlit's
+   modern stMainBlockContainer and legacy .block-container selectors. */
+[data-testid="stMainBlockContainer"],
 [data-testid="stAppViewContainer"] .block-container {
-    max-width: 1460px;
-    padding-top: 2.25rem;
-    padding-bottom: 3.5rem;
+    max-width: none !important;
+    width: 100% !important;
+    box-sizing: border-box;
+    padding-top: 2rem;
+    padding-bottom: 3rem;
+    padding-left: clamp(1rem, 2vw, 3rem);
+    padding-right: clamp(1rem, 2vw, 3rem);
 }
 @media (max-width: 800px) {
+    [data-testid="stMainBlockContainer"],
     [data-testid="stAppViewContainer"] .block-container {
-        padding-top: 1.15rem;
+        padding-top: 1.1rem;
         padding-left: 1rem;
         padding-right: 1rem;
     }
