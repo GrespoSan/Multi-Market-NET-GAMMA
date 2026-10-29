@@ -85,7 +85,7 @@ def profile_chart(rows, symbol, reference, common_x, shared_y, *,
         fig.add_hline(y=reference + price_shift, line_dash="dash", line_width=1.5,
                       line_color=COLORS["guide"])
     fig.update_layout(
-        height=620, margin=dict(l=12, r=18, t=18, b=24),
+        height=760, autosize=True, margin=dict(l=12, r=18, t=18, b=30),
         paper_bgcolor=COLORS["background"], plot_bgcolor=COLORS["plot"],
         font=dict(family="Arial, sans-serif", color=COLORS["text"], size=12),
         bargap=0.08, showlegend=False, hovermode="closest",
