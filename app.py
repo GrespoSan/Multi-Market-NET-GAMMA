@@ -4,10 +4,10 @@ import io
 import math
 from datetime import datetime, date
 from zoneinfo import ZoneInfo
-import plotly.graph_objects as go
 import streamlit as st
 
 from markets import MARKETS
+from gamma_chart_style import profile_chart, top_levels
 from data_sources import download_ndx, NDX_URL
 from ndx_engine import (unpack_snapshot, available_expirations, close_from_payload,
                         profile, weekly_target, DEFAULT_BAND_PCT)
@@ -19,8 +19,8 @@ from nq_price_panel import load_nq_candles, chart_compare_nq
 
 ROME=ZoneInfo('Europe/Rome')
 st.set_page_config(page_title='Multi-Market NET GAMMA', layout='wide')
-st.title('Multi-Market NET GAMMA')
-st.caption('App separata da Serafini SPX · moduli Nasdaq NDX/NQ, Gold GLD e Petrolio USO · 3 mercati nel selettore')
+st.title('Multi-Market · NET GAMMA')
+st.caption('RADAR OPZIONI  ·  NDX / GLD / USO  ·  0DTE & WEEKLY  ·  modello di studio Serafini')
 
 market_key=st.selectbox('Sottostante', list(MARKETS.keys()),
                         format_func=lambda x: MARKETS[x].label)
@@ -226,35 +226,19 @@ for (kind,group),column in zip(profiles.items(),cols):
         st.caption(f'{group["contract_count"]} contratti · {group["available_strikes"]} strike disponibili '
                    f'· {group["selected_strikes"]} strike nella fascia ±{band_pct:g}%')
         rows=group['rows']
-        y=[r['strike_index']+price_shift for r in rows]
-        x=[r['net_gamma'] for r in rows]
-        # Evita sovrapposizioni quando gli strike hanno passi inferiori a 5 punti.
-        steps=[b-a for a,b in zip(y,y[1:]) if b>a]
-        bar_width=min(3.8, min(steps)*0.8) if steps else 3.8
-        fg=go.Figure()
-        fg.add_trace(go.Bar(x=x,y=y,orientation='h',width=bar_width,
-                            marker_color=['#22c55e' if value>=0 else '#ef4444' for value in x],
-                            customdata=[[r['strike_index'],r['call_gamma'],r['put_gamma']] for r in rows],
-                            hovertemplate='Livello %{y:,.2f}<br>Strike NDX %{customdata[0]:,.2f}<br>NET %{x:+.4f}<br>Call %{customdata[1]:.4f}<br>Put %{customdata[2]:.4f}<extra></extra>'))
-        fg.add_vline(x=0,line_color='#6b7280',line_width=1)
-        if basis is not None:
-            # Close NDX precedente + differenziale NQ−NDX; stessa linea in
-            # entrambi i grafici. Non altera Gamma, strike o scala delle barre.
-            fg.add_hline(y=previous_close_nq, line_dash='dash',
-                         line_width=1.5, line_color='#f0cc65')
-            fg.add_annotation(x=0.995, xref='paper',
-                              y=previous_close_nq, yref='y',
-                              text=f'Close prec. NQ {previous_close_nq:,.2f}',
-                              showarrow=False, xanchor='right', yanchor='bottom',
-                              font=dict(color='#f0cc65',size=11),
-                              bgcolor='rgba(13,17,23,0.85)',borderpad=2)
-        fg.update_layout(height=760,margin=dict(l=10,r=10,b=25,t=15),
-                         template='plotly_dark',showlegend=False,
-                         xaxis=dict(title='NET gamma · unità formula sperimentale',
-                                    range=shared_gamma_range, zeroline=True),
-                         yaxis=dict(title='Prezzo NQ' if basis is not None else 'Strike NDX',
-                                    range=shared_price_range, autorange=False),
-                         bargap=0.1)
+        levels=top_levels(rows, 'strike_index', 'net_gamma', price_shift)
+        high, low=levels['positive'], levels['negative']
+        c1, c2=st.columns(2)
+        with c1:
+            st.metric('Gamma positivo più marcato',
+                      f'{high[0]:,.2f}' if high else '—')
+        with c2:
+            st.metric('Gamma negativo più marcato',
+                      f'{low[0]:,.2f}' if low else '—')
+        fg=profile_chart(rows,'NDX',reference,shared_gamma_range,
+                         shared_price_range, level_field='strike_index',
+                         gamma_field='net_gamma', price_shift=price_shift,
+                         ndx=True, show_close=basis is not None)
         st.plotly_chart(fg,use_container_width=True)
 
 # Vista confronto facoltativa: la chiamata Yahoo 5m parte soltanto se attivata.
