@@ -40,7 +40,10 @@ class CommonMarketLayoutTests(unittest.TestCase):
                     "I grafici paralleli devono mantenere spaziatura compatta."
                 )
         style = source("gamma_chart_style.py")
-        self.assertIn("height=760, autosize=True", style)
+        self.assertIn("height=plot_height", style)
+        self.assertIn("plot_height = max(520, 760)", style)
+        self.assertIn("autosize=True", style)
+        self.assertIn("bar_height = min(", style)
         self.assertIn("range=common_x", style)
         self.assertIn("range=shared_y", style)
         self.assertIn("@media (max-width: 800px)", PAGE_STYLE)
