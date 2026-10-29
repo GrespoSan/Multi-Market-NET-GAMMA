@@ -4,7 +4,7 @@ import json
 import unittest
 from datetime import date
 
-from gld_cboe import (read_gld, parse_contract, expirations,
+from gld_cboe import (GLD_URL, download_gld, read_gld, parse_contract, expirations,
                       next_weekly, close_previous, profile)
 
 
@@ -89,6 +89,52 @@ class TestCboeGold(unittest.TestCase):
         a = profile(doc, date(2026, 10, 29), 366.1)
         self.assertFalse(a["usable"])
         self.assertEqual(a["rows"], [])
+
+
+    def test_download_gld_uses_original_url_and_is_validated(self):
+        payload = json.dumps(sample()).encode("utf-8")
+        class FakeResponse:
+            status_code = 200
+            def __enter__(self): return self
+            def __exit__(self, *args): return False
+            def raise_for_status(self): pass
+            def iter_content(self, chunk_size): yield payload
+
+        class FakeSession:
+            def get(self, url, **kwargs):
+                self.url, self.kwargs = url, kwargs
+                return FakeResponse()
+
+        session = FakeSession()
+        raw = download_gld(session=session)
+        self.assertEqual(raw, payload)
+        self.assertEqual(session.url, GLD_URL)
+        self.assertTrue(session.kwargs["stream"])
+        self.assertEqual(read_gld(raw)["symbol"], "GLD")
+
+    def test_download_gld_rejects_non_gld_without_replacing_cached(self):
+        payload = json.dumps(sample("SPX")).encode()
+        class FakeResponse:
+            status_code = 200
+            def __enter__(self): return self
+            def __exit__(self, *args): return False
+            def raise_for_status(self): pass
+            def iter_content(self, chunk_size): yield payload
+        class FakeSession:
+            def get(self, url, **kwargs): return FakeResponse()
+        with self.assertRaisesRegex(ValueError, "Atteso GLD"):
+            download_gld(session=FakeSession())
+
+    def test_download_gld_denies_blocked_response(self):
+        class FakeResponse:
+            status_code = 403
+            def __enter__(self): return self
+            def __exit__(self, *args): return False
+        class FakeSession:
+            def get(self, url, **kwargs): return FakeResponse()
+        with self.assertRaisesRegex(RuntimeError, "HTTP 403"):
+            download_gld(session=FakeSession())
+
 
 
 if __name__ == "__main__":
