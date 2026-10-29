@@ -25,7 +25,11 @@ st.caption('App separata da Serafini SPX · primo modulo NDX/NQ · 6 mercati nel
 market_key=st.selectbox('Sottostante', list(MARKETS.keys()),
                         format_func=lambda x: MARKETS[x].label)
 market=MARKETS[market_key]
-st.caption(f'Opzioni: {market.options} · Future: {market.futures} · Differenziale: {market.basis}')
+if market_key == 'GOLD':
+    st.caption('Sottostante: ETF GLD (USD) · Opzioni USA su GLD via Alpaca · '
+               'NON è un future CME GC e non usa un differenziale GC–GLD.')
+else:
+    st.caption(f'Opzioni: {market.options} · Future: {market.futures} · Differenziale: {market.basis}')
 if market_key == 'GOLD':
     from gld_view import render_gld
     render_gld()
