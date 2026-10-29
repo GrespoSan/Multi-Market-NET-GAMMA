@@ -12,6 +12,7 @@ from gamma_chart_style import profile_chart, top_levels
 
 from etf_pine_view import render_etf_pine_exports
 from archive_panel import archive_panel
+from market_ui import render_acquisition_controls, render_empty_snapshot
 
 from uso_cboe import (USO_URL, download_uso, read_uso, expirations, next_weekly,
                       close_previous, current_price, profile, MIN_VALID_COVERAGE)
@@ -55,22 +56,8 @@ def _save_snapshot(raw, filename, source):
 
 
 def render_uso_cboe():
-    st.subheader("Petrolio · USO (ETF) — NET GAMMA Cboe")
-    st.caption("Dati originali Cboe: Gamma, Open Interest e Volume per le opzioni USO. "
-               "Queste sono opzioni sull'ETF USO, NON opzioni sul future WTI CL/MCL. Gli strike USO non vanno trasferiti direttamente ai futures.")
-    st.caption("Fonte: Cboe delayed quotes · USO.json. Il timestamp Cboe viene mostrato "
-               "esattamente come presente nel file, senza attribuirgli un fuso non documentato.")
-
-    with st.expander("OVX · Volatilità implicita del petrolio (contesto)", expanded=False):
-        st.caption("OVX è l'indice Cboe di volatilità implicita a circa 30 giorni "
-                   "basato sulle opzioni USO. È una misura di contesto separata "
-                   "dal NET GAMMA; non viene usato per correggere Gamma o strike.")
-        st.link_button("Consulta OVX sul sito Cboe",
-                       "https://www.cboe.com/us/indices/dashboard/ovx/")
-
-    st.markdown("**Fotografia Cboe USO**")
-    if st.button("Aggiorna fotografia USO da Cboe", type="primary",
-                 key="uso_cboe_fetch"):
+    fetch_pressed, uploaded = render_acquisition_controls("USO", USO_URL)
+    if fetch_pressed:
         try:
             with st.spinner("Lettura catena USO originale da Cboe..."):
                 raw_online = download_uso()
@@ -84,24 +71,18 @@ def render_uso_cboe():
             st.warning(f"Acquisizione diretta USO non riuscita: {str(exc)[:260]}. "
                        "La fotografia precedente, se disponibile, non è stata modificata.")
 
-    with st.expander("Importazione manuale del JSON originale (alternativa)", expanded=False):
-        st.link_button("Apri USO.json su Cboe", USO_URL)
-        st.caption("Se il server non riesce a raggiungere Cboe, salva il file originale "
-                   "dal browser e importalo qui. Il download diretto resta manuale; i rilevamenti pianificati richiedono feed autorizzati.")
-        uploaded = st.file_uploader("Carica USO.json o USO.json.gz originale",
-                                    type=["json", "gz"], key="uso_cboe_upload")
-        if uploaded is not None:
-            raw_uploaded = uploaded.getvalue()
-            fingerprint = hashlib.sha256(raw_uploaded).hexdigest()
-            # Do not overwrite a newer, directly downloaded snapshot on every rerun.
-            if st.session_state.get("uso_cboe_upload_handled") != fingerprint:
-                try:
-                    _save_snapshot(raw_uploaded, uploaded.name,
-                                   "Importazione manuale")
-                    st.session_state["uso_cboe_upload_handled"] = fingerprint
-                    st.success("File originale USO importato e validato.")
-                except Exception as exc:
-                    st.error(f"File USO non valido: {str(exc)[:300]}")
+    if uploaded is not None:
+        raw_uploaded = uploaded.getvalue()
+        fingerprint = hashlib.sha256(raw_uploaded).hexdigest()
+        # L'upload rimane un'alternativa esplicita: non ripristina vecchi
+        # file ogni volta che Streamlit riesegue la pagina.
+        if st.session_state.get("uso_cboe_upload_handled") != fingerprint:
+            try:
+                _save_snapshot(raw_uploaded, uploaded.name, "Importazione manuale")
+                st.session_state["uso_cboe_upload_handled"] = fingerprint
+                st.success("File originale USO importato e validato.")
+            except Exception as exc:
+                st.error(f"File USO non valido: {str(exc)[:300]}")
 
     archive_selected = archive_panel("USO")
     if archive_selected is not None:
@@ -115,8 +96,7 @@ def render_uso_cboe():
 
     raw = st.session_state.get("uso_cboe_raw")
     if not raw:
-        st.info("Premi «Aggiorna fotografia USO da Cboe» per visualizzare "
-                "0DTE e Weekly. Se il download non riesce, usa l'importazione manuale.")
+        render_empty_snapshot("USO")
         return
     try:
         data = read_uso(raw)
@@ -233,6 +213,11 @@ def render_uso_cboe():
                                mime="text/csv", on_click="ignore")
     st.caption("Questi grafici non rappresentano Gamma monetario/dealer GEX, "
                "non individuano automaticamente Gamma Flip e non sono livelli CL.")
+    with st.expander("Approfondimento · Indice di volatilità OVX", expanded=False):
+        st.caption("OVX è l'indice Cboe di volatilità implicita a 30 giorni "
+                   "delle opzioni USO. Non modifica i Gamma o gli strike dell'ETF.")
+        st.link_button("Consulta OVX sul sito Cboe",
+                       "https://www.cboe.com/us/indices/dashboard/ovx/")
     # Keep 4-argument call compatible with a previous module during Streamlit hot reload.
     # The current exporter reads source SHA and Cboe timestamp from session state.
     st.session_state["uso_cboe_timestamp"] = stamp
