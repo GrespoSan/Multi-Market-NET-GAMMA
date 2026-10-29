@@ -181,7 +181,7 @@ def render_uso_cboe():
     st.caption("Formula: Call [(OI+Volume)×Gamma] − Put [(OI+Volume)×Gamma]. "
                "Il Gamma è letto dal JSON Cboe, non stimato. "
                "Stessa fascia strike e stessa scala Gamma per entrambi i grafici.")
-    cols = st.columns(len(groups), gap="large")
+    cols = st.columns(len(groups), gap="medium")
     for (title, p), col in zip(groups.items(), cols):
         with col:
             st.markdown(f"**{title} · {p['expiry']}**")
