@@ -8,7 +8,7 @@ import hashlib
 import io
 
 import streamlit as st
-from gamma_chart_style import profile_chart, top_levels
+from gamma_chart_style import profile_chart, panel_heading, capture_display, spx_shared_gamma_bounds
 
 from etf_pine_view import render_etf_pine_exports
 from archive_panel import archive_panel
@@ -28,8 +28,11 @@ def _to_csv(rows):
     return output.getvalue().encode("utf-8-sig")
 
 
-def _plot(p, reference, common_x, shared_y):
-    return profile_chart(p["rows"], "USO", reference, common_x, shared_y)
+def _plot(p, reference, common_x, shared_y, *, title="0DTE",
+          snapshot_label="", tick_levels=None):
+    return profile_chart(p["rows"], "USO", reference, common_x, shared_y,
+                         title=title, snapshot_label=snapshot_label,
+                         tick_levels=tick_levels)
 
 
 def _save_snapshot(raw, filename, source):
@@ -172,11 +175,16 @@ def render_uso_cboe():
         return
 
     good = [v for v in groups.values() if v["usable"]]
-    magnitudes = [r["net"] for p in good for r in p["rows"]]
-    mn, mx = min([0] + magnitudes), max([0] + magnitudes)
-    delta = max(mx - mn, 1e-8)
-    xlim = [mn - 0.06 * delta, mx + 0.06 * delta]
+    # SPX gamma_section uses one common min/max with 8% spread margin.
+    # Independent of bar presentation: no change to original Cboe Gamma.
+    xlim = spx_shared_gamma_bounds(good)
     ylim = [reference * (1 - band / 100), reference * (1 + band / 100)]
+    # The same strike ticks on both plots, as in SPX. Never synthesize
+    # market levels: ticks are from actual option strikes.
+    shared_ticks = sorted({float(row["strike"]) for p in good for row in p["rows"]})
+    if len(shared_ticks) > 80:
+        step = (len(shared_ticks) + 79) // 80
+        shared_ticks = shared_ticks[::step]
     st.markdown("**NET GAMMA USO · 0DTE / Weekly**")
     st.caption("Formula: Call [(OI+Volume)×Gamma] − Put [(OI+Volume)×Gamma]. "
                "Il Gamma è letto dal JSON Cboe, non stimato. "
@@ -184,7 +192,12 @@ def render_uso_cboe():
     cols = st.columns(len(groups), gap="medium")
     for (title, p), col in zip(groups.items(), cols):
         with col:
-            st.markdown(f"**{title} · {p['expiry']}**")
+            header, source_details = panel_heading(
+                title, p["expiry"], source_timestamp=stamp,
+                downloaded_rome=st.session_state.get("uso_cboe_import_rome"),
+                source=st.session_state.get("uso_cboe_source", ""))
+            st.subheader(header)
+            st.caption(source_details)
             st.caption(f"{p['eligible']} contratti in fascia · "
                        f"{p['valid_contracts']} contratti completi · "
                        f"{p['complete_strikes']} strike con Call/Put · "
@@ -197,16 +210,13 @@ def render_uso_cboe():
                            f"meno di due strike completi o copertura inferiore al "
                            f"{MIN_VALID_COVERAGE:.0%}. Nessun livello inventato.")
                 continue
-            levels = top_levels(p["rows"], "strike", "net")
-            best_plus, best_minus = levels["positive"], levels["negative"]
-            c_pos, c_neg = st.columns(2)
-            with c_pos:
-                st.metric("Gamma positivo più marcato",
-                          f"{best_plus[0]:,.2f}" if best_plus else "—")
-            with c_neg:
-                st.metric("Gamma negativo più marcato",
-                          f"{best_minus[0]:,.2f}" if best_minus else "—")
-            st.plotly_chart(_plot(p, reference, xlim, ylim), use_container_width=True)
+            _, capture_label = capture_display(
+                stamp, st.session_state.get("uso_cboe_import_rome"),
+                st.session_state.get("uso_cboe_source", ""))
+            fig = _plot(p, reference, xlim, ylim, title=title,
+                        snapshot_label=capture_label, tick_levels=shared_ticks)
+            st.plotly_chart(fig, use_container_width=True,
+                            key=f"uso_spx_gamma_{title}_{p['expiry']}")
             st.download_button(f"Esporta CSV USO · {title}",
                                data=_to_csv(p["rows"]),
                                file_name=f"USO_CBOE_{p['expiry']}_{title}.csv",
