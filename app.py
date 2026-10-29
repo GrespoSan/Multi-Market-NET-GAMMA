@@ -8,6 +8,7 @@ import streamlit as st
 
 from markets import MARKETS
 from gamma_chart_style import profile_chart, top_levels
+from archive_panel import archive_panel
 from data_sources import download_ndx, NDX_URL
 from ndx_engine import (unpack_snapshot, available_expirations, close_from_payload,
                         profile, weekly_target, DEFAULT_BAND_PCT)
@@ -77,6 +78,19 @@ with col_b:
             except Exception as exc:
                 st.error(f'File NDX non riconosciuto: {exc}')
 st.caption(f'Sorgente: {NDX_URL} · l’orario del timestamp Cboe non viene convertito senza fuso dichiarato.')
+
+archive_selected=archive_panel('NDX')
+if archive_selected is not None:
+    scheduled_raw, scheduled_name=archive_selected
+    try:
+        unpack_snapshot(scheduled_raw)
+        st.session_state['ndx_blob']=scheduled_raw
+        st.session_state['ndx_name']=scheduled_name
+        st.session_state['ndx_download_rome']='Archivio privato · rilevamento programmato'
+        st.success('Fotografia programmata NDX validata e caricata.')
+    except Exception as exc:
+        st.error(f'Archivio NDX non valido: {str(exc)[:230]}')
+
 
 blob=st.session_state.get('ndx_blob')
 if not blob:
