@@ -136,8 +136,12 @@ class ScheduledTests(unittest.TestCase):
 
 class DesignTests(unittest.TestCase):
     def test_summary_preserves_original_gamma_and_reference(self):
-        rows=[{"strike":200,"net":5.5,"call":7,"put":1.5},
-              {"strike":205,"net":-4,"call":0,"put":4}]
+        rows=[{"strike":200,"net":5.5,"call":7,"put":1.5,
+               "call_gamma":0.2,"put_gamma":0.1,"call_oi":30,"put_oi":12,
+               "call_volume":4,"put_volume":3},
+              {"strike":205,"net":-4,"call":0,"put":4,
+               "call_gamma":0.3,"put_gamma":0.2,"call_oi":20,"put_oi":50,
+               "call_volume":2,"put_volume":10}]
         summary=top_levels(rows,"strike","net")
         self.assertEqual(summary["positive"],(200.,5.5))
         self.assertEqual(summary["negative"],(205.,-4.))
