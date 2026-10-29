@@ -3,7 +3,8 @@
 Model explicitly copied as a *study hypothesis* from Serafini's SPX method:
   call (OI + volume) * gamma; put (OI + volume) * gamma; net call - put.
 Gamma values from the Cboe payload are not scaled into monetary dealer exposure.
-The method's cross-market validity and 25+25 strike rule require validation.
+The cross-market method remains exploratory. Strike selection is a symmetric
+percentage band around the previous NDX close, common to 0DTE and Weekly.
 """
 import gzip
 import json
@@ -11,6 +12,8 @@ import math
 import re
 from collections import defaultdict
 from datetime import date, timedelta
+
+DEFAULT_BAND_PCT = 1.5  # banda simmetrica per 0DTE e Weekly
 
 NDX_CONTRACT = re.compile(r'^(NDX|NDXP|NDXW)(\d{6})([CP])(\d{8})$')
 
@@ -76,8 +79,12 @@ def _nonnegative(value, field):
     return v
 
 
-def profile(doc: dict, expiry: date, reference: float) -> dict:
-    """Select exactly 25 available strikes below and 25 above previous close."""
+def profile(doc: dict, expiry: date, reference: float, band_pct: float = DEFAULT_BAND_PCT) -> dict:
+    """Use every real strike within +/- band_pct% of the previous index close.
+
+    The same absolute price window is applied to both expiries. No 25+25
+    cap, synthetic strikes, interpolation or changes to Gamma calculation.
+    """
     if not math.isfinite(float(reference)) or reference <= 0:
         raise ValueError('Chiusura NDX precedente valida obbligatoria.')
     raw = defaultdict(lambda: {'call_weighted': 0.0, 'put_weighted': 0.0,
@@ -103,13 +110,18 @@ def profile(doc: dict, expiry: date, reference: float) -> dict:
         matched += 1
     if usable_gamma == 0:
         raise ValueError(f'{expiry:%d/%m/%Y}: Gamma tutti zero/assenti. Profilo non utilizzabile.')
-    below = sorted((k for k in raw if k < reference), reverse=True)[:25]
-    above = sorted((k for k in raw if k > reference))[:25]
-    if len(below) != 25 or len(above) != 25:
-        raise ValueError(f'{expiry:%d/%m/%Y}: soltanto {len(below)} strike sotto e '
-                         f'{len(above)} sopra. Necessari 25+25: profilo non prodotto.')
+    if not math.isfinite(band_pct) or not (0 < band_pct <= 100):
+        raise ValueError('Ampiezza percentuale non valida.')
+    lower = reference * (1 - band_pct / 100.0)
+    upper = reference * (1 + band_pct / 100.0)
+    selected = sorted(k for k in raw if lower <= k <= upper)
+    if not selected:
+        raise ValueError(
+            f'{expiry:%d/%m/%Y}: nessuno strike disponibile nella fascia '
+            f'{lower:,.2f}–{upper:,.2f} ({band_pct:g}%).'
+        )
     records=[]
-    for strike in sorted(below + above):
+    for strike in selected:
         row=raw[strike]
         records.append({'strike_index': strike,
                         'call_gamma': row['call_weighted'],
@@ -118,5 +130,7 @@ def profile(doc: dict, expiry: date, reference: float) -> dict:
                         'call_oi': row['call_oi'], 'put_oi':row['put_oi'],
                         'call_volume':row['call_volume'], 'put_volume':row['put_volume']})
     return {'expiry': expiry.isoformat(), 'contract_count': matched,
-            'available_strikes': len(raw), 'rows': records,
-            'method': 'ESPERIMENTALE NDX: (OI+Volume) × Gamma; Call - Put; 25+25 strike'}
+            'available_strikes': len(raw), 'selected_strikes': len(records),
+            'band_pct': band_pct, 'band_lower': lower, 'band_upper': upper,
+            'reference': reference, 'rows': records,
+            'method': f'NDX: (OI+Volume) × Gamma; Call - Put; strike in ±{band_pct:g}% dal close precedente'}
