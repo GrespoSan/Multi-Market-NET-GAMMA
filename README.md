@@ -34,7 +34,7 @@ Or deploy this folder as a new independent Streamlit application; main file `app
 
 ## Source validation
 
-Documented endpoint: `https://cdn.cboe.com/api/global/delayed_quotes/_NDX.json`
+Documented endpoint: `https://cdn.cboe.com/api/global/delayed_quotes/options/_NDX.json`
 NDX quote page: https://www.cboe.com/delayed_quotes/NDX/quote_table/
 
 ## Testing
