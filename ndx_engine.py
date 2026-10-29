@@ -13,7 +13,7 @@ import re
 from collections import defaultdict
 from datetime import date, timedelta
 
-DEFAULT_BAND_PCT = 1.5  # banda simmetrica per 0DTE e Weekly
+DEFAULT_BAND_PCT = 3.0  # banda simmetrica iniziale per 0DTE e Weekly
 
 NDX_CONTRACT = re.compile(r'^(NDX|NDXP|NDXW)(\d{6})([CP])(\d{8})$')
 
