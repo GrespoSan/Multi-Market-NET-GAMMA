@@ -13,6 +13,8 @@ from ndx_engine import (unpack_snapshot, available_expirations, close_from_paylo
                         profile, weekly_target)
 from ndx_basis import fetch_basis
 from pine_export import make_pine
+from macro_events import events_for_pine, CREDITS as MACRO_CREDITS
+from pine_news_overlay import append_news
 
 ROME=ZoneInfo('Europe/Rome')
 st.set_page_config(page_title='Multi-Market NET GAMMA', layout='wide')
@@ -98,6 +100,8 @@ if st.session_state.get('_ndx_basis_target') != day.isoformat():
     st.session_state['_ndx_basis_target']=day.isoformat()
     st.session_state['ndx_basis_value']=''
     st.session_state.pop('ndx_basis_result',None)
+    st.session_state.pop('ndx_basis_error',None)
+    st.session_state.pop('ndx_basis_attempted',None)
 if day!=now:
     st.caption('La scadenza scelta non corrisponde a oggi a Roma: visualizzazione storica o di studio.')
 weekly_default=weekly_target(day,expiry_dates)
@@ -107,14 +111,37 @@ weekly_exp=st.selectbox('Scadenza Weekly (solo scadenze venerdì realmente prese
                          index=fridays.index(weekly_default)+1 if weekly_default in fridays else 0,
                          format_func=lambda x: 'Non disponibile' if x is None else x.strftime('%d/%m/%Y'))
 
-if st.button('Calcola differenziale automatico NQ−NDX (Yahoo 15m)'):
+@st.cache_data(ttl=3600, show_spinner=False, max_entries=16)
+def _cached_basis(target_day):
+    """Calcola il basis una volta per data e lo riusa nei rerun Streamlit."""
+    return fetch_basis(target_day)
+
+def _calculate_and_store_basis():
     try:
-        with st.spinner('Calcolo chiusure sincronizzate della seduta precedente...'):
-            result=fetch_basis(day)
+        result=_cached_basis(day)
         st.session_state['ndx_basis_result']=result
         st.session_state['ndx_basis_value']=f"{result['basis']:.4f}"
+        st.session_state.pop('ndx_basis_error',None)
     except Exception as exc:
-        st.warning(f'Calcolo automatico non disponibile: {str(exc)[:240]}. Puoi inserire un valore verificato.')
+        st.session_state.pop('ndx_basis_result',None)
+        st.session_state['ndx_basis_error']=str(exc)[:240]
+
+# Prima acquisizione del giorno: differenziale automatico; nessun clic richiesto.
+# Successivi rerun (download Pine, cambio widget) non sovrascrivono il manuale.
+if not st.session_state.get('ndx_basis_attempted'):
+    st.session_state['ndx_basis_attempted']=True
+    with st.spinner('Calcolo automatico NQ–NDX sulla sessione precedente...'):
+        _calculate_and_store_basis()
+
+if st.button('Ricalcola differenziale NQ–NDX', help='Richiede un nuovo calcolo e aggiorna il valore modificabile'):
+    _cached_basis.clear()
+    with st.spinner('Aggiornamento differenziale NQ–NDX...'):
+        _calculate_and_store_basis()
+if st.session_state.get('ndx_basis_error'):
+    st.warning('Differenziale automatico temporaneamente non disponibile: '
+               + st.session_state['ndx_basis_error']
+               + '. Inserisci un valore verificato o usa Ricalcola.')
+
 basis_text=st.text_input('Differenziale NQ − NDX (modificabile)',key='ndx_basis_value',
                         help='Esporta livelli NQ soltanto con differenziale verificato. '
                              'NQ=F può non coincidere con il contratto NQ di TradingView.')
@@ -177,10 +204,24 @@ choices=[]
 if '0DTE' in profiles: choices.append(('Solo 0DTE',{'0DTE':profiles['0DTE']}))
 if 'Weekly' in profiles: choices.append(('Solo Weekly',{'Weekly':profiles['Weekly']}))
 if len(profiles)==2: choices.append(('0DTE + Weekly',profiles))
+# Le linee macro usano gli eventi già pubblicati dal calendario Finance Calendar,
+# con conversione in Europe/Rome; nessun orario inventato per news senza timestamp.
+try:
+    with st.spinner('Verifica calendario macro USA...'):
+        macro_news=events_for_pine(day)
+    st.caption(f"News macro nel Pine: {len(macro_news)} orari distinti/registrazioni "
+               f"per il {day:%d/%m/%Y} · Fonte: [Finance Calendar]({MACRO_CREDITS}). "
+               "Le linee rosse/arancioni possono essere disattivate nei parametri Pine.")
+except Exception:
+    macro_news=[]
+    st.warning('Calendario macro USA temporaneamente non disponibile: '
+               'i Pine saranno esportati SENZA linee news, non con orari presunti.')
 exports=[]
 for title,data in choices:
     try:
         code=make_pine(data,basis,day,day.strftime('%d/%m'))
+        if macro_news:
+            code=append_news(code,macro_news)
         exports.append((title,code))
     except Exception as exc:
         st.error(f'{title}: {exc}')
