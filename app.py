@@ -217,7 +217,7 @@ else:
         f'+ differenziale NQ–NDX {basis:+,.4f} = **{previous_close_nq:,.2f}**'
     )
 
-cols=st.columns(len(profiles),gap='large')
+cols=st.columns(len(profiles),gap='medium')
 for (kind,group),column in zip(profiles.items(),cols):
     with column:
         st.markdown(f'**{kind} · scadenza {group["expiry"]}**')
