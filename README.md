@@ -28,7 +28,7 @@
 - The formula is **NET = [(OI+Volume)×Gamma] Call − [(OI+Volume)×Gamma] Put**, directly from the imported GLD option chain. It is not cash gamma exposure, inferred dealer inventory, or GC futures gamma.
 - The user selects the **primary expiration**; it is labeled 0DTE only when it matches today's date in **America/New_York**. Weekly is the next real Friday expiration present in the chain, or marked unavailable. Both plots share the same user-adjustable ±% strike window (from previous close) and x-axis scale.
 - Display original file timestamp **without inferring its timezone**, local import time separately, coverage, missing fields and a CSV export for each usable expiry. The import timestamp does not certify the age of the chain.
-- Cboe places restrictions on automated extraction of delayed quotes. A single **user-triggered** request now follows the same interaction pattern as Nasdaq's Cboe button; no unattended/scheduled job, scraping loop, bypass, or Cboe API authentication is introduced. Use of the data remains subject to Cboe terms. The existing Serafini SPX and Nasdaq NDX modules are unchanged.
+- Cboe places restrictions on automated extraction of delayed quotes. A single **user-triggered** request now follows the same interaction pattern as Nasdaq's Cboe button; nessun download automatico dal sito delayed_quotes Cboe è introdotto. Una pipeline separata attende un feed autorizzato. Use of the data remains subject to Cboe terms. The existing Serafini SPX and Nasdaq NDX modules are unchanged.
 - The app exports **Pine Script v6 for GC/MGC futures** (main/0DTE, Weekly, or both), using a **5-minute synchronized, frozen ETF/futures price ratio**, or an explicitly declared manual fallback. This is **not native GC gamma**. The exporter never modifies the original NET GAMMA. No historical replay, Gamma Flip or scheduled snapshots are implemented in GLD mode.
 
 ## Petrolio USO (Cboe ETF options)
@@ -73,6 +73,39 @@ then validated for **Nasdaq NQ/MNQ, Gold GC/MGC, Petrolio CL/MCL** together.
 - The Cboe snapshot's original timestamp has **no documented time zone** in the raw file. We can sync ETF and futures *to each other* by the exact 5-minute bar timestamp, but **cannot claim that this pair has the same exact instant as the Cboe chain**, unless the source timezone is independently verified. The app explicitly shows both observations.
 - Data acquisition remains manual-on-demand and subject to Cboe/Yahoo source terms. Pine compilation and live ratio behavior require final verification on TradingView. Do not label these projections genuine CME/NYMEX option support/resistance.
 
+## Nuovo cruscotto e rilevamenti programmati
+
+### Restyling grafico
+
+- `gamma_chart_style.py` definisce l'unico tema scuro Plotly di **Nasdaq, Gold e Petrolio**: scale Gamma e prezzo identiche tra 0DTE e Weekly, barre positive verdi / negative rosse, linea del close precedente gialla, griglia discreta, hover con Gamma / OI / Volume quando disponibili.
+- L'app indica il livello strike del **Gamma positivo** e **Gamma negativo** più marcato per ciascuna scadenza. Sono massimi e minimi della formula esistente, NON gamma flip o dealer walls.
+- `pine_spx_visual.py` resta il modello comune per i Pine: questa modifica riguarda il grafico web, NON ricalcola Gamma o sposta i livelli.
+
+### Tre orari Europe/Rome, lunedì–venerdì
+
+Workflow GitHub Actions: `.github/workflows/multi-market-snapshots.yml`.
+
+| Rilevamento nominale (Roma) | Fuso | Simboli |
+|---|---|---|
+| 07:30 | Europe/Rome con DST automatico | NDX, GLD, USO |
+| 15:50 | Europe/Rome con DST automatico | NDX, GLD, USO |
+| 20:30 | Europe/Rome con DST automatico | NDX, GLD, USO |
+
+Il runner verifica finestra effettiva **0–12 minuti** (esecuzioni GitHub possono essere ritardate), non rietichetta retroattivamente acquisizioni fuori finestra, e non esegue acquisizioni ufficiali nei weekend. Ogni singolo mercato riceve un esito `SCARICATO`, `NON_CONFIGURATO` o `ERRORE`; la fotografia originale con timestamp della fonte non viene mai camuffata come quella dell'orario richiesto. Download invariato/duplicato significa dati Cboe/provider identici, non dati nuovi.
+
+**Vincolo contrattuale importante:** il sito di opzioni ritardate Cboe proibisce espressamente l'estrazione automatizzata. Il workflow NON usa `cdn.cboe.com/.../delayed_quotes/...`, rifiuta URL o redirect a questo endpoint e non tenta aggiramenti. Il download diretto da Streamlit continua a richiedere un clic manuale. Per attivare davvero i tre orari serve un **feed autorizzato per acquisizione automatica** che fornisca JSON compatibile con le catene NDX, GLD e USO e i campi Gamma, Open Interest e Volume. Le tre URL non sono inventate.
+
+#### Configurazione necessaria una sola volta
+
+1. In **GitHub → GrespoSan/Multi-Market-NET-GAMMA → Settings → Secrets and variables → Actions**, aggiungere secrets server-side `MM_FEED_NDX_URL`, `MM_FEED_GLD_URL`, `MM_FEED_USO_URL` (endpoint API https autorizzati; non delayed_quotes) e facoltativamente `MM_FEED_TOKEN` (autenticazione Bearer).
+2. Creare un bucket **privato**, non pubblico, `multi-market-snapshots` nel progetto Supabase scelto. Non usare `spx-snapshots` e non modificare l'archivio SPX. Impostare nel nuovo repository GitHub i secret `SUPABASE_URL` e `SUPABASE_SERVICE_ROLE_KEY` relativi a quel progetto. NON inserire le credenziali nel codice o in chat.
+3. Quando gli endpoint sono autorizzati e il bucket privato è pronto, impostare la variabile di repository GitHub Actions `MM_AUTHORIZED_FEED_CONFIRMED=true`. Senza quella variabile, le esecuzioni **programmate restano deliberatamente disattivate**; la workflow manuale permette solo diagnosi senza estrazioni non autorizzate.
+4. Per selezionare le fotografie archiviate direttamente nella pagina Streamlit, inserire nella sua configurazione privata `secrets.toml` **gli stessi** `SUPABASE_URL` e `SUPABASE_SERVICE_ROLE_KEY` più `MM_SUPABASE_BUCKET="multi-market-snapshots"`. Chiudere l'accesso a Streamlit solo agli utenti abilitati: la service-role key è un segreto server-side potente.
+5. Ogni run scrive **soltanto log e stato** negli artifact GitHub Actions (30 giorni). I file dati delle opzioni vengono salvati unicamente nel bucket privato con path `snapshots/{NDX|GLD|USO}/{YYYY-Www}/`. I log privati sono in `logs/{symbol}/{YYYY-Www}/`. I tre mercati restano indipendenti. Gli archivi si leggono con l'expander nell'app; i rilevamenti assenti sono esplicitamente non disponibili.
+6. Test iniziale: in **Actions → Multi-Market fotografie → Run workflow**, controllare i log. Non confondere un workflow eseguito con uno snapshot realmente salvato; verificare `SCARICATO` per ciascun mercato.
+
+L'archivio e i rilevamenti programmati non sono dichiarati attivi finché non sono configurati i feed autorizzati e le credenziali di storage. La versione SPX continua a usare il proprio repository e bucket separati.
+
 ## Run
 
 ```shell
@@ -86,7 +119,7 @@ Or deploy this folder as a new independent Streamlit application; main file `app
 
 1. GLD Cboe parsing and one-click fetch are unit-tested with fixtures, but server access, the live JSON layout and its 0DTE Gamma completeness must still be confirmed in Streamlit with a fresh real snapshot. NDX live feed limitations remain separately documented.
 2. The formula and adjustable percentage strike band are a cross-market study choice, **not independently validated for Nasdaq by Serafini**. We do not apply the 60% 0DTE / 23% Weekly SPX percentages to Nasdaq.
-3. No automated schedule, archive, replay, Supabase link or new GitHub repo is created at this stage; GLD refresh is user-triggered, with optional manual import fallback.
+3. La programmazione per tre orari è **predisposta ma non attiva senza fonte autorizzata**; l'archivio privato Supabase e il selettore Streamlit richiedono secret configurati. Il download Cboe diretto rimane manuale.
 4. The Cboe timestamp is shown as supplied; no timezone is inferred. Importing a file does not claim to know the original download time.
 5. No cross-instrument multiplier normalization or claim about monetary GEX.
 6. This prototype must be tested on live NDX and with a Pine v6 editor before operational trading.
