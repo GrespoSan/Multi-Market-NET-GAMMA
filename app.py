@@ -165,12 +165,26 @@ for kind,exp in [('0DTE',day),('Weekly',weekly_exp)]:
     except Exception as exc:
         st.warning(f'{kind}: {exc}')
 if not profiles:
-    st.error('Nessun profilo completo 25+25. Nessun NET GAMMA né Pine viene generato.')
+    st.error('Nessuno strike disponibile nella fascia percentuale: NET GAMMA e Pine non generati.')
     st.stop()
 
-st.subheader('NET GAMMA — NDX · replica sperimentale')
-st.caption('Formula: NET = [(OI+Volume)×Gamma] Call − [(OI+Volume)×Gamma] Put; '
-           '50 strike (25 sopra e 25 sotto la chiusura NDX). Non equivale al GEX monetario.')
+# Stessa finestra di prezzo per 0DTE e Weekly, basata sul close indice precedente.
+band_pct = 1.5
+band_low = reference * (1 - band_pct / 100)
+band_high = reference * (1 + band_pct / 100)
+gamma_values = [r['net_gamma'] for group in profiles.values() for r in group['rows']]
+gamma_min = min(0.0, min(gamma_values))
+gamma_max = max(0.0, max(gamma_values))
+gamma_span = max(gamma_max - gamma_min, 1e-8)
+shared_gamma_range = [gamma_min - gamma_span * .06, gamma_max + gamma_span * .06]
+price_shift = basis if basis is not None else 0.0
+shared_price_range = [band_low + price_shift, band_high + price_shift]
+
+st.subheader('NET GAMMA — NDX · fascia ±1,5%')
+st.caption('Formula invariata: NET = [(OI+Volume)×Gamma] Call − [(OI+Volume)×Gamma] Put. '
+           'Tutti gli strike Cboe disponibili tra '
+           f'**{band_low:,.2f} e {band_high:,.2f} NDX** (±1,5% dal close precedente). '
+           'Stessa fascia prezzi e stessa scala Gamma per 0DTE e Weekly.')
 if basis is None:
     st.warning('Differenziale assente: vengono rappresentati gli strike NDX; esportazione NQ disabilitata.')
 else:
@@ -186,12 +200,16 @@ cols=st.columns(len(profiles),gap='large')
 for (kind,group),column in zip(profiles.items(),cols):
     with column:
         st.markdown(f'**{kind} · scadenza {group["expiry"]}**')
-        st.caption(f'{group["contract_count"]} contratti · {group["available_strikes"]} strike disponibili · 50 selezionati')
+        st.caption(f'{group["contract_count"]} contratti · {group["available_strikes"]} strike disponibili '
+                   f'· {group["selected_strikes"]} strike nella fascia ±1,5%')
         rows=group['rows']
-        y=[r['strike_index']+(basis or 0) for r in rows]
+        y=[r['strike_index']+price_shift for r in rows]
         x=[r['net_gamma'] for r in rows]
+        # Evita sovrapposizioni quando gli strike hanno passi inferiori a 5 punti.
+        steps=[b-a for a,b in zip(y,y[1:]) if b>a]
+        bar_width=min(3.8, min(steps)*0.8) if steps else 3.8
         fg=go.Figure()
-        fg.add_trace(go.Bar(x=x,y=y,orientation='h',width=3.8,
+        fg.add_trace(go.Bar(x=x,y=y,orientation='h',width=bar_width,
                             marker_color=['#22c55e' if value>=0 else '#ef4444' for value in x],
                             customdata=[[r['strike_index'],r['call_gamma'],r['put_gamma']] for r in rows],
                             hovertemplate='Livello %{y:,.2f}<br>Strike NDX %{customdata[0]:,.2f}<br>NET %{x:+.4f}<br>Call %{customdata[1]:.4f}<br>Put %{customdata[2]:.4f}<extra></extra>'))
@@ -209,8 +227,10 @@ for (kind,group),column in zip(profiles.items(),cols):
                               bgcolor='rgba(13,17,23,0.85)',borderpad=2)
         fg.update_layout(height=760,margin=dict(l=10,r=10,b=25,t=15),
                          template='plotly_dark',showlegend=False,
-                         xaxis_title='NET gamma · unità formula sperimentale',
-                         yaxis_title='Prezzo NQ' if basis is not None else 'Strike NDX',
+                         xaxis=dict(title='NET gamma · unità formula sperimentale',
+                                    range=shared_gamma_range, zeroline=True),
+                         yaxis=dict(title='Prezzo NQ' if basis is not None else 'Strike NDX',
+                                    range=shared_price_range, autorange=False),
                          bargap=0.1)
         st.plotly_chart(fg,use_container_width=True)
 
