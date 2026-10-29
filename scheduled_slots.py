@@ -17,7 +17,10 @@ def schedule_decision(now: datetime, requested: str | None = None, manual: bool 
     if now.tzinfo is None:
         raise ValueError("Scheduled acquisitions require timezone-aware timestamps.")
     local = now.astimezone(ROME)
-    if local.weekday() > 4 and not manual:
+    if local.weekday() > 4:
+        if manual:
+            return {"run": True, "reason": "MANUALE_WEEKEND", "slot": "manuale",
+                    "rome": local, "requested": requested or ""}
         return {"run": False, "reason": "WEEKEND", "slot": "", "rome": local}
     eligible = []
     for slot in SLOTS:
