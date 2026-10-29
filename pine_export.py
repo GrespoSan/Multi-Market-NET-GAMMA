@@ -43,7 +43,8 @@ def make_pine(profiles: dict, basis: float, target: date, label: str) -> str:
     lines=[
         '//@version=6',
         f'indicator("Multi-Market NET GAMMA · NDX/NQ · {label} · {target.isoformat()}", overlay=true, max_lines_count=500, max_labels_count=30)',
-        f'// NDX/NQ · Snapshot {label}; prezzi = strike NDX + basis {basis:.4f}; fascia da close precedente +/- 1.5%',
+        f'// NDX/NQ · Snapshot {label}; prezzi = strike NDX + basis {basis:.4f}; '
+        f'fascia dal close precedente +/- {next(iter(profiles.values())).get("band_pct", 1.5):g}%',
         '// Formula sperimentale NDX: Call (OI+Volume)*Gamma - Put (OI+Volume)*Gamma.',
         '// Questi sono dati statici esportati, NON un feed Pine automatico.',
         f'gammaPerBar = input.float({scale:.2f}, "Scala GAMMA manuale", minval=0.01, step=0.01)',
