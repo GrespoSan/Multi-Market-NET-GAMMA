@@ -12,6 +12,8 @@
 - 0DTE and next Friday weekly only if the exact expiration and complete 25+25 strike data exist.
 - NQ-NDX basis from **synchronized previous-session 15m Yahoo bars**, with adjustable manual input. Yahoo NQ=F may not match the TradingView/broker futures contract; validate before using.
 - Two gamma plots; Pine v6 export for 0DTE, Weekly and combined, with manual gamma/bar scale.
+- NQ−NDX basis is calculated automatically after loading a NDX snapshot using previous-session synchronized Yahoo 15m closes. It stays editable and can be recalculated manually. Pine downloads do not recalculate it.
+- The three Pine exports automatically include USA macro news vertical lines, only for date/time events available from Finance Calendar. The lines can be turned off in the Pine settings.
 - Download buttons do not cause full Streamlit reruns (`on_click="ignore"`).
 
 ## Run
