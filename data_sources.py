@@ -1,13 +1,20 @@
 """On-demand Cboe NDX download. No unattended polling in the MVP."""
 import requests
 
-NDX_URL = 'https://cdn.cboe.com/api/global/delayed_quotes/_NDX.json'
+NDX_URL = 'https://cdn.cboe.com/api/global/delayed_quotes/options/_NDX.json'
 
 
 def download_ndx(limit_mb=100) -> bytes:
     headers={'User-Agent':'Mozilla/5.0', 'Accept':'application/json',
              'Cache-Control':'no-cache'}
     with requests.get(NDX_URL, headers=headers, timeout=(8, 55), stream=True) as response:
+        if response.status_code == 403:
+            raise RuntimeError(
+                'Cboe ha risposto HTTP 403 anche dal percorso delle opzioni. '
+                'Potrebbe bloccare le richieste provenienti dal server Streamlit: '
+                'in tal caso usa temporaneamente il caricamento JSON originale '
+                'e verifichiamo l’acquisizione separata via GitHub.'
+            )
         response.raise_for_status()
         chunks=[]
         total=0
