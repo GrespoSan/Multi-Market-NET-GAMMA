@@ -27,7 +27,22 @@ class CommonMarketLayoutTests(unittest.TestCase):
             "NDX": "ndx_upload",
             "GLD": "gld_cboe_upload",
             "USO": "uso_cboe_upload"})
-        self.assertIn("max-width: 1460px", PAGE_STYLE)
+        # A fixed desktop cap compressed the 0DTE and Weekly side-by-side plots.
+        self.assertIn("max-width: none !important", PAGE_STYLE)
+        self.assertIn("width: 100% !important", PAGE_STYLE)
+        self.assertIn('data-testid="stMainBlockContainer"', PAGE_STYLE)
+        self.assertNotIn("max-width: 1460px", PAGE_STYLE)
+        for filename in ("app.py", "gld_cboe_view.py", "uso_cboe_view.py"):
+            with self.subTest(page=filename):
+                src = source(filename)
+                self.assertTrue(
+                    "gap='medium'" in src or 'gap="medium"' in src,
+                    "I grafici paralleli devono mantenere spaziatura compatta."
+                )
+        style = source("gamma_chart_style.py")
+        self.assertIn("height=760, autosize=True", style)
+        self.assertIn("range=common_x", style)
+        self.assertIn("range=shared_y", style)
         self.assertIn("@media (max-width: 800px)", PAGE_STYLE)
         app = source("app.py")
         self.assertEqual(len(calls_by_name("app.py", "render_dashboard_header")), 1)
