@@ -32,6 +32,8 @@ APCA_API_SECRET_KEY = "your-paper-api-secret"
 - GLD 0DTE follows **New York** calendar day; Weekly uses **next Friday**, with no synthetic expiry. If the actual contracts are missing, no profile is drawn.
 - Profiles need matched Call and Put at each real strike, nonmissing Gamma, OI and daily volume, a minimum 70% contract-data coverage, and at least two complete strikes. Missing values are never filled with zero. Source date of OI and completeness are always displayed.
 - The indicative options feed contains delayed/modified trade/quote data. Data freshness, trading hours and availability depend on the Alpaca account; no claim of live OPRA pricing. No automatic scheduler yet; press **Aggiorna fotografia** to update.
+- **29 October 2026 live verification:** Alpaca's `indicative` feed returned no Gamma for sampled same-day GLD and SPY 0DTE contracts, while the next-day GLD option feed supplied Greeks. The account's requested `opra` feed responded `OPRA agreement is not signed`. Do not silently use OI or volume as Gamma.
+- If GLD 0DTE lacks Gamma, the app can now show an explicitly separate **Open Interest ONLY** graphic, if the real Call/Put OI has sufficient coverage. This is NOT GEX or NET GAMMA; OI can be older than the observation date.
 - GLD CSV export is available. GC NET GAMMA, Pine overlay, historical replay, gamma flip and scheduled snapshots are **not** implemented for GLD.
 
 ## Run
