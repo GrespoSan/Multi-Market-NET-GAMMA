@@ -36,11 +36,12 @@ class PineFutureTests(unittest.TestCase):
         self.assertNotIn('syminfo.root == "CL"', script)
         self.assertIn('syminfo.type == "futures"', script)
         self.assertIn("0DTE 29/10", script)
+        self.assertIn("if barstate.islast and validTicker", script)
         self.assertIn("Weekly 30/10", script)
         self.assertIn('modeRatio = input.string("Bloccato"', script)
         self.assertIn('string contractTicker = "COMEX:GCZ2026"', script)
         self.assertIn('string etfTicker = "AMEX:GLD"', script)
-        self.assertIn("float yPrice = etfStrike * ratio", script)
+        self.assertIn("array.push(resultLevels, etfStrike * ratio)", script)
         self.assertNotIn("futureAnchorManual", script)
         self.assertNotIn("futureDailyPrevious", script)
         self.assertIn("etfTime == futTime", script)
@@ -59,7 +60,7 @@ class PineFutureTests(unittest.TestCase):
         self.assertIn('syminfo.root == "CL"', script)
         self.assertIn('syminfo.root == "MCL"', script)
         self.assertNotIn('syminfo.root == "GC"', script)
-        self.assertIn("float yPrice = etfStrike * ratio", script)
+        self.assertIn("array.push(resultLevels, etfStrike * ratio)", script)
         self.assertIn("0DTE 29/10", script)
         self.assertNotIn("Weekly 30/10", script)
         self.assertIn("array.new_float()", script)
@@ -103,11 +104,15 @@ class PineFutureTests(unittest.TestCase):
             make_etf_future_pine("USO", {"0DTE": p}, 170, DAY,
                                  "test", locked("USO"))
 
-    def test_pine_has_escaped_multiline_label(self):
+    def test_context_ratio_notice_is_not_drawn_on_the_future_chart(self):
         code = make_etf_future_pine(
             "GLD", {"0DTE": group(DAY)}, 366, DAY, "Solo 0DTE", locked())
-        self.assertIn(' | ETF Gamma, NON CME/NYMEX', code)
-        self.assertIn(r' + "\n" + ', code)
+        self.assertNotIn('showContext = input.bool', code)
+        self.assertNotIn('label notice = label.new', code)
+        self.assertNotIn('array.push(drawnLabels, notice)', code)
+        self.assertNotIn('ETF Gamma, NON CME/NYMEX', code)
+        self.assertIn('Contratto future riferimento: COMEX:GCZ2026', code)
+        self.assertIn('ratio 11.049', code)
 
     def test_only_weekly_does_not_invent_main_profile(self):
         code = make_etf_future_pine(
