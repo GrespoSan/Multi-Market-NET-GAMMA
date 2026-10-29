@@ -7,7 +7,7 @@ from zoneinfo import ZoneInfo
 import streamlit as st
 
 from markets import MARKETS
-from gamma_chart_style import profile_chart, top_levels
+from gamma_chart_style import profile_chart, panel_heading, capture_display, spx_shared_gamma_bounds
 from archive_panel import archive_panel
 from market_ui import render_dashboard_header, render_acquisition_controls, render_empty_snapshot
 from data_sources import download_ndx, NDX_URL
@@ -193,11 +193,12 @@ if not profiles:
 # Stessa finestra di prezzo per 0DTE e Weekly, basata sul close indice precedente.
 band_low = reference * (1 - band_pct / 100)
 band_high = reference * (1 + band_pct / 100)
-gamma_values = [r['net_gamma'] for group in profiles.values() for r in group['rows']]
-gamma_min = min(0.0, min(gamma_values))
-gamma_max = max(0.0, max(gamma_values))
-gamma_span = max(gamma_max - gamma_min, 1e-8)
-shared_gamma_range = [gamma_min - gamma_span * .06, gamma_max + gamma_span * .06]
+# Identical 0DTE/Weekly X scale to SPX (raw values plus 8% span).
+shared_gamma_range = spx_shared_gamma_bounds(profiles.values(), field='net_gamma')
+shared_ticks = sorted({float(r['strike_index']) + (basis or 0.0)
+                       for p in profiles.values() for r in p['rows']})
+if len(shared_ticks) > 80:
+    shared_ticks = shared_ticks[::(len(shared_ticks) + 79) // 80]
 price_shift = basis if basis is not None else 0.0
 shared_price_range = [band_low + price_shift, band_high + price_shift]
 
@@ -220,24 +221,27 @@ else:
 cols=st.columns(len(profiles),gap='medium')
 for (kind,group),column in zip(profiles.items(),cols):
     with column:
-        st.markdown(f'**{kind} · scadenza {group["expiry"]}**')
-        st.caption(f'{group["contract_count"]} contratti · {group["available_strikes"]} strike disponibili '
-                   f'· {group["selected_strikes"]} strike nella fascia ±{band_pct:g}%')
-        rows=group['rows']
-        levels=top_levels(rows, 'strike_index', 'net_gamma', price_shift)
-        high, low=levels['positive'], levels['negative']
-        c1, c2=st.columns(2)
-        with c1:
-            st.metric('Gamma positivo più marcato',
-                      f'{high[0]:,.2f}' if high else '—')
-        with c2:
-            st.metric('Gamma negativo più marcato',
-                      f'{low[0]:,.2f}' if low else '—')
-        fg=profile_chart(rows,'NDX',reference,shared_gamma_range,
-                         shared_price_range, level_field='strike_index',
-                         gamma_field='net_gamma', price_shift=price_shift,
-                         ndx=True, show_close=basis is not None)
-        st.plotly_chart(fg,use_container_width=True)
+        title, source_details = panel_heading(
+            kind, group['expiry'], source_timestamp=doc.get('timestamp'),
+            downloaded_rome=st.session_state.get('ndx_download_rome'),
+            source=st.session_state.get('ndx_name', ''))
+        st.subheader(title)
+        st.caption(source_details)
+        st.caption(f'{group["contract_count"]} contratti · '
+                   f'{group["available_strikes"]} strike disponibili · '
+                   f'{group["selected_strikes"]} strike selezionati')
+        _, capture_label = capture_display(
+            doc.get('timestamp'), st.session_state.get('ndx_download_rome'),
+            st.session_state.get('ndx_name', ''))
+        fg = profile_chart(
+            group['rows'], 'NDX', reference, shared_gamma_range,
+            shared_price_range, level_field='strike_index',
+            gamma_field='net_gamma', price_shift=price_shift,
+            ndx=True, show_close=basis is not None,
+            title=kind, snapshot_label=capture_label,
+            tick_levels=shared_ticks)
+        st.plotly_chart(fg, use_container_width=True,
+                        key=f'ndx_spx_gamma_{kind}_{group["expiry"]}')
 
 # Vista confronto facoltativa: la chiamata Yahoo 5m parte soltanto se attivata.
 # I grafici NDX base e il motore Gamma rimangono invariati.
