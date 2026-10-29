@@ -9,6 +9,7 @@ import streamlit as st
 from markets import MARKETS
 from gamma_chart_style import profile_chart, top_levels
 from archive_panel import archive_panel
+from market_ui import render_dashboard_header, render_acquisition_controls, render_empty_snapshot
 from data_sources import download_ndx, NDX_URL
 from ndx_engine import (unpack_snapshot, available_expirations, close_from_payload,
                         profile, weekly_target, DEFAULT_BAND_PCT)
@@ -20,20 +21,8 @@ from nq_price_panel import load_nq_candles, chart_compare_nq
 
 ROME=ZoneInfo('Europe/Rome')
 st.set_page_config(page_title='Multi-Market NET GAMMA', layout='wide')
-st.title('Multi-Market · NET GAMMA')
-st.caption('RADAR OPZIONI  ·  NDX / GLD / USO  ·  0DTE & WEEKLY  ·  modello di studio Serafini')
-
-market_key=st.selectbox('Sottostante', list(MARKETS.keys()),
-                        format_func=lambda x: MARKETS[x].label)
+market_key=render_dashboard_header(MARKETS)
 market=MARKETS[market_key]
-if market_key == 'GOLD':
-    st.caption('Gamma originale opzioni ETF GLD da Cboe · Pine GC/MGC con '
-               'mappatura percentuale indicativa, NON livelli opzioni future.')
-elif market_key == 'WTI':
-    st.caption('Gamma originale opzioni ETF USO da Cboe · Pine CL/MCL con '
-               'mappatura percentuale indicativa, NON livelli opzioni future.')
-else:
-    st.caption(f'Opzioni: {market.options} · Future: {market.futures} · Differenziale: {market.basis}')
 if market_key == 'GOLD':
     from gld_cboe_view import render_gld_cboe
     render_gld_cboe()
@@ -49,35 +38,30 @@ if not market.enabled:
     st.stop()
 
 
-st.subheader('Fotografia Cboe NDX')
-col_a,col_b=st.columns([1,2],gap='large')
-with col_a:
-    if st.button('Leggi fotografia NDX da Cboe', type='primary'):
+fetch_pressed,uploaded=render_acquisition_controls('NDX',NDX_URL)
+if fetch_pressed:
+    try:
+        with st.spinner('Lettura fotografia NDX da Cboe...'):
+            raw=download_ndx()
+            unpack_snapshot(raw)
+        st.session_state['ndx_blob']=raw
+        st.session_state['ndx_name']='NDX_CBOE_online.json'
+        st.session_state['ndx_download_rome']=datetime.now(ROME).strftime('%d/%m/%Y %H:%M:%S Roma')
+        st.success('Fotografia NDX ricevuta e verificata nella struttura.')
+    except Exception as exc:
+        st.error(f'Fonte live non disponibile: {str(exc)[:260]}')
+if uploaded is not None:
+    content=uploaded.getvalue()
+    if st.session_state.get('ndx_upload_tag') != (uploaded.name, len(content),hash(content)):
         try:
-            with st.spinner('Acquisizione Cboe...'):
-                raw=download_ndx()
-                unpack_snapshot(raw)
-            st.session_state['ndx_blob']=raw
-            st.session_state['ndx_name']='NDX_CBOE_online.json'
-            st.session_state['ndx_download_rome']=datetime.now(ROME).strftime('%d/%m/%Y %H:%M:%S Roma')
-            st.success('Fotografia NDX ricevuta e verificata nella struttura.')
+            unpack_snapshot(content)
+            st.session_state['ndx_blob']=content
+            st.session_state['ndx_name']=uploaded.name
+            st.session_state['ndx_download_rome']=None
+            st.session_state['ndx_upload_tag']=(uploaded.name,len(content),hash(content))
+            st.success('JSON originale NDX importato e validato.')
         except Exception as exc:
-            st.error(f'Fonte live non disponibile: {str(exc)[:260]}')
-with col_b:
-    uploaded=st.file_uploader('Oppure importa un JSON Cboe NDX originale (.json, .gz)',
-                              type=['json','gz'], key='ndx_upload')
-    if uploaded is not None:
-        content=uploaded.getvalue()
-        if st.session_state.get('ndx_upload_tag') != (uploaded.name, len(content),hash(content)):
-            try:
-                unpack_snapshot(content)
-                st.session_state['ndx_blob']=content
-                st.session_state['ndx_name']=uploaded.name
-                st.session_state['ndx_download_rome']=None
-                st.session_state['ndx_upload_tag']=(uploaded.name,len(content),hash(content))
-            except Exception as exc:
-                st.error(f'File NDX non riconosciuto: {exc}')
-st.caption(f'Sorgente: {NDX_URL} · l’orario del timestamp Cboe non viene convertito senza fuso dichiarato.')
+            st.error(f'File NDX non riconosciuto: {exc}')
 
 archive_selected=archive_panel('NDX')
 if archive_selected is not None:
@@ -94,7 +78,7 @@ if archive_selected is not None:
 
 blob=st.session_state.get('ndx_blob')
 if not blob:
-    st.info('Carica o acquisisci una fotografia NDX per attivare il calcolo.')
+    render_empty_snapshot('NDX')
     st.stop()
 try:
     doc=unpack_snapshot(blob)
