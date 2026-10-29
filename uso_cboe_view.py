@@ -10,6 +10,8 @@ import io
 import streamlit as st
 import plotly.graph_objects as go
 
+from etf_pine_view import render_etf_pine_exports
+
 from uso_cboe import (USO_URL, download_uso, read_uso, expirations, next_weekly,
                       close_previous, current_price, profile, MIN_VALID_COVERAGE)
 
@@ -234,4 +236,5 @@ def render_uso_cboe():
                                file_name=f"USO_CBOE_{p['expiry']}_{title}.csv",
                                mime="text/csv", on_click="ignore")
     st.caption("Questi grafici non rappresentano Gamma monetario/dealer GEX, "
-               "non individuano automaticamente Gamma Flip e non sono livelli GC.")
+               "non individuano automaticamente Gamma Flip e non sono livelli CL.")
+    render_etf_pine_exports("USO", groups, reference, base_day)
