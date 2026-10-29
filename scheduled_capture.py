@@ -144,7 +144,10 @@ def capture_one(symbol, now, slot, source_url, authorized=False, token="",
             log["storage"] = "Bucket privato Supabase; artifact GitHub contiene SOLO log"
     except Exception as exc:
         log["status"] = "ERRORE"
-        log["note"] = f"{type(exc).__name__}: {str(exc)[:240]}"
+        # GitHub Actions logs/artifacts must never leak API credentials in URLs.
+        # Detailed request errors can contain secret query parameters.
+        log["note"] = (f"{type(exc).__name__}: acquisizione non riuscita; "
+                       "controllare endpoint autorizzato, permessi e qualità dati.")
     log_path = f"{logs_root}/{name}.json"
     data = json.dumps(log, ensure_ascii=False, indent=2).encode("utf-8")
     local_log = output / log_path
