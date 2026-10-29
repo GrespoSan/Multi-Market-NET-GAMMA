@@ -77,7 +77,10 @@ def make_pine(profiles: dict, basis: float, target: date, label: str) -> str:
         '        label.delete(lb)',
         '    array.clear(allLabels)',
     ]
-    for kind, _ in profiles.items():
-        title = ('0DTE ' if kind=='0DTE' else 'Weekly ') + label.replace('"', '')
+    for kind, group in profiles.items():
+        # Ogni intestazione usa la scadenza REALE del suo profilo;
+        # la data dello snapshot non coincide sempre con quella Weekly.
+        expiry_label = date.fromisoformat(group['expiry']).strftime('%d/%m')
+        title = f'{kind} {expiry_label}'
         lines.append(f'    drawGroup(levels{kind}, values{kind}, {positions[kind]}, "{title}")')
     return '\n'.join(lines)+'\n'
