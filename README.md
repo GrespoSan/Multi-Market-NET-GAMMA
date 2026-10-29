@@ -5,7 +5,7 @@
 ## Current scope
 
 - Six-instrument selector: Nasdaq / DAX / Gold / WTI / EURUSD / ZB.
-- **Nasdaq NDX/NQ remains enabled.** Gold GLD (ETF) has a separate **Cboe on-demand NET GAMMA** mode with no Alpaca dependency; DAX, WTI, EURUSD and ZB remain disabled. GLD levels are NOT Gold future GC levels.
+- **Nasdaq NDX/NQ remains enabled.** Gold GLD (ETF) and Petrolio USO (ETF) have separate **Cboe on-demand NET GAMMA** modes with no Alpaca dependency; DAX, EURUSD and ZB remain disabled. Neither GLD nor USO strikes are native futures-option strikes (GC / CL).
 - Cboe `_NDX.json` fetch *on demand* or imported `.json` / `.json.gz` original file.
 - NDX and NDXP contracts parsed using expiry, put/call and strike from original OCC code.
 - `(OI+Volume)*Gamma` Call minus Put unchanged; all real NDX strikes in a **user-adjustable ±% band** centered on the previous NDX close (default ±3%; same band for 0DTE and Weekly).
@@ -29,6 +29,17 @@
 - Display original file timestamp **without inferring its timezone**, local import time separately, coverage, missing fields and a CSV export for each usable expiry. The import timestamp does not certify the age of the chain.
 - Cboe places restrictions on automated extraction of delayed quotes. A single **user-triggered** request now follows the same interaction pattern as Nasdaq's Cboe button; no unattended/scheduled job, scraping loop, bypass, or Cboe API authentication is introduced. Use of the data remains subject to Cboe terms. The existing Serafini SPX and Nasdaq NDX modules are unchanged.
 - No historical replay, Pine GLD overlay, GLD-to-GC conversion, gamma flip or scheduled snapshots are implemented in GLD mode.
+
+## Petrolio USO (Cboe ETF options)
+
+- Select **Petrolio · USO (Cboe)** in the Multi-Market selector, then click **Aggiorna fotografia USO da Cboe** for the original USO option-chain snapshot (one user-triggered request, no cron). If blocked, use the original JSON upload in the fallback expander.
+- Direct source: https://cdn.cboe.com/api/global/delayed_quotes/options/USO.json . The original JSON or .json.gz is verified to be USO; invalid files and other instrument symbols are rejected.
+- Original Gamma, Open Interest and Volume are used without estimation: **NET = [(OI+Volume) × Gamma] Call − [(OI+Volume) × Gamma] Put** at every real strike inside the user-adjustable common percentage band around USO previous close.
+- **0DTE** is labeled only for a contract actually expiring on the current New York date; **Weekly** is the next Friday actually found in the Cboe option chain (or shown as unavailable). When Gamma is absent or insufficient, the profile is not published. Charts share price and gamma axes. Validated CSV exports remain in USO units.
+- USO is an oil-futures-linked exchange-traded product, *not* the WTI CL/MCL future and *not* the NYMEX option chain; do **not** transfer or rescale USO strikes into CL levels.
+- **OVX context:** https://www.cboe.com/us/indices/dashboard/ovx/ . OVX is the Cboe 30-day implied-volatility index derived from USO options; currently linked for context only, not used in the NET GAMMA arithmetic. No OVX value is guessed.
+- Identical source access limits as GLD: Cboe restrictions remain relevant, the automatic/unattended 07:30 and 15:50 captures are **not** implemented for USO. No Serafini SPX, NDX or GLD code/market logic is modified by this addition.
+- USO engine and original-file importer are unit-tested with illustrative **synthetic fixtures**, not a certification that the live server currently accepts Streamlit requests or that all 0DTE options supply usable Gamma. Run a fresh USO capture in the deployed app to validate.
 
 ## Run
 
