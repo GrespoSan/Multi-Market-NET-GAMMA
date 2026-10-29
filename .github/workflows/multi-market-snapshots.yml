@@ -30,6 +30,8 @@ concurrency:
 
 jobs:
   capture:
+    # No unattended collection unless the owner has an authorized feed.
+    if: github.event_name == 'workflow_dispatch' || vars.MM_AUTHORIZED_FEED_CONFIRMED == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
