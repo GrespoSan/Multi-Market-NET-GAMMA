@@ -43,6 +43,24 @@
 - USO engine and original-file importer are unit-tested with illustrative **synthetic fixtures**, not a certification that the live server currently accepts Streamlit requests or that all 0DTE options supply usable Gamma. Run a fresh USO capture in the deployed app to validate.
 - The app exports **Pine Script v6 for CL/MCL futures** (main/0DTE, Weekly, or both), using a **5-minute synchronized, frozen ETF/futures price ratio**, or an explicitly declared manual fallback, **not native CL gamma**.
 
+## Standard grafico Pine · Serafini SPX
+
+The **Serafini SPX NET GAMMA** Pine exporter is the reference visual layout for
+**all three markets**. The Multi-Market generators share `pine_spx_visual.py`
+for the same manual Gamma/bar scale, dotted vertical baselines, green/red horizontal
+Gamma bars of width 5, adjustable 0DTE/Weekly column offsets (default 60/160),
+titles, and last-bar/TradingView line-limit guard. The SPX application itself is
+unchanged; its market-specific 25+25 selection rule is NOT automatically applied
+to the other markets.
+
+No ratio status/disclaimer label is drawn over candles in Gold or Oil anymore.
+The frozen ratio, timestamp, ETF and futures prices, and contract remain documented
+in the Pine **source comments** and in the Streamlit export panel. The only
+conditional warning drawn on the chart is the shared SPX-style safety warning if
+the user's *manual* Gamma/bar scale would exceed TradingView's drawing limit.
+Any change to the common visual style should be made in `pine_spx_visual.py`,
+then validated for **Nasdaq NQ/MNQ, Gold GC/MGC, Petrolio CL/MCL** together.
+
 ## Pine v6: ETF-option Gamma over corresponding futures (synchronized frozen ratio)
 
 - Nasdaq NDX → **NQ/MNQ** retains the original independent exporter and NQ−NDX basis.
