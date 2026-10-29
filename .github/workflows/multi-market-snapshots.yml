@@ -1,0 +1,62 @@
+name: Multi-Market · fotografie 07:30 15:50 20:30 Roma
+
+on:
+  schedule:
+    - cron: "30 7 * * 1-5"
+      timezone: "Europe/Rome"
+    - cron: "50 15 * * 1-5"
+      timezone: "Europe/Rome"
+    - cron: "30 20 * * 1-5"
+      timezone: "Europe/Rome"
+  workflow_dispatch:
+    inputs:
+      slot:
+        description: "Solo per identificazione: manuale fuori finestra = acquisizione MANUALE"
+        required: false
+        default: ""
+        type: choice
+        options:
+          - ""
+          - "07:30"
+          - "15:50"
+          - "20:30"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: multi-market-licensed-capture
+  cancel-in-progress: false
+
+jobs:
+  capture:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install dependencies
+        run: python -m pip install -r requirements.txt
+      - name: Download from configured, licensed sources and archive each market
+        env:
+          MM_SLOT: ${{ inputs.slot }}
+          MM_MANUAL_RUN: ${{ github.event_name == 'workflow_dispatch' }}
+          MM_AUTHORIZED_FEED_CONFIRMED: ${{ vars.MM_AUTHORIZED_FEED_CONFIRMED }}
+          MM_FEED_NDX_URL: ${{ secrets.MM_FEED_NDX_URL }}
+          MM_FEED_GLD_URL: ${{ secrets.MM_FEED_GLD_URL }}
+          MM_FEED_USO_URL: ${{ secrets.MM_FEED_USO_URL }}
+          MM_FEED_TOKEN: ${{ secrets.MM_FEED_TOKEN }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          MM_SUPABASE_BUCKET: multi-market-snapshots
+        run: python scheduled_capture.py
+      - name: Preserve captures and audit logs even when a source fails
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: multi-market-${{ github.run_id }}
+          path: capture_output/
+          if-no-files-found: warn
+          retention-days: 30
