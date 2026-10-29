@@ -29,7 +29,7 @@
 - The user selects the **primary expiration**; it is labeled 0DTE only when it matches today's date in **America/New_York**. Weekly is the next real Friday expiration present in the chain, or marked unavailable. Both plots share the same user-adjustable ±% strike window (from previous close) and x-axis scale.
 - Display original file timestamp **without inferring its timezone**, local import time separately, coverage, missing fields and a CSV export for each usable expiry. The import timestamp does not certify the age of the chain.
 - Cboe places restrictions on automated extraction of delayed quotes. A single **user-triggered** request now follows the same interaction pattern as Nasdaq's Cboe button; no unattended/scheduled job, scraping loop, bypass, or Cboe API authentication is introduced. Use of the data remains subject to Cboe terms. The existing Serafini SPX and Nasdaq NDX modules are unchanged.
-- The app now exports **Pine Script v6 for GC/MGC futures** (main/0DTE, Weekly, or both), with a clearly labeled **percentage price mapping** of Cboe GLD ETF strikes. This is **not native GC gamma**. The exporter never modifies the original NET GAMMA. No historical replay, Gamma Flip or scheduled snapshots are implemented in GLD mode.
+- The app exports **Pine Script v6 for GC/MGC futures** (main/0DTE, Weekly, or both), using a **5-minute synchronized, frozen ETF/futures price ratio**, or an explicitly declared manual fallback. This is **not native GC gamma**. The exporter never modifies the original NET GAMMA. No historical replay, Gamma Flip or scheduled snapshots are implemented in GLD mode.
 
 ## Petrolio USO (Cboe ETF options)
 
@@ -41,19 +41,19 @@
 - **OVX context:** https://www.cboe.com/us/indices/dashboard/ovx/ . OVX is the Cboe 30-day implied-volatility index derived from USO options; currently linked for context only, not used in the NET GAMMA arithmetic. No OVX value is guessed.
 - Identical source access limits as GLD: Cboe restrictions remain relevant, the automatic/unattended 07:30 and 15:50 captures are **not** implemented for USO. No Serafini SPX, NDX or GLD code/market logic is modified by this addition.
 - USO engine and original-file importer are unit-tested with illustrative **synthetic fixtures**, not a certification that the live server currently accepts Streamlit requests or that all 0DTE options supply usable Gamma. Run a fresh USO capture in the deployed app to validate.
-- The app now exports **Pine Script v6 for CL/MCL futures** (main/0DTE, Weekly, or both), using a labeled percentage mapping of USO ETF strike prices, **not native CL gamma**.
+- The app exports **Pine Script v6 for CL/MCL futures** (main/0DTE, Weekly, or both), using a **5-minute synchronized, frozen ETF/futures price ratio**, or an explicitly declared manual fallback, **not native CL gamma**.
 
-## ETF Gamma display on corresponding futures (Pine v6)
+## Pine v6: ETF-option Gamma over corresponding futures (synchronized frozen ratio)
 
-For both Gold and Petrolio, after a Cboe profile is usable, choose one of three downloadable scripts: principal/0DTE only, Weekly only, or principal/0DTE + Weekly. The code is also visible for copy/paste. Each script shows on **its own futures root only**:
-
-- GLD Cboe options → COMEX **GC/MGC** TradingView futures.
-- USO Cboe options → NYMEX **CL/MCL** TradingView futures.
-- Nasdaq NDX → **NQ/MNQ** continues using its original independent Pine exporter.
-
-**This is not a direct strike translation.** By default TradingView supplies the previous completed Daily futures close and the Pine plots `future_reference × (ETF_option_strike / ETF_previous_close)`. A manually supplied future reference (from the same reference session as the ETF close) locks the plotted levels to that reference. With automatic Daily reference the mapping can shift next session, and futures/ETF trading sessions are not perfectly synchronized.
-
-Thus the resulting levels are **percentage-projected positions of ETF Gamma, not CME/NYMEX options levels or validated support/resistance on the future**. All profiles are labeled accordingly. No fabricated CME/NYMEX contracts, no conversion of Gamma weights, and no supposed equality of USO and CL prices. Inspect the mapping before trading. The Pine scripts are syntactically generated and regression-tested, but must still be checked in the TradingView Pine editor.
+- Nasdaq NDX → **NQ/MNQ** retains the original independent exporter and NQ−NDX basis.
+- GLD → **GC/MGC**, USO → **CL/MCL**: the original ETF (Call [(OI+Volume)×Gamma] − Put [(OI+Volume)×Gamma]) is unchanged. These are **illustrative price projections** of ETF strikes, NOT native futures option Gamma.
+- The app reads the Cboe snapshot, then **once per original file hash and chosen month-specific futures contract** attempts to retrieve two **5-minute completed bars with exactly the same UTC timestamp** (no nearest-neighbor matching): Yahoo GLD and the chosen `GCZ26.CMX` (or `GCG27.CMX`), or USO and `CLZ26.NYM` (or `CLF27.NYM`). Only regular ETF trading 09:30–16:00 New York bars are considered. Delayed/stale or nonexistent pairs block the automatic ratio. These are Yahoo quotes and may differ from exchange/broker realtime data.
+- The **locked ratio** is `future_close_5m / ETF_close_5m`. The two prices, precise matching bar time in New York, source, contract, ratio and original Cboe snapshot hash are retained in Streamlit session. The mapped future price is `ETF_strike × locked_ratio`. On each new Cboe file or different futures contract the old ratio becomes invalid; no previous/unsynchronized price is substituted.
+- If Yahoo does not provide a synchronized pair, exports are **blocked** pending the explicit reattempt or **manual fallback**. The manual fallback requires two same-time prices plus the observed New York clock time, and is labeled **user-declared, not independently verified**.
+- Every Pine embeds the frozen ratio as a numeric literal; its default input is **Bloccato** and stays unchanged through future sessions. Optional **Dinamico** refreshes only when TradingView obtains completed 5-minute ETF/future bars with **equal timestamps**, carrying forward the last valid ratio when the ETF market is closed. On chart timeframes above 5 minutes the dynamic mode falls back to the frozen ratio. Turning on the dynamic mode can move *all* drawn levels; it is not appropriate if the user wants static levels from a particular options snapshot.
+- Each script restricts display to relevant futures roots (GC/MGC or CL/MCL) and identifies the **chosen dated futures contract**. On continuous symbols GC1!/CL1!, double-check the effective futures month and roll dates. 0DTE, Weekly and combined exports follow the Cboe chain's **real** expirations; there is no expiry synthesis.
+- The Cboe snapshot's original timestamp has **no documented time zone** in the raw file. We can sync ETF and futures *to each other* by the exact 5-minute bar timestamp, but **cannot claim that this pair has the same exact instant as the Cboe chain**, unless the source timezone is independently verified. The app explicitly shows both observations.
+- Data acquisition remains manual-on-demand and subject to Cboe/Yahoo source terms. Pine compilation and live ratio behavior require final verification on TradingView. Do not label these projections genuine CME/NYMEX option support/resistance.
 
 ## Run
 
