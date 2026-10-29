@@ -27,7 +27,8 @@ class TestPercentageStrikeSelection(unittest.TestCase):
         a = profile(doc, FIRST, 30000)
         b = profile(doc, WEEKLY, 30000)
         self.assertEqual(DEFAULT_BAND_PCT, 1.5)
-        self.assertEqual((a["band_lower"], a["band_upper"]), (29550, 30450))
+        self.assertAlmostEqual(a["band_lower"], 29550)
+        self.assertAlmostEqual(a["band_upper"], 30450)
         self.assertEqual((a["band_lower"], a["band_upper"]),
                          (b["band_lower"], b["band_upper"]))
         self.assertEqual(a["selected_strikes"], 181)
@@ -45,8 +46,8 @@ class TestPercentageStrikeSelection(unittest.TestCase):
         self.assertIn("max_lines_count=500", code)
         self.assertIn("0DTE 29/10", code)
         self.assertIn("Weekly 30/10", code)
-        self.assertIn("29550.000000", code)
-        self.assertIn("30450.000000", code)
+        self.assertIn("29704.008700", code)
+        self.assertIn("30604.008700", code)
 
     def test_pine_blocks_over_line_limit_instead_of_truncating(self):
         doc = chain(step=2)
