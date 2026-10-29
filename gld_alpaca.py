@@ -107,7 +107,8 @@ def fetch_gld(key, secret, band_pct=3.0, session=None, day=None):
         groups[label] = {"expiry": expiry.isoformat(), "contracts": contracts, "snapshots": snapshots}
     return {"symbol": "GLD", "feed": "indicative", "captured_at": datetime.now(ZoneInfo("Europe/Rome")).isoformat(timespec="seconds"),
             "as_of_ny": day.isoformat(), "prev_close": prev_close, "band_pct": band_pct,
-            "price_latest": (price_data.get("latestTrade") or {}).get("p"), "groups": groups}
+            "price_latest": (price_data.get("latestTrade") or {}).get("p"),
+            "spot_quote": price_data.get("latestQuote") or {}, "groups": groups}
 
 
 def calculate_profile(group, lower, upper):
