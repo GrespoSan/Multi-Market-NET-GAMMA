@@ -31,11 +31,11 @@ def schedule_decision(now: datetime, requested: str | None = None, manual: bool 
             eligible.append(slot)
     if requested and requested not in SLOTS:
         raise ValueError("Slot richiesto non previsto.")
+    if manual:
+        return {"run": True, "reason": "MANUALE",
+                "slot": "manuale", "rome": local, "requested": requested or ""}
     if requested in eligible:
         return {"run": True, "reason": "IN_WINDOW", "slot": requested, "rome": local}
-    if manual:
-        return {"run": True, "reason": "MANUALE_FUORI_SLOT",
-                "slot": "manuale", "rome": local, "requested": requested or ""}
     if requested:
         return {"run": False, "reason": "LATE_OR_WRONG_SLOT",
                 "slot": requested, "rome": local}
