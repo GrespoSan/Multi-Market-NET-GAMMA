@@ -10,7 +10,7 @@ import streamlit as st
 from markets import MARKETS
 from data_sources import download_ndx, NDX_URL
 from ndx_engine import (unpack_snapshot, available_expirations, close_from_payload,
-                        profile, weekly_target)
+                        profile, weekly_target, DEFAULT_BAND_PCT)
 from ndx_basis import fetch_basis
 from pine_export import make_pine
 from macro_events import events_for_pine, CREDITS as MACRO_CREDITS
@@ -169,7 +169,7 @@ if not profiles:
     st.stop()
 
 # Stessa finestra di prezzo per 0DTE e Weekly, basata sul close indice precedente.
-band_pct = 1.5
+band_pct = DEFAULT_BAND_PCT
 band_low = reference * (1 - band_pct / 100)
 band_high = reference * (1 + band_pct / 100)
 gamma_values = [r['net_gamma'] for group in profiles.values() for r in group['rows']]
@@ -180,10 +180,10 @@ shared_gamma_range = [gamma_min - gamma_span * .06, gamma_max + gamma_span * .06
 price_shift = basis if basis is not None else 0.0
 shared_price_range = [band_low + price_shift, band_high + price_shift]
 
-st.subheader('NET GAMMA — NDX · fascia ±1,5%')
+st.subheader(f'NET GAMMA — NDX · fascia ±{band_pct:g}%')
 st.caption('Formula invariata: NET = [(OI+Volume)×Gamma] Call − [(OI+Volume)×Gamma] Put. '
            'Tutti gli strike Cboe disponibili tra '
-           f'**{band_low:,.2f} e {band_high:,.2f} NDX** (±1,5% dal close precedente). '
+           f'**{band_low:,.2f} e {band_high:,.2f} NDX** (±{band_pct:g}% dal close precedente). '
            'Stessa fascia prezzi e stessa scala Gamma per 0DTE e Weekly.')
 if basis is None:
     st.warning('Differenziale assente: vengono rappresentati gli strike NDX; esportazione NQ disabilitata.')
@@ -201,7 +201,7 @@ for (kind,group),column in zip(profiles.items(),cols):
     with column:
         st.markdown(f'**{kind} · scadenza {group["expiry"]}**')
         st.caption(f'{group["contract_count"]} contratti · {group["available_strikes"]} strike disponibili '
-                   f'· {group["selected_strikes"]} strike nella fascia ±1,5%')
+                   f'· {group["selected_strikes"]} strike nella fascia ±{band_pct:g}%')
         rows=group['rows']
         y=[r['strike_index']+price_shift for r in rows]
         x=[r['net_gamma'] for r in rows]
