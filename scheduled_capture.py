@@ -128,6 +128,9 @@ def capture_one(symbol, now, slot, source_url, authorized=False, token="",
             log["note"] = ("Download programmato sospeso: serve un URL di feed "
                            "autorizzato e MM_AUTHORIZED_FEED_CONFIRMED=true. "
                            "NON usare delayed_quotes Cboe.")
+        elif archive is None:
+            log["note"] = ("Archivio privato non configurato: nessuna acquisizione "
+                           "di dati soggetti a licenza senza un bucket privato.")
         else:
             raw = read_authorized_source(symbol, source_url, token=token, get=get)
             quality = validate_chain(symbol, raw)
@@ -137,19 +140,11 @@ def capture_one(symbol, now, slot, source_url, authorized=False, token="",
             log.update({"status": "SCARICATO", "data": quality,
                         "sha256_original": digest, "file": file_key,
                         "size_compressed": len(compressed)})
-            local_path = output / file_key
-            local_path.parent.mkdir(parents=True, exist_ok=True)
-            local_path.write_bytes(compressed)
-            if archive:
-                archive.upload(file_key, compressed, "application/gzip")
-                log["storage"] = "Supabase privato + artifact GitHub"
-            else:
-                log["storage"] = "Artifact GitHub Actions"
+            archive.upload(file_key, compressed, "application/gzip")
+            log["storage"] = "Bucket privato Supabase; artifact GitHub contiene SOLO log"
     except Exception as exc:
         log["status"] = "ERRORE"
         log["note"] = f"{type(exc).__name__}: {str(exc)[:240]}"
-        if file_key and compressed and not archive:
-            log["note"] += " (file solo in artifact GitHub)"
     log_path = f"{logs_root}/{name}.json"
     data = json.dumps(log, ensure_ascii=False, indent=2).encode("utf-8")
     local_log = output / log_path
