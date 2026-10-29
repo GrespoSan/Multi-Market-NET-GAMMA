@@ -26,11 +26,11 @@ market_key=st.selectbox('Sottostante', list(MARKETS.keys()),
                         format_func=lambda x: MARKETS[x].label)
 market=MARKETS[market_key]
 if market_key == 'GOLD':
-    st.caption('Sottostante ETF GLD (USD) · Opzioni GLD Cboe · '
-               'NON future CME GC · livelli soltanto GLD.')
+    st.caption('Gamma originale opzioni ETF GLD da Cboe · Pine GC/MGC con '
+               'mappatura percentuale indicativa, NON livelli opzioni future.')
 elif market_key == 'WTI':
-    st.caption('Sottostante ETF USO (USD) · Opzioni USO Cboe · '
-               'NON future NYMEX CL/MCL · livelli soltanto USO.')
+    st.caption('Gamma originale opzioni ETF USO da Cboe · Pine CL/MCL con '
+               'mappatura percentuale indicativa, NON livelli opzioni future.')
 else:
     st.caption(f'Opzioni: {market.options} · Future: {market.futures} · Differenziale: {market.basis}')
 if market_key == 'GOLD':
