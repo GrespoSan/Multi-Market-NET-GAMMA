@@ -20,7 +20,7 @@ from nq_price_panel import load_nq_candles, chart_compare_nq
 ROME=ZoneInfo('Europe/Rome')
 st.set_page_config(page_title='Multi-Market NET GAMMA', layout='wide')
 st.title('Multi-Market NET GAMMA')
-st.caption('App separata da Serafini SPX · moduli NDX/NQ, GLD e USO · 6 mercati nel selettore')
+st.caption('App separata da Serafini SPX · moduli Nasdaq NDX/NQ, Gold GLD e Petrolio USO · 3 mercati nel selettore')
 
 market_key=st.selectbox('Sottostante', list(MARKETS.keys()),
                         format_func=lambda x: MARKETS[x].label)
