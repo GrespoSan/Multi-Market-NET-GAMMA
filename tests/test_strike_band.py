@@ -24,9 +24,9 @@ def chain(step=5, max_distance=600):
 class TestPercentageStrikeSelection(unittest.TestCase):
     def test_unchanged_formula_and_all_strikes_in_common_band(self):
         doc = chain()
-        a = profile(doc, FIRST, 30000)
-        b = profile(doc, WEEKLY, 30000)
-        self.assertEqual(DEFAULT_BAND_PCT, 1.5)
+        a = profile(doc, FIRST, 30000, band_pct=1.5)
+        b = profile(doc, WEEKLY, 30000, band_pct=1.5)
+        self.assertEqual(DEFAULT_BAND_PCT, 3.0)
         self.assertAlmostEqual(a["band_lower"], 29550)
         self.assertAlmostEqual(a["band_upper"], 30450)
         self.assertEqual((a["band_lower"], a["band_upper"]),
@@ -41,7 +41,7 @@ class TestPercentageStrikeSelection(unittest.TestCase):
 
     def test_pine_exports_all_362_strikes_without_fixed_fifty_limit(self):
         doc = chain()
-        a, b = profile(doc, FIRST, 30000), profile(doc, WEEKLY, 30000)
+        a, b = profile(doc, FIRST, 30000, band_pct=1.5), profile(doc, WEEKLY, 30000, band_pct=1.5)
         code = make_pine({"0DTE": a, "Weekly": b}, 154.0087, FIRST, "29/10")
         self.assertIn("max_lines_count=500", code)
         self.assertIn("0DTE 29/10", code)
