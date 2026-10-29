@@ -161,7 +161,7 @@ if st.session_state.get('ndx_basis_result'):
 # Fascia comune 0DTE/Weekly: percentuale libera, centrata sul close NDX precedente.
 # Modificare la fascia cambia solo gli strike selezionati, mai la formula Gamma.
 band_pct=st.number_input('Fascia strike ± % dal Close precedente (0DTE e Weekly)',
-                         min_value=0.1, max_value=10.0, value=1.5, step=0.1,
+                         min_value=0.1, max_value=10.0, value=3.0, step=0.1,
                          format='%.1f', key='ndx_strike_band_percent',
                          help='Unica ampiezza percentuale applicata alle due scadenze; '
                               'include ogni strike reale dentro i limiti.')
