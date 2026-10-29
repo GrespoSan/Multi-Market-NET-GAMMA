@@ -237,6 +237,7 @@ def render_uso_cboe():
                                mime="text/csv", on_click="ignore")
     st.caption("Questi grafici non rappresentano Gamma monetario/dealer GEX, "
                "non individuano automaticamente Gamma Flip e non sono livelli CL.")
-    render_etf_pine_exports("USO", groups, reference, base_day,
-                            source_sha=st.session_state.get("uso_cboe_sha256", ""),
-                            cboe_stamp=stamp)
+    # Keep 4-argument call compatible with a previous module during Streamlit hot reload.
+    # The current exporter reads source SHA and Cboe timestamp from session state.
+    st.session_state["uso_cboe_timestamp"] = stamp
+    render_etf_pine_exports("USO", groups, reference, base_day)
