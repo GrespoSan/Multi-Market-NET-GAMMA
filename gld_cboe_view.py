@@ -1,12 +1,8 @@
-"""GLD from the original Cboe option-chain JSON, independent from Alpaca.
-
-Cboe's delayed quote page prohibits automatic extraction. For this study the
-user manually downloads the original GLD.json and loads it into Streamlit.
-No polling, scraping, scheduled collection, or external API credentials.
+"""Cboe GLD module: one-click snapshot, with manual JSON fallback.
+No Alpaca, scheduled polling, or conversion to CME GC strikes.
 """
 from datetime import datetime
 from zoneinfo import ZoneInfo
-from collections import Counter
 import csv
 import hashlib
 import io
@@ -14,7 +10,7 @@ import io
 import streamlit as st
 import plotly.graph_objects as go
 
-from gld_cboe import (GLD_URL, read_gld, expirations, next_weekly,
+from gld_cboe import (GLD_URL, download_gld, read_gld, expirations, next_weekly,
                       close_previous, current_price, profile, MIN_VALID_COVERAGE)
 
 
@@ -56,6 +52,29 @@ def _plot(p, reference, common_x, shared_y):
     return fig
 
 
+def _save_snapshot(raw, filename, source):
+    """Validate before replacing the previous good snapshot."""
+    doc = read_gld(raw)
+    dates = expirations(doc)
+    if not dates:
+        raise ValueError("Nessuna scadenza GLD riconosciuta.")
+    digest = hashlib.sha256(raw).hexdigest()
+    prior = st.session_state.get("gld_cboe_sha256")
+    st.session_state["gld_cboe_raw"] = raw
+    st.session_state["gld_cboe_file"] = filename
+    st.session_state["gld_cboe_sha256"] = digest
+    st.session_state["gld_cboe_source"] = source
+    st.session_state["gld_cboe_import_rome"] = datetime.now(
+        ZoneInfo("Europe/Rome")).isoformat(timespec="seconds")
+    if prior != digest:
+        # New chain: discard manual previous-close override from older source.
+        previous = close_previous(doc)
+        st.session_state["gld_cboe_reference"] = (
+            f"{previous:.4f}" if previous is not None else "")
+        st.session_state.pop("gld_cboe_day", None)
+    return prior != digest
+
+
 def render_gld_cboe():
     st.subheader("Gold · GLD (ETF) — NET GAMMA Cboe")
     st.caption("Dati originali Cboe: Gamma, Open Interest e Volume per le opzioni GLD. "
@@ -63,37 +82,45 @@ def render_gld_cboe():
     st.caption("Fonte: Cboe delayed quotes · GLD.json. Il timestamp Cboe viene mostrato "
                "esattamente come presente nel file, senza attribuirgli un fuso non documentato.")
 
-    st.markdown("**Acquisizione file originale**")
-    st.link_button("Apri GLD.json su Cboe", GLD_URL)
-    st.caption("Apri il file nel browser e salvalo come GLD.json; poi importalo qui. "
-               "Cboe limita l'estrazione automatica dei dati delayed quotes: "
-               "questa modalità non effettua download non presidiati.")
+    st.markdown("**Fotografia Cboe GLD**")
+    if st.button("Aggiorna fotografia GLD da Cboe", type="primary",
+                 key="gld_cboe_fetch"):
+        try:
+            with st.spinner("Lettura catena GLD originale da Cboe..."):
+                raw_online = download_gld()
+                changed = _save_snapshot(raw_online, "GLD_CBOE_online.json",
+                                         "Acquisizione diretta su richiesta")
+            if changed:
+                st.success("Nuova fotografia GLD ricevuta e validata.")
+            else:
+                st.info("Cboe ha restituito la stessa fotografia GLD già caricata.")
+        except Exception as exc:
+            st.warning(f"Acquisizione diretta GLD non riuscita: {str(exc)[:260]}. "
+                       "La fotografia precedente, se disponibile, non è stata modificata.")
 
-    uploaded = st.file_uploader("Carica GLD.json o GLD.json.gz originale",
-                                type=["json", "gz"], key="gld_cboe_upload")
-    if uploaded is not None:
-        raw = uploaded.getvalue()
-        fingerprint = hashlib.sha256(raw).hexdigest()
-        if st.session_state.get("gld_cboe_sha256") != fingerprint:
-            try:
-                parsed = read_gld(raw)
-                exps = expirations(parsed)
-                if not exps:
-                    raise ValueError("Nessuna scadenza GLD riconosciuta nella catena.")
-                st.session_state["gld_cboe_raw"] = raw
-                st.session_state["gld_cboe_file"] = uploaded.name
-                st.session_state["gld_cboe_sha256"] = fingerprint
-                st.session_state["gld_cboe_import_rome"] = datetime.now(
-                    ZoneInfo("Europe/Rome")).isoformat(timespec="seconds")
-                st.success("GLD Cboe validato e caricato.")
-            except Exception as exc:
-                st.error(f"File non utilizzabile: {str(exc)[:300]}")
-                return
+    with st.expander("Importazione manuale del JSON originale (alternativa)", expanded=False):
+        st.link_button("Apri GLD.json su Cboe", GLD_URL)
+        st.caption("Se il server non riesce a raggiungere Cboe, salva il file originale "
+                   "dal browser e importalo qui. Nessuna acquisizione programmata è attiva.")
+        uploaded = st.file_uploader("Carica GLD.json o GLD.json.gz originale",
+                                    type=["json", "gz"], key="gld_cboe_upload")
+        if uploaded is not None:
+            raw_uploaded = uploaded.getvalue()
+            fingerprint = hashlib.sha256(raw_uploaded).hexdigest()
+            # Do not overwrite a newer, directly downloaded snapshot on every rerun.
+            if st.session_state.get("gld_cboe_upload_handled") != fingerprint:
+                try:
+                    _save_snapshot(raw_uploaded, uploaded.name,
+                                   "Importazione manuale")
+                    st.session_state["gld_cboe_upload_handled"] = fingerprint
+                    st.success("File originale GLD importato e validato.")
+                except Exception as exc:
+                    st.error(f"File GLD non valido: {str(exc)[:300]}")
 
     raw = st.session_state.get("gld_cboe_raw")
     if not raw:
-        st.info("Importa il JSON Cboe originale per visualizzare i NET GAMMA GLD "
-                "0DTE e Weekly. Alpaca non è richiesto.")
+        st.info("Premi «Aggiorna fotografia GLD da Cboe» per visualizzare "
+                "0DTE e Weekly. Se il download non riesce, usa l'importazione manuale.")
         return
     try:
         data = read_gld(raw)
@@ -103,8 +130,8 @@ def render_gld_cboe():
         return
 
     stamp = data.get("timestamp")
-    st.caption(f"**File:** {st.session_state.get('gld_cboe_file', 'GLD.json')} · "
-               f"**Importato:** {st.session_state.get('gld_cboe_import_rome', 'non verificato')} (Roma) · "
+    st.caption(f"**Fonte:** {st.session_state.get('gld_cboe_source', 'GLD.json')} · "
+               f"**Acquisizione (Roma):** {st.session_state.get('gld_cboe_import_rome', 'non verificata')} · "
                f"**Timestamp originale Cboe:** {stamp if stamp else 'non disponibile'}")
     if not stamp:
         st.warning("Il file non contiene un timestamp Cboe verificabile. "
@@ -131,9 +158,11 @@ def render_gld_cboe():
     auto_ref = close_previous(data)
     if auto_ref is None:
         st.warning("Chiusura precedente assente nel JSON; inserisci un riferimento GLD verificato.")
+    if "gld_cboe_reference" not in st.session_state:
+        st.session_state["gld_cboe_reference"] = (
+            f"{auto_ref:.4f}" if auto_ref is not None else "")
     reference_text = st.text_input(
         "Chiusura GLD della seduta precedente (USD)",
-        value=f"{auto_ref:.4f}" if auto_ref is not None else "",
         key="gld_cboe_reference")
     try:
         reference = float(reference_text.replace(",", "."))
