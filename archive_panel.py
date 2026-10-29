@@ -45,7 +45,7 @@ def archive_panel(symbol):
             entered = st.text_input("Codice accesso archivio privato",
                                     type="password", key="mm_archive_passphrase")
             if st.button("Sblocca archivio", key=f"{key}_archive_unlock"):
-                if hmac.compare_digest(entered, expected_code):
+                if hmac.compare_digest(entered.encode("utf-8"), expected_code.encode("utf-8")):
                     st.session_state["mm_archive_unlocked"] = True
                     st.rerun()
                 else:
