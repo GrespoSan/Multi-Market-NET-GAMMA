@@ -28,9 +28,6 @@ if not market.enabled:
             'Nessun livello sarà simulato senza una catena opzioni validata.')
     st.stop()
 
-st.warning('**NDX in validazione:** la formula e la selezione 25+25 strike sono una replica '
-           'sperimentale del metodo SPX. Non sono ancora state validate per NDX. '
-           'Dati Cboe differiti; non costituiscono un segnale operativo.')
 
 st.subheader('Fotografia Cboe NDX')
 col_a,col_b=st.columns([1,2],gap='large')
