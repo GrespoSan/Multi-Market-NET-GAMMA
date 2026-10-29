@@ -1,7 +1,7 @@
 """Pine v6 per NDX/NQ: stessa interfaccia dei Pine Serafini SPX.
 Solo disegno dei NET GAMMA gia' calcolati. Ticker consentiti: NQ e MNQ.
 """
-from math import ceil, isfinite
+from math import ceil, floor, isfinite, log10
 from datetime import date
 
 
@@ -21,20 +21,42 @@ def _pine_array(rows, field, offset=0.0):
 
 
 def _initial_manual_scale(profiles):
-    """Stessa identica regola iniziale del generatore Serafini SPX.
+    """Suggerisce la scala di PRESENTAZIONE dal Gamma realmente esportato.
 
-    Il valore è in Gamma/barra reale, senza normalizzazioni NDX.
+    A differenza di SPX, Gamma NDX puo' essere molto inferiore a 1:
+    imporre 1 Gamma/barra comprime tutte le barre in una linea.
+    Il suggerimento e' calcolato SOLO in esportazione e resta un input
+    manuale in TradingView; nessun Gamma viene riscalato o normalizzato.
     """
-    minimum = 1.0
+    peaks = {}
     for group, center in profiles:
-        positives = [max(0.0, float(row["net_gamma"])) for row in group["rows"]]
-        negatives = [max(0.0, -float(row["net_gamma"])) for row in group["rows"]]
-        if not positives:
+        values = [float(row["net_gamma"]) for row in group["rows"]]
+        if not values:
             continue
-        needed = max(max(positives) / float(480 - center),
-                     max(negatives) / float(9500 + center))
-        minimum = max(minimum, needed)
-    return ceil(minimum * 10.0 - 1e-8) / 10.0
+        positive = max(0.0, max(values))
+        negative = max(0.0, -min(values))
+        peaks[center] = (positive, negative)
+    if not peaks:
+        return (0.001, 0.0001)
+
+    # Profili leggibili, senza barre positive e negative sovrapposte
+    # tra le colonne (centri 60 e 160 barre dall'ultima candela).
+    needed = 0.000001
+    for center, (positive, negative) in peaks.items():
+        needed = max(needed, positive / 110.0)
+        needed = max(needed, negative / (45.0 if center == 60 else 80.0))
+    if 60 in peaks and 160 in peaks:
+        # Coda positiva 0DTE + coda negativa Weekly: massimo 85 barre.
+        needed = max(needed, (peaks[60][0] + peaks[160][1]) / 85.0)
+
+    # Circa due cifre significative: es. 0.00437 -> 0.0044.
+    magnitude = floor(log10(needed))
+    unit = 10.0 ** max(-8, magnitude - 1)
+    initial = ceil(needed / unit - 1e-9) * unit
+    initial = round(max(initial, 0.000001), 8)
+    return initial, round(unit, 8)
+
+
 
 def make_pine(profiles: dict, basis: float, target: date, label: str) -> str:
     if not profiles or not isfinite(float(basis)):
@@ -54,7 +76,9 @@ def make_pine(profiles: dict, basis: float, target: date, label: str) -> str:
         )
     odte=profiles.get("0DTE",{"rows":[],"expiry":""})
     weekly=profiles.get("Weekly",{"rows":[],"expiry":""})
-    scale=_initial_manual_scale([(odte,60),(weekly,160)])
+    scale, scale_step=_initial_manual_scale([(odte,60),(weekly,160)])
+    scale_text=f"{scale:.8f}".rstrip("0").rstrip(".")
+    scale_step_text=f"{scale_step:.8f}".rstrip("0").rstrip(".")
     first=date.fromisoformat(odte["expiry"]).strftime("%d/%m") if odte["rows"] else ""
     second=date.fromisoformat(weekly["expiry"]).strftime("%d/%m") if weekly["rows"] else ""
     band=next(iter(profiles.values())).get("band_pct",3.0)
@@ -68,7 +92,7 @@ indicator("Multi-Market NET GAMMA · NDX/NQ · {target.isoformat()} · {label}",
 // Stessa interfaccia del generatore Serafini SPX.
 validTicker = syminfo.type == "futures" and (syminfo.root == "NQ" or syminfo.root == "MNQ")
 
-gammaPerCandle = input.float({scale:.1f}, "Scala MANUALE · Gamma/barra", minval=0.1, step=0.1, tooltip="Sempre applicata esattamente come impostata. Se troppo bassa, il grafico segnala di aumentarla: nessuna modifica automatica.")
+gammaPerCandle = input.float({scale_text}, "Scala MANUALE · Gamma/barra", minval=0.000001, step={scale_step_text}, tooltip="Valore iniziale scelto dalla fotografia NDX per rendere visibili i profili. La scala resta MANUALE: non cambia automaticamente sul grafico. NET GAMMA non modificato.")
 offsetOdte = input.int(60, "Distanza 0DTE da ultima candela", minval=45, maxval=170)
 offsetWeekly = input.int(160, "Distanza Weekly da ultima candela", minval=55, maxval=300)
 positiveColor = input.color(color.rgb(0, 230, 117), "NET GAMMA positivo")
@@ -119,8 +143,8 @@ if barstate.islast and validTicker
     array.clear(drawnLabels)
     float actualScale = gammaPerCandle
     float minimumSafe = math.max(requiredScale(odteValues, offsetOdte), requiredScale(weeklyValues, offsetWeekly))
-    if actualScale + 0.000001 < minimumSafe
-        label unsafe = label.new(bar_index + 10, close, "Scala manuale troppo piccola. Imposta almeno " + str.tostring(math.ceil(minimumSafe * 100) / 100.0, "#.##") + " G/bar", xloc=xloc.bar_index, yloc=yloc.price, style=label.style_label_left, color=color.orange, textcolor=color.black, size=size.small)
+    if actualScale < minimumSafe * 0.999999
+        label unsafe = label.new(bar_index + 10, close, "Scala manuale troppo piccola. Imposta almeno " + str.tostring(minimumSafe, "#.########") + " G/bar", xloc=xloc.bar_index, yloc=yloc.price, style=label.style_label_left, color=color.orange, textcolor=color.black, size=size.small)
         array.push(drawnLabels, unsafe)
     else
         {'renderProfile(odteLevels, odteValues, bar_index + offsetOdte, "0DTE '+first+'", actualScale)' if odte["rows"] else '// 0DTE non incluso in questa esportazione'}
