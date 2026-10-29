@@ -26,13 +26,13 @@ market_key=st.selectbox('Sottostante', list(MARKETS.keys()),
                         format_func=lambda x: MARKETS[x].label)
 market=MARKETS[market_key]
 if market_key == 'GOLD':
-    st.caption('Sottostante: ETF GLD (USD) · Opzioni USA su GLD via Alpaca · '
-               'NON è un future CME GC e non usa un differenziale GC–GLD.')
+    st.caption('Sottostante ETF GLD (USD) · Opzioni GLD Cboe · '
+               'NON future CME GC · livelli soltanto GLD.')
 else:
     st.caption(f'Opzioni: {market.options} · Future: {market.futures} · Differenziale: {market.basis}')
 if market_key == 'GOLD':
-    from gld_view import render_gld
-    render_gld()
+    from gld_cboe_view import render_gld_cboe
+    render_gld_cboe()
     st.stop()
 
 if not market.enabled:
