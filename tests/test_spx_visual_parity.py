@@ -71,8 +71,8 @@ class SPXVisualParity(unittest.TestCase):
             self.assertIn('renderProfile(odteLevels, mainGammaETF,', code)
             self.assertIn('modeRatio = input.string("Bloccato"', code)
             self.assertIn('gaps=barmerge.gaps_on', code)
-        self.assertIn('30000.0', nq)
         self.assertIn('30140.0', nq)
+        self.assertIn('30150.0', nq)
 
 
 if __name__ == "__main__":
