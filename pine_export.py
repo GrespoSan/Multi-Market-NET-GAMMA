@@ -28,14 +28,22 @@ def make_pine(profiles: dict, basis: float, target: date, label: str) -> str:
         raise ValueError('Differenziale NQ-NDX non valido')
     positions = {'0DTE':75, 'Weekly':260} if len(profiles)==2 else {next(iter(profiles)):90}
     draw = [(profiles[k],positions[k]) for k in profiles]
-    for p,_ in draw:
-        if len(p['rows']) !=50:
-            raise ValueError('Esportazione bloccata: ogni profilo deve contenere 50 strike')
+    # Pine permette al massimo 500 oggetti line. Lasciamo margine per
+    # le max 12 linee macro, senza rimuovere strike dal profilo all'insaputa.
+    total_strikes = sum(len(p['rows']) for p, _ in draw)
+    if any(not p['rows'] for p, _ in draw):
+        raise ValueError('Esportazione bloccata: profilo privo di strike nella fascia selezionata.')
+    if total_strikes > 480:
+        raise ValueError(
+            f'Pine richiede {total_strikes} linee Gamma (limite prudenziale: 480, '
+            'incluso margine per le news). Nessuno strike viene escluso '
+            'automaticamente: occorre una soluzione di visualizzazione dedicata.'
+        )
     scale=_safe_scale(draw)
     lines=[
         '//@version=6',
-        f'indicator("Multi-Market NET GAMMA · NDX/NQ · {label} · {target.isoformat()}", overlay=true, max_lines_count=350, max_labels_count=30)',
-        f'// NDX/NQ · Snapshot {label}; prezzi = strike NDX + basis {basis:.4f}',
+        f'indicator("Multi-Market NET GAMMA · NDX/NQ · {label} · {target.isoformat()}", overlay=true, max_lines_count=500, max_labels_count=30)',
+        f'// NDX/NQ · Snapshot {label}; prezzi = strike NDX + basis {basis:.4f}; fascia da close precedente +/- 1.5%',
         '// Formula sperimentale NDX: Call (OI+Volume)*Gamma - Put (OI+Volume)*Gamma.',
         '// Questi sono dati statici esportati, NON un feed Pine automatico.',
         f'gammaPerBar = input.float({scale:.2f}, "Scala GAMMA manuale", minval=0.01, step=0.01)',
