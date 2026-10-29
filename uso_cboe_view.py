@@ -11,6 +11,7 @@ import streamlit as st
 from gamma_chart_style import profile_chart, top_levels
 
 from etf_pine_view import render_etf_pine_exports
+from archive_panel import archive_panel
 
 from uso_cboe import (USO_URL, download_uso, read_uso, expirations, next_weekly,
                       close_previous, current_price, profile, MIN_VALID_COVERAGE)
@@ -86,7 +87,7 @@ def render_uso_cboe():
     with st.expander("Importazione manuale del JSON originale (alternativa)", expanded=False):
         st.link_button("Apri USO.json su Cboe", USO_URL)
         st.caption("Se il server non riesce a raggiungere Cboe, salva il file originale "
-                   "dal browser e importalo qui. Nessuna acquisizione programmata è attiva.")
+                   "dal browser e importalo qui. Il download diretto resta manuale; i rilevamenti pianificati richiedono feed autorizzati.")
         uploaded = st.file_uploader("Carica USO.json o USO.json.gz originale",
                                     type=["json", "gz"], key="uso_cboe_upload")
         if uploaded is not None:
@@ -101,6 +102,16 @@ def render_uso_cboe():
                     st.success("File originale USO importato e validato.")
                 except Exception as exc:
                     st.error(f"File USO non valido: {str(exc)[:300]}")
+
+    archive_selected = archive_panel("USO")
+    if archive_selected is not None:
+        original_raw, stored_name = archive_selected
+        try:
+            _save_snapshot(original_raw, stored_name,
+                           "Archivio privato · rilevamento programmato")
+            st.success("Fotografia programmata caricata dall'archivio privato.")
+        except Exception as exc:
+            st.error(f"Fotografia archivio non valida: {str(exc)[:240]}")
 
     raw = st.session_state.get("uso_cboe_raw")
     if not raw:
