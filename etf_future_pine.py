@@ -149,7 +149,7 @@ if barstate.islast
                 @RENDER_WEEKLY@
             if showContext
                 string refType = futureAnchorManual > 0 ? "manuale" : "auto Daily (variabile)"
-                label notice = label.new(bar_index + 3, close, "@SYMBOL@ → @MARKET@ · livelli % indicativi, NON gamma future\nAncora future " + refType + ": " + str.tostring(futureReference, format.mintick), style=label.style_label_left, color=color.new(color.orange, 60), textcolor=color.white, size=size.tiny)
+                label notice = label.new(bar_index + 3, close, "@SYMBOL@ → @MARKET@ · livelli % indicativi, NON gamma future\\nAncora future " + refType + ": " + str.tostring(futureReference, format.mintick), style=label.style_label_left, color=color.new(color.orange, 60), textcolor=color.white, size=size.tiny)
                 array.push(drawnLabels, notice)
 """
     substitutions = {
@@ -159,8 +159,8 @@ if barstate.islast
         "@LABEL@": label.replace('"', "").replace("\n", " ")[:60],
         "@VALID_ROOTS@": valid,
         "@ETF_REFERENCE@": n(etf_reference),
-        "@GAMMA_SCALE@": n(scale),
-        "@SCALE_STEP@": n(step),
+        "@GAMMA_SCALE@": n(max(0.000001, scale)),
+        "@SCALE_STEP@": n(max(0.00000001, step)),
         "@MAIN_STRIKES@": _pine_array(main_rows, "strike"),
         "@MAIN_GAMMA@": _pine_array(main_rows, "net"),
         "@WEEKLY_STRIKES@": _pine_array(weekly_rows, "strike"),
