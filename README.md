@@ -4,8 +4,8 @@
 
 ## Current scope
 
-- Six-instrument selector: Nasdaq / DAX / Gold / WTI / EURUSD / ZB.
-- **Nasdaq NDX/NQ remains enabled.** Gold GLD (ETF) and Petrolio USO (ETF) have separate **Cboe on-demand NET GAMMA** modes with no Alpaca dependency; DAX, EURUSD and ZB remain disabled. Neither GLD nor USO strikes are native futures-option strikes (GC / CL).
+- Three-market selector: **Nasdaq NDX/NQ**, **Gold GLD (ETF)** and **Petrolio USO (ETF)**.
+- **Nasdaq NDX/NQ remains enabled.** Gold GLD (ETF) and Petrolio USO (ETF) have separate **Cboe on-demand NET GAMMA** modes with no Alpaca dependency. Neither GLD nor USO strikes are native futures-option strikes (GC / CL).
 - Cboe `_NDX.json` fetch *on demand* or imported `.json` / `.json.gz` original file.
 - NDX and NDXP contracts parsed using expiry, put/call and strike from original OCC code.
 - `(OI+Volume)*Gamma` Call minus Put unchanged; all real NDX strikes in a **user-adjustable ±% band** centered on the previous NDX close (default ±3%; same band for 0DTE and Weekly).
