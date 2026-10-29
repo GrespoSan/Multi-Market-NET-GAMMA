@@ -175,3 +175,59 @@ def calculate_profile(group, lower, upper):
             "valid_contracts": valid, "complete_strikes": len(records),
             "coverage": coverage, "missing": dict(missing),
             "oi_dates": sorted(oi_dates), "usable": usable}
+
+
+def calculate_open_interest(group, lower, upper):
+    """Strictly OI-only fallback for 0DTE when Alpaca omits Gamma.
+
+    Never calls this GEX, never assumes missing OI is zero, and never
+    transforms GLD strikes into GC strikes.
+    """
+    expiry = group["expiry"]
+    contracts = group.get("contracts") or []
+    snaps = group.get("snapshots") or {}
+    if not isinstance(contracts, list) or not isinstance(snaps, dict):
+        raise ValueError("Catena GLD non valida.")
+    pairs = defaultdict(dict)
+    oi_dates = set()
+    eligible = 0
+    complete = 0
+    missing_oi = 0
+    for c in contracts:
+        if (c.get("underlying_symbol") != "GLD"
+                or c.get("expiration_date") != expiry
+                or c.get("status") != "active"):
+            continue
+        strike = _number(c.get("strike_price"))
+        side = c.get("type")
+        if strike is None or not lower <= strike <= upper or side not in ("call", "put"):
+            continue
+        eligible += 1
+        oi = _number(c.get("open_interest"))
+        if oi is None:
+            missing_oi += 1
+            continue
+        if _number(c.get("multiplier")) != 100:
+            continue
+        complete += 1
+        dated = c.get("open_interest_date")
+        if dated:
+            oi_dates.add(dated)
+        symbol = c.get("symbol")
+        if side in pairs[strike]:
+            raise ValueError("Contratto GLD duplicato per strike/lato.")
+        snap = snaps.get(symbol) or {}
+        volume = _number((snap.get("dailyBar") or {}).get("v"))
+        pairs[strike][side] = {"oi": oi, "volume": volume}
+    rows = []
+    for strike, sides in sorted(pairs.items()):
+        if "call" not in sides or "put" not in sides:
+            continue
+        c, p = sides["call"], sides["put"]
+        rows.append({"strike": strike, "call_oi": c["oi"], "put_oi": p["oi"],
+                     "call_volume": c["volume"], "put_volume": p["volume"]})
+    coverage = complete / eligible if eligible else 0.0
+    return {"expiry": expiry, "rows": rows if len(rows) >= 2 and coverage >= MIN_COVERAGE else [],
+            "complete_pairs": len(rows), "eligible": eligible, "missing_oi": missing_oi,
+            "coverage": coverage, "oi_dates": sorted(oi_dates),
+            "usable": len(rows) >= 2 and coverage >= MIN_COVERAGE}
