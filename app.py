@@ -14,12 +14,14 @@ from zoneinfo import ZoneInfo
 import streamlit as st
 
 from markets import MARKETS
+from market_ui import PAGE_STYLE
 from v2_market_engine import render_selected_market
 
 st.set_page_config(page_title="Serafini · Multi-Market NET GAMMA V2",
                    page_icon="📊", layout="wide")
 
 # Same SPX-style wide interface and reserved access, but separate credentials.
+st.markdown(PAGE_STYLE, unsafe_allow_html=True)
 st.title("Serafini · Multi-Market — NET GAMMA V2")
 st.caption("NDX / NQ · GLD / GC · USO / CL · 0DTE / Weekly · interfaccia SPX")
 
