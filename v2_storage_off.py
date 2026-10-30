@@ -1,82 +1,135 @@
-"""No-Supabase V2 snapshot browser, matching SPX archived-capture workflow.
+"""Private V2 snapshot selection, visually aligned with Serafini SPX.
 
-Only encrypted GitHub Actions artifacts are loaded (server-side Github read
-token + Fernet key); never access Supabase or its credentials.
+Read encrypted GitHub Actions artifacts via read-only API token and Fernet.
+Both admin and authenticated friend may view snapshots (SPX-style readers).
+The latest available artifact is selected automatically; users can select
+another capture or keep an explicitly requested manual Cboe file instead.
+No Supabase, unattended delayed_quotes scraping, or plaintext persistence.
 """
+from datetime import datetime
+from zoneinfo import ZoneInfo
+
 import streamlit as st
 
 from v2_github_archive import (
     list_v2_artifacts, fetch_artifact_snapshot, decrypt_encrypted,
 )
 
+ROME = ZoneInfo("Europe/Rome")
+AVAILABLE_MARKETS = ("NDX", "GLD", "USO")
+SLOTS = {"0730": "Mattina 07:30 Roma",
+         "1550": "Pomeriggio 08:50 Chicago",
+         "2030": "Sera 13:30 Chicago",
+         "manuale": "Rilevamento manuale"}
+
+
+def prefer_manual_source(symbol):
+    """Explicit button/upload takes priority over automatic archive selection."""
+    if symbol not in AVAILABLE_MARKETS:
+        raise ValueError("Mercato V2 non valido.")
+    st.session_state[f"v2_archive_choice_{symbol.lower()}"] = "manuale"
+
+
+@st.cache_data(ttl=180, show_spinner=False, max_entries=8)
+def _cached_artifacts(github_token):
+    return list_v2_artifacts(github_token)
+
+
+@st.cache_data(ttl=1200, show_spinner=False, max_entries=18)
+def _cached_snapshot(url, symbol, github_token, key):
+    return fetch_artifact_snapshot(url, symbol, github_token, key)
+
+
+def _archive_label(item):
+    stamp = str(item.get("created_at") or "")
+    try:
+        instant = datetime.fromisoformat(stamp.replace("Z", "+00:00"))
+        when = instant.astimezone(ROME).strftime("%d/%m/%Y · %H:%M Roma")
+    except ValueError:
+        when = "ora non verificabile"
+    return f"{when} · {item.get('name', 'rilevamento')}"
+
 
 def archive_panel(symbol: str):
-    with st.expander("RILEVAMENTI CBOE · 07:30 Roma / 08:50 e 13:30 Chicago",
-                     expanded=False):
-        st.caption("Archivio indipendente dalla SPX e dalla V1: "
-                   "fotografie V2 cifrate, conservate negli artifact GitHub "
-                   "(30 giorni). Nessuna connessione Supabase.")
-        if st.session_state.get("v2_role") != "admin":
-            st.caption("Archivio riservato all'amministratore.")
-            return None
+    """Visible SPX-like capture select, newest automatically; encrypted-only."""
+    if symbol not in AVAILABLE_MARKETS:
+        raise ValueError("Mercato V2 non valido.")
+    try:
+        key = str(st.secrets.get("V2_ARCHIVE_FERNET_KEY", "")).strip()
+        github_token = str(st.secrets.get("V2_GITHUB_TOKEN", "")).strip()
+    except Exception:
+        key, github_token = "", ""
+    if not github_token or not key:
+        with st.expander("RILEVAMENTI PROGRAMMATI · archivio V2", expanded=False):
+            st.caption("Tre slot GitHub Actions: 07:30 Roma, 08:50 e 13:30 Chicago. "
+                       "La configurazione dell'archivio richiede V2_GITHUB_TOKEN "
+                       "(Actions Read) e V2_ARCHIVE_FERNET_KEY nei Secrets della V2. "
+                       "Le catene restano importabili manualmente.")
+        return None
+
+    col_select, col_refresh = st.columns([3.2, 0.8], gap="small",
+                                          vertical_alignment="bottom")
+    try:
+        artifacts = _cached_artifacts(github_token)
+    except Exception:
+        st.warning("Archivio V2 non raggiungibile: verifica il token GitHub Actions "
+                   "di sola lettura. Rimane disponibile l'importazione manuale.")
+        return None
+
+    options = ["manuale"] + [item["url"] for item in artifacts]
+    labels = {item["url"]: _archive_label(item) for item in artifacts}
+    choice_key = f"v2_archive_choice_{symbol.lower()}"
+    if st.session_state.get(choice_key) not in options:
+        # New app sessions prefer the newest automated capture if one exists.
+        st.session_state[choice_key] = options[1] if len(options) > 1 else "manuale"
+
+    with col_select:
+        chosen = st.selectbox(
+            "Snapshot originale opzioni · archivio automatico",
+            options, key=choice_key,
+            format_func=lambda url: ("Fotografia manuale / acquisizione diretta"
+                                     if url == "manuale" else labels.get(url, url)),
+            help="Le fotografie programmate sono archiviate cifrate su GitHub "
+                 "per 30 giorni. L'ultima è proposta per impostazione predefinita.",
+        )
+    with col_refresh:
+        if st.button("Aggiorna elenco", key=f"v2_{symbol.lower()}_gh_refresh",
+                     use_container_width=True):
+            _cached_artifacts.clear()
+            st.rerun()
+
+    if chosen == "manuale":
+        st.caption("Modalità manuale: i file caricati o scaricati su richiesta "
+                   "non vengono sovrascritti dall'archivio.")
+    else:
         try:
-            key = str(st.secrets.get("V2_ARCHIVE_FERNET_KEY", "")).strip()
-            github_token = str(st.secrets.get("V2_GITHUB_TOKEN", "")).strip()
+            packed, filename = _cached_snapshot(chosen, symbol, github_token, key)
+            parts = filename.split("_")
+            slot = next((SLOTS.get(p, "") for p in parts if p in SLOTS), "")
+            st.caption(f"Fotografia archivio V2: {slot or 'slot non verificabile'} · "
+                       f"file originale {filename} · acquisizione GitHub cifrata.")
+            return packed, filename
         except Exception:
-            key, github_token = "", ""
-        if not key:
-            st.info("Per aprire le fotografie cifrate, configura "
-                    "V2_ARCHIVE_FERNET_KEY nei Secrets della V2.")
-            return None
+            st.warning("Il rilevamento selezionato non contiene un JSON cifrato "
+                       f"{symbol} utilizzabile. Il job potrebbe essere partito "
+                       "senza una fonte opzioni autorizzata; seleziona un altro "
+                       "rilevamento o la modalità manuale.")
 
-        if github_token:
-            if st.button("Elenca rilevamenti GitHub", key=f"v2_{symbol.lower()}_gh_list"):
-                try:
-                    with st.spinner("Lettura elenco delle fotografie cifrate..."):
-                        st.session_state["v2_github_artifacts"] = list_v2_artifacts(
-                            github_token)
-                except Exception:
-                    st.error("Elenco GitHub non accessibile: verifica token Actions "
-                             "di sola lettura e permessi sul repository.")
-            options = st.session_state.get("v2_github_artifacts", [])
-            if options:
-                selected = st.selectbox(
-                    "Rilevamento programmato",
-                    options,
-                    format_func=lambda x: f"{x['created_at']} · {x['name']}",
-                    key=f"v2_{symbol.lower()}_gh_selected",
-                )
-                if st.button("Carica fotografia " + symbol + " da GitHub",
-                             key=f"v2_{symbol.lower()}_gh_download"):
-                    try:
-                        with st.spinner("Lettura e decifratura in memoria..."):
-                            packed, name = fetch_artifact_snapshot(
-                                selected["url"], symbol, github_token, key)
-                        st.success("Fotografia " + symbol + " caricata dall'archivio.")
-                        return packed, name
-                    except Exception as exc:
-                        st.warning("Questo artifact non contiene una fotografia "
-                                   f"{symbol} utilizzabile o non è accessibile. "
-                                   "L'acquisizione del relativo slot potrebbe "
-                                   "essere stata saltata.")
-        else:
-            st.caption("Per elencare e caricare direttamente i rilevamenti, "
-                       "aggiungi V2_GITHUB_TOKEN (fine-grained PAT con "
-                       "Actions: Read) nei Secrets Streamlit.")
-
-        with st.expander("Caricamento manuale di un artifact cifrato",
+    if st.session_state.get("v2_role") == "admin":
+        with st.expander("Importazione eccezionale di file cifrato (.enc)",
                          expanded=False):
+            st.caption("Usare solo file cifrati provenienti dalla V2; la chiave "
+                       "privata rimane nei Secrets Streamlit.")
             uploaded = st.file_uploader(
-                f"File {symbol} (.json.gz.enc) dall'artifact GitHub",
-                type=["enc"], key=f"v2_{symbol.lower()}_encrypted",
+                f"File {symbol} (.json.gz.enc)", type=["enc"],
+                key=f"v2_{symbol.lower()}_encrypted",
             )
             if uploaded is not None and st.button(
-                    "Decifra e carica file", key=f"v2_{symbol.lower()}_decrypt"):
+                    "Decifra file", key=f"v2_{symbol.lower()}_decrypt"):
                 try:
                     packed = decrypt_encrypted(uploaded.getvalue(), key)
-                    st.success("Fotografia cifrata caricata.")
+                    prefer_manual_source(symbol)
                     return packed, uploaded.name.removesuffix(".enc")
                 except Exception:
-                    st.error("File o chiave V2 non validi. Non condividere "
-                             "la chiave di decifratura.")
+                    st.error("File o chiave archivio V2 non validi.")
     return None
