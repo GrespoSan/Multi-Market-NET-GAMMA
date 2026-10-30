@@ -10,6 +10,7 @@ import unittest
 from cryptography.fernet import Fernet
 
 from v2_cron import run_capture, safe_url, validate_options
+from v2_schedule import decision
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -52,6 +53,42 @@ class V2SPXSetupTests(unittest.TestCase):
         self.assertNotIn("from multimarket_archive import", remote)
         self.assertNotIn("requests.", remote)
 
+    def test_chicago_dst_and_stable_rome_slot_names(self):
+        # Before US daylight saving ends: Italy is only 6 hours ahead.
+        cases = [
+            (datetime(2026, 10, 30, 6, 30, tzinfo=timezone.utc),
+             "30 7 * * 1-5", "07:30", "Europe/Rome", "07:30"),
+            (datetime(2026, 10, 30, 13, 50, tzinfo=timezone.utc),
+             "50 8 * * 1-5", "15:50", "America/Chicago", "14:50"),
+            (datetime(2026, 10, 30, 18, 30, tzinfo=timezone.utc),
+             "30 13 * * 1-5", "20:30", "America/Chicago", "19:30"),
+            (datetime(2026, 11, 2, 14, 50, tzinfo=timezone.utc),
+             "50 8 * * 1-5", "15:50", "America/Chicago", "15:50"),
+            (datetime(2026, 11, 2, 19, 30, tzinfo=timezone.utc),
+             "30 13 * * 1-5", "20:30", "America/Chicago", "20:30"),
+        ]
+        for now, cron, logical, zone, rome_time in cases:
+            with self.subTest(now=now, cron=cron):
+                d = decision(now, event_cron=cron)
+                self.assertTrue(d["run"])
+                self.assertEqual(d["slot"], logical)
+                self.assertEqual(d["time_zone"], zone)
+                self.assertEqual(d["rome"].strftime("%H:%M"), rome_time)
+
+    def test_wrong_chicago_slot_or_delay_does_not_backdate_snapshot(self):
+        wrong = decision(datetime(2026, 10, 30, 14, 50,
+                                  tzinfo=timezone.utc),
+                         event_cron="50 8 * * 1-5")
+        self.assertFalse(wrong["run"])
+        late = decision(datetime(2026, 10, 30, 14, 5,
+                                 tzinfo=timezone.utc),
+                        event_cron="50 8 * * 1-5")
+        self.assertFalse(late["run"])
+        manual = decision(datetime(2026, 10, 31, 15, 20,
+                                   tzinfo=timezone.utc),
+                          requested="20:30", manual=True)
+        self.assertEqual(manual["slot"], "manuale")
+
     def test_original_gamma_json_quality_and_root(self):
         for instrument in ("NDX", "GLD", "USO"):
             with self.subTest(instrument=instrument):
@@ -65,7 +102,7 @@ class V2SPXSetupTests(unittest.TestCase):
             raise AssertionError("No download allowed when no rights.")
         with tempfile.TemporaryDirectory() as tmp:
             result = run_capture(
-                now=datetime(2026, 10, 29, 14, 50, tzinfo=timezone.utc),
+                now=datetime(2026, 10, 29, 13, 50, tzinfo=timezone.utc),
                 env={}, output=Path(tmp), downloader=never_connect)
             self.assertEqual(result["status"], "PARZIALE_O_NON_CONFIGURATO")
             self.assertTrue(all(x["status"] == "NON_CONFIGURATO"
@@ -84,7 +121,7 @@ class V2SPXSetupTests(unittest.TestCase):
         }
         with tempfile.TemporaryDirectory() as tmp:
             result = run_capture(
-                now=datetime(2026, 10, 29, 14, 50, tzinfo=timezone.utc),
+                now=datetime(2026, 10, 29, 13, 50, tzinfo=timezone.utc),
                 env=env, output=Path(tmp), downloader=mock_download)
             self.assertEqual(result["status"], "TUTTI_ARCHIVIATI")
             for m in ("NDX", "GLD", "USO"):
