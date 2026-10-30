@@ -1,13 +1,13 @@
-name: Multi-Market V2 · SPX-style 07:30 15:50 20:30 Roma
+name: Multi-Market V2 · SPX 07:30 Roma · 08:50 e 13:30 Chicago
 
 on:
   schedule:
     - cron: "30 7 * * 1-5"
       timezone: "Europe/Rome"
-    - cron: "50 15 * * 1-5"
-      timezone: "Europe/Rome"
-    - cron: "30 20 * * 1-5"
-      timezone: "Europe/Rome"
+    - cron: "50 8 * * 1-5"
+      timezone: "America/Chicago"
+    - cron: "30 13 * * 1-5"
+      timezone: "America/Chicago"
   workflow_dispatch:
     inputs:
       slot:
@@ -29,8 +29,8 @@ concurrency:
 
 jobs:
   capture_v2:
-    # No unattended Cboe scrape. Enable only after verifying licensed feed rights.
-    if: github.event_name == 'workflow_dispatch' || vars.V2_AUTHORIZED_FEED_CONFIRMED == 'true'
+    # Execute all three cron slots. The runner reports NON_CONFIGURATO
+    # unless licensed feed URLs, owner confirmation and Fernet key exist.
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -43,9 +43,10 @@ jobs:
           python-version: '3.12'
       - name: Install V2 runtime requirements
         run: python -m pip install -r requirements.txt
-      - name: Capture authorized option chains at Rome time and encrypt
+      - name: Check SPX session windows and capture authorized option chains
         env:
           V2_REQUESTED_SLOT: ${{ inputs.slot }}
+          V2_EVENT_CRON: ${{ github.event.schedule }}
           V2_MANUAL_RUN: ${{ github.event_name == 'workflow_dispatch' }}
           V2_AUTHORIZED_FEED_CONFIRMED: ${{ vars.V2_AUTHORIZED_FEED_CONFIRMED }}
           V2_FEED_NDX_URL: ${{ secrets.V2_FEED_NDX_URL }}
