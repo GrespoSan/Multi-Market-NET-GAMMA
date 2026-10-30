@@ -55,7 +55,7 @@ def fetch_daily(ticker: str, target_day: date):
 @st.cache_data(ttl=3600, max_entries=60, show_spinner=False)
 def fetch_massive_futures(contract, target_day, api_key):
     """OHLC from one named futures contract; no silent roll."""
-    return previous_sessions(contract, target_day, api_key)
+    return previous_sessions(contract, target_day, api_key, history_days=75)
 
 
 def evaluate(future_bars, vol_bars):
@@ -162,28 +162,12 @@ def render(market, target_day):
     v_day = result["vol_day"].isoformat() if result["vol_day"] else "N/D"
     change = result["change_pct"]
     st.markdown(signed_daily_heading(change), unsafe_allow_html=True)
-    if result["bearish_volatility"] is True:
-        st.markdown('<div style="color:#ff676d;font-weight:750">Alta volatilità da ribasso · Close/Close &lt; −1%</div>',
-                    unsafe_allow_html=True)
-    elif result["bearish_volatility"] is False:
-        st.caption("Ribasso oltre −1% non rilevato: questo non esclude altre cause di alta volatilità.")
-    else:
-        st.caption("Regime da ribasso: N/D (mancano due chiusure Massive).")
     if result["previous_range_pct"] is not None:
         range_detail = (f"{result['range_trend']} · seduta precedente "
                         f"{result['previous_range_pct']:.2f}%")
     else:
         range_detail = "Confronto non disponibile"
-    if result["previous_close"] is not None and result["future_close"] is not None:
-        st.caption(
-            f"Massive Futures {contract} · 1session · stesso contratto: "
-            f"chiusura {result['future_day'].isoformat()} "
-            f"{result['future_close']:,.2f}, chiusura "
-            f"{result['previous_close_day'].isoformat()} "
-            f"{result['previous_close']:,.2f}. "
-            "Variazione su trade Close, NON settlement."
-        )
-    elif future_error:
+    if future_error:
         st.warning(future_error)
     st.markdown(f"""
 <style>
@@ -215,17 +199,28 @@ color:#949ba6;font-size:.74rem;line-height:1.4;}}
 <div class="spx-vol-kpi"><div class="label">Regime da ribasso Close/Close</div>
 <div class="number risk-text" style="color:{'#ff676d' if result['bearish_volatility'] else '#c4ccd5'}">{'ALTA VOLATILITÀ' if result['bearish_volatility'] else 'N/D' if result['bearish_volatility'] is None else 'Soglia −1% non superata'}</div></div>
 </div>
-<div class="spx-vol-foot">Futures Massive {escape(contract or 'N/D')}, sessione {escape(f_day)} ·
-Indice volatilità Yahoo {escape(vol_ticker)}: {escape(v_day)}.
-Stesso contratto e sessione Massive: Close/Close &lt; −1% indica alta volatilità da ribasso;
-Range Daily in espansione/compressione rispetto alla seduta ancora precedente.
-Questa classificazione NON applica automaticamente il buffer SPX ad altri mercati.
-Riferimento {target_day:%d/%m/%Y} · I valori si basano su trade Close, NON settlement.
-{escape(vol_name)} non indica contango VX.
-Buffer ES di 10/15 punti riservato alla Serafini SPX.
-Verificare sempre la scadenza del contratto rispetto a TradingView 1!.</div>
+<div class="spx-vol-foot">Futures Massive {escape(contract or 'N/D')} · seduta {escape(f_day)}
+· indice {escape(vol_ticker)} da Yahoo {escape(v_day)}.
+Range Daily confrontato con la seduta ancora precedente; regime da ribasso
+quando Close/Close &lt; −1%. Il buffer ES non viene applicato a questo mercato.</div>
 </div>""", unsafe_allow_html=True)
-    if not future_bars or not vol_bars:
-        st.caption("Una o più fonti Daily non sono disponibili: la sezione "
-                   "mostra N/D senza stime né valori inventati.")
+    with st.expander("Dettaglio fonti e formule", expanded=False):
+        if result["previous_close"] is not None and result["future_close"] is not None:
+            st.caption(
+                f"Massive Futures {contract} · 1session · Close "
+                f"{result['future_day'].isoformat()} = {result['future_close']:,.2f}; "
+                f"Close {result['previous_close_day'].isoformat()} = "
+                f"{result['previous_close']:,.2f}. "
+                "Variazione = (Close / Close precedente − 1) × 100. "
+                "Range = (High − Low) / Close × 100. Non si usano i settlement."
+            )
+        st.caption(
+            f"Indice di volatilità implicita: Yahoo Finance {vol_ticker} "
+            f"({v_day}); fonte distinta dai future Massive. "
+            "Il regime da ribasso non esclude altre cause di alta volatilità. "
+            "Il buffer ES da 10/15 punti non viene applicato agli altri mercati."
+        )
+    result["daily_bars"] = future_bars
+    result["contract"] = contract or None
+    result["daily_error"] = future_error
     return result
