@@ -60,6 +60,18 @@ def evaluate(future_bars, vol_bars):
         range_text = f"{value:,.2f} pt · {value / future['close'] * 100:.2f}%"
     else:
         range_text = "Non disponibile"
+    # A real up/down measurement requires TWO closed Daily sessions.
+    # High−Low (range) is always >= 0 and must stay neutral in the UI.
+    previous_future = (
+        future_bars[-2] if future and len(future_bars) >= 2
+        and future_bars[-2]["day"] < future["day"]
+        and (future["day"] - future_bars[-2]["day"]).days <= 7
+        and future_bars[-2]["close"] > 0 else None
+    )
+    change_pct = (
+        (future["close"] / previous_future["close"] - 1.0) * 100.0
+        if previous_future else None
+    )
     if vol is None:
         vol_text = "Non disponibile"
     elif previous_vol and previous_vol["close"]:
@@ -68,6 +80,11 @@ def evaluate(future_bars, vol_bars):
     else:
         vol_text = f"{vol['close']:.2f} · variazione N/D"
     return {"range_text": range_text, "vol_text": vol_text,
+            "change_pct": change_pct,
+            "previous_close": (previous_future["close"]
+                               if previous_future else None),
+            "previous_close_day": (previous_future["day"]
+                                   if previous_future else None),
             "future_day": future["day"] if future else None,
             "vol_day": vol["day"] if vol else None}
 
@@ -88,6 +105,13 @@ def render(market, target_day):
     result = evaluate(future_bars, vol_bars)
     f_day = result["future_day"].isoformat() if result["future_day"] else "N/D"
     v_day = result["vol_day"].isoformat() if result["vol_day"] else "N/D"
+    change = result["change_pct"]
+    if change is not None and isfinite(change):
+        change_class = ("up" if change > 0 else
+                        "down" if change < 0 else "flat")
+        change_text = f"{change:+.2f}%"
+    else:
+        change_class, change_text = "flat", "N/D"
     st.markdown(f"""
 <style>
 .spx-vol-card {{border:1px solid #34363c;border-radius:13px;padding:14px 18px;
@@ -97,6 +121,10 @@ background:#090a0c;color:#f4f5f6;font-family:inherit;}}
 .spx-vol-kpi:first-child {{padding-left:0;border-left:0;}}
 .spx-vol-kpi .label {{font-size:.82rem;color:#b6bcc5;margin-bottom:5px;}}
 .spx-vol-kpi .number {{font-size:1.15rem;font-weight:740;overflow-wrap:anywhere;}}
+.spx-daily-change {{font-size:.82rem;color:#adb6c2;margin-top:7px;line-height:1.5;}}
+.spx-daily-change .up {{color:#56d49e;font-weight:750;}}
+.spx-daily-change .down {{color:#ff676d;font-weight:750;}}
+.spx-daily-change .flat {{color:#b6bcc5;font-weight:750;}}
 .spx-vol-foot {{border-top:1px solid #292b30;padding-top:9px;margin-top:12px;
 color:#949ba6;font-size:.74rem;line-height:1.4;}}
 @media(max-width:700px){{
@@ -108,7 +136,9 @@ color:#949ba6;font-size:.74rem;line-height:1.4;}}
 <div class="spx-vol-card">
 <div class="spx-vol-grid">
 <div class="spx-vol-kpi"><div class="label">Range Daily precedente</div>
-<div class="number">{escape(result['range_text'])}</div></div>
+<div class="number">{escape(result['range_text'])}</div>
+<div class="spx-daily-change">Variazione ieri (Close/Close):
+<span class="{change_class}">{escape(change_text)}</span></div></div>
 <div class="spx-vol-kpi"><div class="label">{escape(vol_name)} precedente</div>
 <div class="number">{escape(result['vol_text'])}</div></div>
 <div class="spx-vol-kpi"><div class="label">Buffer standard</div>
@@ -117,6 +147,7 @@ color:#949ba6;font-size:.74rem;line-height:1.4;}}
 <div class="spx-vol-foot">Yahoo Finance Daily {escape(future_ticker)}: {escape(f_day)} ·
 {escape(vol_ticker)}: {escape(v_day)}.
 Solo barre precedenti al giorno di riferimento {target_day:%d/%m/%Y}.
+Variazione ieri = (Close ultima seduta / Close seduta ancora precedente − 1) × 100.
 {escape(vol_name)} indica volatilità implicita, NON contango dei futures VX.
 Il buffer SPX di 10/15 punti non è trasferibile automaticamente a NQ, GC o CL.
 Le barre Yahoo possono differire da quelle dei contratti CME/TradingView.</div>
