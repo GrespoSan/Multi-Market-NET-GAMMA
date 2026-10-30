@@ -98,16 +98,20 @@ def evaluate(future_bars, vol_bars):
 
 
 def signed_daily_heading(change_pct):
-    """Show the signed Close/Close variation, never the nonnegative range."""
-    base = "Volatilità — seduta precedente"
-    if change_pct is None:
-        return f'<h4 style="font-size:1.4rem;font-weight:700">{base} (N/D)</h4>'
-    pct = float(change_pct)
-    if not isfinite(pct):
-        return f'<h4 style="font-size:1.4rem;font-weight:700">{base} (N/D)</h4>'
-    color = "#56d49e" if pct > 0 else "#ff676d" if pct < 0 else "#b6bcc5"
-    return (f'<h4 style="font-size:1.4rem;font-weight:700">{base} '
-            f'<span style="color:{color}">({pct:+.2f}%)</span></h4>')
+    """One explicit Close/Close performance line, distinct from volatility."""
+    base = "Andamento e volatilità — seduta precedente"
+    if change_pct is None or not isfinite(float(change_pct)):
+        value, color = "N/D", "#b6bcc5"
+    else:
+        value = f"{float(change_pct):+.2f}%".replace(".", ",")
+        color = ("#56d49e" if change_pct > 0 else
+                 "#ff676d" if change_pct < 0 else "#b6bcc5")
+    return (
+        f'<h4 style="font-size:1.4rem;font-weight:700">{base}</h4>'
+        '<div style="font-size:1rem;padding:0 0 10px;color:#c3cbd5">'
+        'Variazione chiusura della seduta (Close/Close): '
+        f'<span style="color:{color};font-weight:750">{value}</span></div>'
+    )
 
 
 def render(market, target_day):
