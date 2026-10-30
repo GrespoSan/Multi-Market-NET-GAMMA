@@ -78,7 +78,9 @@ def render_selected_market(market_key):
             unpack_snapshot(scheduled_raw)
             st.session_state['ndx_blob']=scheduled_raw
             st.session_state['ndx_name']=scheduled_name
-            st.session_state['ndx_download_rome']='Archivio privato · rilevamento programmato'
+            st.session_state['ndx_download_rome']=(
+                st.session_state.get('v2_archive_capture_rome_NDX')
+                or 'Archivio privato · ora acquisizione non verificabile')
             st.success('Fotografia programmata NDX validata e caricata.')
         except Exception as exc:
             st.error(f'Archivio NDX non valido: {str(exc)[:230]}')
@@ -114,9 +116,15 @@ def render_selected_market(market_key):
         st.info('Inserisci una chiusura NDX precedente valida per procedere.')
         st.stop()
     
-    now=datetime.now(ROME).date()
-    non_past=[d for d in expiry_dates if d >= now]
-    default_exp=non_past[0] if non_past else expiry_dates[-1]
+    now=datetime.now(ZoneInfo('America/New_York')).date()
+    archive_ny_day = (
+        st.session_state.get('v2_archive_capture_nyday_NDX')
+        if st.session_state.get('v2_archive_choice_ndx') != 'manuale'
+        else None)
+    snapshot_day = archive_ny_day or now
+    non_past=[d for d in expiry_dates if d >= snapshot_day]
+    default_exp=(snapshot_day if snapshot_day in expiry_dates
+                 else non_past[0] if non_past else expiry_dates[-1])
     day=st.selectbox('Scadenza 0DTE / giornata analizzata',expiry_dates,
                      index=expiry_dates.index(default_exp),format_func=lambda x:x.strftime('%d/%m/%Y'))
     if st.session_state.get('_ndx_basis_target') != day.isoformat():
@@ -126,7 +134,10 @@ def render_selected_market(market_key):
         st.session_state.pop('ndx_basis_error',None)
         st.session_state.pop('ndx_basis_attempted',None)
     if day!=now:
-        st.caption('La scadenza scelta non corrisponde a oggi a Roma: visualizzazione storica o di studio.')
+        st.caption('0DTE storico / di studio: la scadenza selezionata non coincide '
+                   'con la giornata corrente di New York.')
+    elif archive_ny_day and day == archive_ny_day:
+        st.caption('0DTE del rilevamento programmato selezionato.')
     weekly_default=weekly_target(day,expiry_dates)
     fridays=[x for x in expiry_dates if x.weekday()==4 and x>=day and x!=day]
     weekly_exp=st.selectbox('Scadenza Weekly (solo scadenze venerdì realmente presenti)',
