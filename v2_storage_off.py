@@ -106,8 +106,19 @@ def archive_panel(symbol: str):
             packed, filename = _cached_snapshot(chosen, symbol, github_token, key)
             parts = filename.split("_")
             slot = next((SLOTS.get(p, "") for p in parts if p in SLOTS), "")
+            # Filename carries the REAL capture UTC time; unlike GitHub
+            # artifact created_at it records acquisition, not upload time.
+            from datetime import timezone
+            stamp = datetime.strptime(parts[1], "%Y%m%dT%H%M%SZ").replace(
+                tzinfo=timezone.utc)
+            st.session_state[f"v2_archive_capture_rome_{symbol}"] = stamp.astimezone(
+                ROME).isoformat(timespec="seconds")
+            st.session_state[f"v2_archive_capture_nyday_{symbol}"] = stamp.astimezone(
+                ZoneInfo("America/New_York")).date()
+            st.session_state[f"v2_archive_slot_{symbol}"] = slot or "Slot non verificabile"
             st.caption(f"Fotografia archivio V2: {slot or 'slot non verificabile'} · "
-                       f"file originale {filename} · acquisizione GitHub cifrata.")
+                       f"acquisita {stamp.astimezone(ROME):%d/%m/%Y %H:%M} Roma · "
+                       f"file {filename} · conservata cifrata su GitHub.")
             return packed, filename
         except Exception:
             st.warning("Il rilevamento selezionato non contiene un JSON cifrato "
