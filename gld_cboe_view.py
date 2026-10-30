@@ -11,7 +11,7 @@ import streamlit as st
 from gamma_chart_style import profile_chart, panel_heading, capture_display, spx_shared_gamma_bounds
 
 from etf_pine_view import render_etf_pine_exports
-from v2_storage_off import archive_panel
+from v2_storage_off import archive_panel, prefer_manual_source
 from market_ui import render_acquisition_controls, render_empty_snapshot
 
 from gld_cboe import (GLD_URL, download_gld, read_gld, expirations, next_weekly,
@@ -64,6 +64,7 @@ def render_gld_cboe():
         try:
             with st.spinner("Lettura catena GLD originale da Cboe..."):
                 raw_online = download_gld()
+                prefer_manual_source("GLD")
                 changed = _save_snapshot(raw_online, "GLD_CBOE_online.json",
                                          "Acquisizione diretta su richiesta")
             if changed:
@@ -81,6 +82,7 @@ def render_gld_cboe():
         # file ogni volta che Streamlit riesegue la pagina.
         if st.session_state.get("gld_cboe_upload_handled") != fingerprint:
             try:
+                prefer_manual_source("GLD")
                 _save_snapshot(raw_uploaded, uploaded.name, "Importazione manuale")
                 st.session_state["gld_cboe_upload_handled"] = fingerprint
                 st.success("File originale GLD importato e validato.")
