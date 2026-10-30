@@ -17,10 +17,10 @@ def spx_inputs(scale: str, scale_step: str, primary_label: str = "0DTE",
         "Scala grafica MANUALE e comune a entrambi i profili. "
         "Nessuna modifica ai NET GAMMA originali.")
     tooltip = tooltip.replace('"', "'").replace("\n", " ")
-    weekly_anchor = "dalle 0DTE" if primary_label == "0DTE" else "dal profilo Principale"
+    # La firma conserva primary_label per compatibilita' con i generatori ETF.
     return f'''gammaPerCandle = input.float({scale}, "Scala MANUALE · Gamma/barra", minval=0.000001, step={scale_step}, tooltip="{tooltip}")
-offsetOdte = input.int(100, "Distanza {primary_label} da ultima candela", minval=45, maxval=250)
-offsetWeekly = input.int(100, "Distanza Weekly {weekly_anchor}", minval=20, maxval=600)
+offsetOdte = input.int(100, "Distanza 0DTE da ultima candela", minval=45, maxval=250)
+offsetWeekly = input.int(100, "Distanza Weekly dalle 0DTE", minval=20, maxval=600)
 positiveColor = input.color(color.rgb(0, 230, 117), "NET GAMMA positivo")
 negativeColor = input.color(color.rgb(242, 54, 69), "NET GAMMA negativo")
 showTitles = input.bool(true, "Mostra intestazioni")'''
