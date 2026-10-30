@@ -9,7 +9,8 @@ import unittest
 
 from cryptography.fernet import Fernet
 
-from v2_cron import run_capture, safe_url, validate_options
+from v2_cron import (run_capture, safe_url, validate_options,
+                     fetch_authorized, CBOE_PUBLIC_URLS)
 from v2_schedule import decision
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -132,11 +133,86 @@ class V2SPXSetupTests(unittest.TestCase):
                 self.assertEqual(json.loads(original)["symbol"],
                                  "_NDX" if m == "NDX" else m)
 
-    def test_reject_nonlicensed_cboe_delayed_url(self):
-        with self.assertRaisesRegex(ValueError, "escluso"):
-            safe_url("https://cdn.cboe.com/api/global/delayed_quotes/options/GLD.json")
-        self.assertEqual(safe_url("https://licensed.example.org/feed"),
-                         "https://licensed.example.org/feed")
+    def test_direct_cboe_urls_match_existing_manual_downloaders(self):
+        from data_sources import NDX_URL
+        from gld_cboe import GLD_URL
+        from uso_cboe import USO_URL
+        self.assertEqual(CBOE_PUBLIC_URLS,
+                         {"NDX": NDX_URL, "GLD": GLD_URL, "USO": USO_URL})
+        for url in CBOE_PUBLIC_URLS.values():
+            self.assertEqual(safe_url(url), url)
+        with self.assertRaisesRegex(ValueError, "diverso"):
+            safe_url("https://cdn.cboe.com/api/global/delayed_quotes/options/SPX.json")
+
+    def test_direct_cboe_3_markets_encrypted_without_manual_feed_urls(self):
+        key = Fernet.generate_key().decode()
+        calls = []
+        def mock_download(url, token):
+            self.assertEqual(token, "")
+            calls.append(url)
+            market = next(m for m, path in CBOE_PUBLIC_URLS.items()
+                          if path == url)
+            return synthetic(market)
+        with tempfile.TemporaryDirectory() as tmp:
+            result = run_capture(
+                now=datetime(2026, 10, 29, 13, 50, tzinfo=timezone.utc),
+                env={"V2_ARCHIVE_FERNET_KEY": key}, output=Path(tmp),
+                downloader=mock_download)
+            self.assertEqual(result["status"], "TUTTI_ARCHIVIATI")
+            self.assertEqual(calls, list(CBOE_PUBLIC_URLS.values()))
+            for market in CBOE_PUBLIC_URLS:
+                m = result["markets"][market]
+                self.assertEqual(m["source"], "CBOE_PUBLIC_CDN")
+                self.assertEqual(m["status"], "SCARICATO_CIFRATO")
+                encrypted = (Path(tmp)/m["file"]).read_bytes()
+                original = gzip.decompress(Fernet(key.encode()).decrypt(encrypted))
+                self.assertEqual(json.loads(original)["symbol"].lstrip("_"), market)
+
+    def test_absent_encryption_secret_never_downloads_public_cboe(self):
+        def block(*args, **kwargs):
+            raise AssertionError("No Cboe GET without private encryption key")
+        with tempfile.TemporaryDirectory() as tmp:
+            report = run_capture(
+                now=datetime(2026, 10, 29, 13, 50, tzinfo=timezone.utc),
+                env={}, output=Path(tmp), downloader=block)
+        self.assertTrue(all(x["status"] == "NON_CONFIGURATO"
+                            for x in report["markets"].values()))
+        self.assertTrue(all("V2_ARCHIVE_FERNET_KEY" in x.get("reason", "")
+                            for x in report["markets"].values()))
+
+    def test_direct_fetch_stops_on_access_denial_without_retry(self):
+        class FakeResponse:
+            def __init__(self, url, status):
+                self.url, self.status_code = url, status
+            def __enter__(self):
+                return self
+            def __exit__(self, *args):
+                return False
+            def raise_for_status(self):
+                pass
+            def iter_content(self, chunk_size=0):
+                raise AssertionError("Should not stream blocked response")
+        for code in (401, 403, 429):
+            calls = []
+            def get(url, **kwargs):
+                calls.append(url)
+                return FakeResponse(url, code)
+            with self.subTest(code=code):
+                with self.assertRaisesRegex(RuntimeError, f"HTTP {code}"):
+                    fetch_authorized(CBOE_PUBLIC_URLS["GLD"], get=get)
+                self.assertEqual(len(calls), 1)
+
+    def test_keeps_custom_feed_authorization_gate(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            def forbidden(*a):
+                raise AssertionError("Custom feed not authorized")
+            result = run_capture(
+                now=datetime(2026, 10, 29, 13, 50, tzinfo=timezone.utc),
+                env={"V2_ARCHIVE_FERNET_KEY": Fernet.generate_key().decode(),
+                     "V2_FEED_NDX_URL": "https://licensed.example.org/NDX"},
+                output=Path(tmp), downloader=forbidden)
+            self.assertEqual(result["markets"]["NDX"]["status"], "NON_CONFIGURATO")
+            self.assertIn("consenso", result["markets"]["NDX"]["reason"])
 
 
 if __name__ == "__main__":
