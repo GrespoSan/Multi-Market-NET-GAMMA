@@ -25,7 +25,8 @@ class SPXSnapshotParityTests(unittest.TestCase):
     def test_same_archive_selector_and_manual_override_for_all_markets(self):
         accessor=(ROOT/"v2_storage_off.py").read_text(encoding="utf-8")
         self.assertIn("Snapshot originale opzioni · archivio automatico", accessor)
-        self.assertIn("options[1] if len(options) > 1 else", accessor)
+        self.assertIn('st.session_state[choice_key] = "ultimo" if artifacts else "manuale"', accessor)
+        self.assertIn('chosen_url = artifacts[0]["url"] if chosen == "ultimo"',accessor)
         self.assertIn("def prefer_manual_source(symbol):", accessor)
         self.assertIn("if chosen == \"manuale\":", accessor)
         self.assertIn("fetch_artifact_snapshot", accessor)
