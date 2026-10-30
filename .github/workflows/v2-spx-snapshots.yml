@@ -1,0 +1,64 @@
+name: Multi-Market V2 · SPX-style 07:30 15:50 20:30 Roma
+
+on:
+  schedule:
+    - cron: "30 7 * * 1-5"
+      timezone: "Europe/Rome"
+    - cron: "50 15 * * 1-5"
+      timezone: "Europe/Rome"
+    - cron: "30 20 * * 1-5"
+      timezone: "Europe/Rome"
+  workflow_dispatch:
+    inputs:
+      slot:
+        description: "Slot richiesto per diagnostica (l'esecuzione manuale resta etichettata manuale)"
+        required: false
+        type: choice
+        options:
+          - ""
+          - "07:30"
+          - "15:50"
+          - "20:30"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: multi-market-v2-snapshots
+  cancel-in-progress: false
+
+jobs:
+  capture_v2:
+    # No unattended Cboe scrape. Enable only after verifying licensed feed rights.
+    if: github.event_name == 'workflow_dispatch' || vars.V2_AUTHORIZED_FEED_CONFIRMED == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out the isolated V2 application, not suspended V1
+        uses: actions/checkout@v4
+        with:
+          ref: v2-spx
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install V2 runtime requirements
+        run: python -m pip install -r requirements.txt
+      - name: Capture authorized option chains at Rome time and encrypt
+        env:
+          V2_REQUESTED_SLOT: ${{ inputs.slot }}
+          V2_MANUAL_RUN: ${{ github.event_name == 'workflow_dispatch' }}
+          V2_AUTHORIZED_FEED_CONFIRMED: ${{ vars.V2_AUTHORIZED_FEED_CONFIRMED }}
+          V2_FEED_NDX_URL: ${{ secrets.V2_FEED_NDX_URL }}
+          V2_FEED_GLD_URL: ${{ secrets.V2_FEED_GLD_URL }}
+          V2_FEED_USO_URL: ${{ secrets.V2_FEED_USO_URL }}
+          V2_FEED_TOKEN: ${{ secrets.V2_FEED_TOKEN }}
+          V2_ARCHIVE_FERNET_KEY: ${{ secrets.V2_ARCHIVE_FERNET_KEY }}
+        run: python v2_cron.py
+      - name: Keep audit logs and encrypted snapshots (never plaintext)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: v2-multi-market-${{ github.run_id }}
+          path: v2_capture_output/
+          if-no-files-found: warn
+          retention-days: 30
