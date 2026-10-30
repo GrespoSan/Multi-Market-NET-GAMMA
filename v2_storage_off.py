@@ -4,7 +4,7 @@ Read encrypted GitHub Actions artifacts via read-only API token and Fernet.
 Both admin and authenticated friend may view snapshots (SPX-style readers).
 The latest available artifact is selected automatically; users can select
 another capture or keep an explicitly requested manual Cboe file instead.
-No Supabase, unattended delayed_quotes scraping, or plaintext persistence.
+No Supabase, plaintext persistence, or bypass of provider access blocks.
 """
 from datetime import datetime
 from zoneinfo import ZoneInfo
@@ -109,9 +109,25 @@ def archive_panel(symbol: str):
                    "non vengono sovrascritti dall'archivio.")
     else:
         try:
-            chosen_url = artifacts[0]["url"] if chosen == "ultimo" else chosen
-            packed, filename = _cached_snapshot(
-                chosen_url, symbol, github_token, key)
+            if chosen == "ultimo":
+                # A GitHub run can contain only run_status.json when one market
+                # was unavailable. Select the newest SUCCESSFUL market capture,
+                # not merely the newest workflow run (without inventing data).
+                packed = filename = chosen_url = None
+                for item in artifacts[:12]:
+                    try:
+                        packed, filename = _cached_snapshot(
+                            item["url"], symbol, github_token, key)
+                        chosen_url = item["url"]
+                        break
+                    except ValueError:
+                        continue
+                if packed is None:
+                    raise ValueError("Nessuna fotografia di questo mercato negli ultimi artifact.")
+            else:
+                chosen_url = chosen
+                packed, filename = _cached_snapshot(
+                    chosen_url, symbol, github_token, key)
             parts = filename.split("_")
             slot = next((SLOTS.get(p, "") for p in parts if p in SLOTS), "")
             # Filename carries the REAL capture UTC time; unlike GitHub
@@ -129,10 +145,11 @@ def archive_panel(symbol: str):
                        f"file {filename} · conservata cifrata su GitHub.")
             return packed, filename
         except Exception:
-            st.warning("Il rilevamento selezionato non contiene un JSON cifrato "
-                       f"{symbol} utilizzabile. Il job potrebbe essere partito "
-                       "senza una fonte opzioni autorizzata; seleziona un altro "
-                       "rilevamento o la modalità manuale.")
+            st.warning("Nessuna fotografia cifrata utilizzabile per "
+                       f"{symbol} nel rilevamento selezionato. Controlla "
+                       "il log run_status.json del workflow GitHub (chiave assente, "
+                       "Cboe 401/403/429 oppure dati incompleti). "
+                       "Puoi selezionare una fotografia precedente o quella manuale.")
 
     if st.session_state.get("v2_role") == "admin":
         with st.expander("Importazione eccezionale di file cifrato (.enc)",
