@@ -57,9 +57,13 @@ def evaluate(future_bars, vol_bars):
     previous_vol = vol_bars[-2] if vol_bars and len(vol_bars) >= 2 else None
     if future:
         value = future["hi"] - future["lo"]
-        range_text = f"{value:,.2f} pt · {value / future['close'] * 100:.2f}%"
+        range_pct = value / future["close"] * 100
+        range_points = value
+        range_text = f"{value:,.2f} pt · {range_pct:.2f}%"
     else:
         range_text = "Non disponibile"
+        range_pct = None
+        range_points = None
     if vol is None:
         vol_text = "Non disponibile"
     elif previous_vol and previous_vol["close"]:
@@ -67,9 +71,22 @@ def evaluate(future_bars, vol_bars):
         vol_text = f"{vol['close']:.2f} · {diff:+.2f}%"
     else:
         vol_text = f"{vol['close']:.2f} · variazione N/D"
-    return {"range_text": range_text, "vol_text": vol_text,
+    return {"range_text": range_text, "range_pct": range_pct,
+            "range_points": range_points, "vol_text": vol_text,
             "future_day": future["day"] if future else None,
             "vol_day": vol["day"] if vol else None}
+
+
+def range_percentage_html(pct):
+    """Color only the percentage of the Daily range; keep points neutral."""
+    if pct is None:
+        return '<span class="range-percent-neutral">Non disponibile</span>'
+    value = float(pct)
+    if not isfinite(value):
+        return '<span class="range-percent-neutral">Non disponibile</span>'
+    style = ("range-percent-positive" if value > 0 else
+             "range-percent-negative" if value < 0 else "range-percent-neutral")
+    return f'<span class="{style}">{value:.2f}%</span>'
 
 
 def render(market, target_day):
@@ -88,6 +105,11 @@ def render(market, target_day):
     result = evaluate(future_bars, vol_bars)
     f_day = result["future_day"].isoformat() if result["future_day"] else "N/D"
     v_day = result["vol_day"].isoformat() if result["vol_day"] else "N/D"
+    if result["range_points"] is None:
+        range_html = "Non disponibile"
+    else:
+        range_html = (f"{result['range_points']:,.2f} pt · "
+                      f"{range_percentage_html(result['range_pct'])}")
     st.markdown(f"""
 <style>
 .spx-vol-card {{border:1px solid #34363c;border-radius:13px;padding:14px 18px;
@@ -97,6 +119,9 @@ background:#090a0c;color:#f4f5f6;font-family:inherit;}}
 .spx-vol-kpi:first-child {{padding-left:0;border-left:0;}}
 .spx-vol-kpi .label {{font-size:.82rem;color:#b6bcc5;margin-bottom:5px;}}
 .spx-vol-kpi .number {{font-size:1.15rem;font-weight:740;overflow-wrap:anywhere;}}
+.spx-vol-kpi .range-percent-positive {{color:#56d49e;}}
+.spx-vol-kpi .range-percent-negative {{color:#ff676d;}}
+.spx-vol-kpi .range-percent-neutral {{color:#f4f5f6;}}
 .spx-vol-foot {{border-top:1px solid #292b30;padding-top:9px;margin-top:12px;
 color:#949ba6;font-size:.74rem;line-height:1.4;}}
 @media(max-width:700px){{
@@ -108,7 +133,7 @@ color:#949ba6;font-size:.74rem;line-height:1.4;}}
 <div class="spx-vol-card">
 <div class="spx-vol-grid">
 <div class="spx-vol-kpi"><div class="label">Range Daily precedente</div>
-<div class="number">{escape(result['range_text'])}</div></div>
+<div class="number">{range_html}</div></div>
 <div class="spx-vol-kpi"><div class="label">{escape(vol_name)} precedente</div>
 <div class="number">{escape(result['vol_text'])}</div></div>
 <div class="spx-vol-kpi"><div class="label">Buffer standard</div>
