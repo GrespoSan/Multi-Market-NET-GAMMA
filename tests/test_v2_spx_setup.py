@@ -202,6 +202,26 @@ class V2SPXSetupTests(unittest.TestCase):
                     fetch_authorized(CBOE_PUBLIC_URLS["GLD"], get=get)
                 self.assertEqual(len(calls), 1)
 
+    def test_normal_cboe_https_redirect_is_not_rejected(self):
+        # Regression for the real GitHub Actions failure on 30 Oct 2026:
+        # the CDN redirects the request but its final HTTPS response is
+        # safe to validate. Never skip JSON symbol / Gamma checks.
+        class RedirectedResponse:
+            url = CBOE_PUBLIC_URLS["GLD"] + "?cdn_revision=1"
+            status_code = 200
+            def __enter__(self): return self
+            def __exit__(self, *args): return False
+            def raise_for_status(self): pass
+            def iter_content(self, chunk_size=1024*1024):
+                yield synthetic("GLD")
+        seen = []
+        def get(url, **kwargs):
+            seen.append((url, kwargs["allow_redirects"]))
+            return RedirectedResponse()
+        original = fetch_authorized(CBOE_PUBLIC_URLS["GLD"], get=get)
+        self.assertEqual(validate_options("GLD", original)["contratti_gamma_completi"], 4)
+        self.assertEqual(seen, [(CBOE_PUBLIC_URLS["GLD"], True)])
+
     def test_keeps_custom_feed_authorization_gate(self):
         with tempfile.TemporaryDirectory() as tmp:
             def forbidden(*a):
