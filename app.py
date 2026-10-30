@@ -107,13 +107,8 @@ st.divider()
 context_initial = datetime.now(ZoneInfo("Europe/Rome")).hour < 13
 with st.expander("ANALISI DEL CONTESTO — News · Volatilità · Trend Daily",
                  expanded=context_initial):
-    st.markdown("#### Contesto dello strumento")
-    st.caption("La struttura della sezione segue SPX. Gli indicatori di contesto "
-               "specifici SPX (VIX, ES e range asiatico) non vengono applicati "
-               "artificialmente a GLD e USO.")
-    st.write(f"**Mercato selezionato:** {MARKETS[market_key].label}")
-    st.info("Contesto News/volatilità/trend specifico di ciascun mercato "
-            "ancora da integrare e validare: nessun segnale inventato.")
+    from v2_context import render as render_market_context
+    render_market_context(market_key)
 
 with st.expander("ANALISI NET GAMMA", expanded=True):
     render_selected_market(market_key)
