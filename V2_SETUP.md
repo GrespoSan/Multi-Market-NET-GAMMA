@@ -7,6 +7,38 @@ Report giornaliero AI.
 
 ## Architettura
 
+## Analisi del contesto · porting reale della SPX
+
+La V2 non contiene più il riquadro placeholder: i pannelli della
+Serafini SPX sono stati ripresi dai moduli originali e collegati al
+selettore mercato.
+
+- **Settimana ISO, Snapshot distinti, Registri**: stesso layout SPX.
+  I conteggi non ancora verificabili sono indicati con «—», non si
+  copiano i 13 record SPX. Il numero di registri, quando è configurato
+  `V2_GITHUB_TOKEN`, è il numero di artifact della settimana, **non**
+  il numero di catene opzioni realmente acquisite.
+- **News e calendario macroeconomico**: `macro_calendar.py` e
+  `magnificent7_earnings.py` ripresi dalla SPX. Il calendario è
+  pubblico e la sua disponibilità dipende da Finance Calendar/Yahoo.
+- **Volatilità precedente**: stesso schema grafico a 3 colonne SPX;
+  NQ con VXN, GC con GVZ e CL con OVX (indici Cboe derivati dalle
+  rispettive opzioni). Range Daily del future continuo Yahoo.
+  Il buffer ES 10/15 punti NON è definito per NQ/GC/CL e non viene
+  inventato; eventuali fonti assenti sono indicate N/D.
+- **Trend Daily**: porting del metodo SPX con range, struttura, numero
+  candele dello stesso colore, baricentro e candela d'impulso, applicato
+  ai futures `NQ=F`, `GC=F`, `CL=F`. Solo barre precedenti alla
+  data di riferimento e nessuna modifica ai calcoli NET GAMMA.
+- **Apertura iniziale**: Analisi del contesto aperta prima delle 13
+  di Roma, Analisi NET GAMMA chiusa per impostazione predefinita come
+  nella Serafini SPX.
+
+Il layout è allineato alla SPX, ma la disponibilità dei valori
+dipende dalle fonti e dalla presenza di snapshot V2 reali. I dati
+VIX/VX e il buffer specifico ES non sono copiati su mercati diversi.
+
+
 - `app.py` — shell SPX con password distinte amministratore/lettore,
   Analisi del contesto e Analisi NET GAMMA.
 - `v2_market_engine.py` — motore Multi-Market preesistente: NDX/NDXP,
@@ -22,9 +54,7 @@ Report giornaliero AI.
   Nessun JSON opzioni non cifrato viene scritto sul disco del job.
 - `gamma_chart_style.py` e `pine_spx_visual.py` — visualizzazione stile SPX.
 
-Il contesto News/VIX/Trend Daily specifico di SPX non è stato attribuito
-arbitrariamente ai mercati NDX/GLD/USO. La relativa sezione è presente
-ma richiede dati e regole specifici per ogni mercato.
+La sezione Contesto contiene News/Calendario, volatilità VXN/GVZ/OVX e Trend Daily per NQ/GC/CL; i dati specifici SPX non vengono attribuiti ad altri mercati.
 
 ## Sospensione V1 e Supabase
 
