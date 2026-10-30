@@ -53,8 +53,11 @@ VIX/VX e il buffer specifico ES non sono copiati su mercati diversi.
   0DTE/Weekly, conversione con rapporto ETF/future congelato e Pine GC/MGC,
   CL/MCL. I Gamma sono sempre quelli originali degli ETF, non delle opzioni
   native sui futures.
-- `v2_storage_off.py` — zero chiamate Supabase; importazione manuale degli
-  artifact cifrati V2, accessibile all'amministratore soltanto.
+- `v2_storage_off.py` — zero chiamate Supabase; selettore visibile
+  **Snapshot originale opzioni · archivio automatico**, con caricamento
+  del rilevamento cifrato più recente e scelta di fotografie precedenti.
+  Lettura consentita ad admin e lettore autenticato; override manuale
+  e importazione eccezionale di file cifrati riservata all'admin.
 - `v2_cron.py` — acquisizione da API **autorizzate per uso automatico**,
   validazione dati, archiviazione con crittografia Fernet in GitHub Actions.
   Nessun JSON opzioni non cifrato viene scritto sul disco del job.
@@ -107,6 +110,85 @@ Per NQ, GC e CL la lettura del contesto distingue:
 
 Tutti i valori vengono calcolati sulle stesse due sessioni del medesimo
 contratto futures Massive (non settlement e nessun fallback Yahoo).
+
+## NET GAMMA · conformità grafica alla Serafini SPX
+
+Per **Nasdaq, Gold e Petrolio**, la sezione ora apre con
+"NET GAMMA · formula Serafini" e visualizza due grafici 0DTE/Weekly
+affiancati: istogrammi NET positivi verdi/negativi rossi, medesima
+scala Gamma predefinita, linea della chiusura precedente, guide
+±0,5% / ±1,0% / ±1,5%, etichette dei livelli, timestamp originale
+Cboe e scadenze presenti nel file. È possibile attivare la
+scala indipendente per ingrandire ciascun pannello come nella SPX.
+I valori Gamma reali e le regole strike/filtri di ciascun motore
+preesistente rimangono invariati.
+
+- **NDX/NDXP**: differenziale NQ−NDX automatico/modificabile;
+  strike delle opzioni sull'indice convertiti soltanto per
+  la visualizzazione NQ e l'esportazione Pine.
+- **GLD/USO**: grafici originali degli strike ETF; soltanto il Pine
+  applica una proiezione percentuale indicativa su GC/CL. Non sono
+  opzioni sul future GC/CL.
+- Il riferimento numerico di Serafini al 60% 0DTE e 23% Weekly
+  riguarda SPX: non si finge che tali percentuali siano state
+  misurate anche sugli altri tre mercati.
+
+### Fotografie storiche selezionabili
+
+Se nei Secrets Streamlit sono presenti `V2_GITHUB_TOKEN` (Actions:
+Read-only) e `V2_ARCHIVE_FERNET_KEY`, il selettore mostra automaticamente
+le acquisizioni GitHub archiviate (retention 30 giorni), propone
+l'ultima ed effettua la decifratura **solo nella memoria dell'app**.
+Il pulsante "Aggiorna elenco" aggiorna i registri; la modalità manuale
+non viene sovrascritta. La data di rilevamento originale viene letta
+dal nome della fotografia cifrata, convertita a Roma per l'orario di
+download e a New York per stabilire la giornata operativa 0DTE.
+Riaprire una fotografia storica NON la fa apparire come il nuovo
+0DTE di oggi.
+
+### Acquisizioni automatiche: cron attivi, feed da configurare
+
+Il workflow GitHub `.github/workflows/v2-spx-snapshots.yml` è su
+`main` (ramo predefinito, requisito GitHub), ma usa il codice
+`v2-spx`. I tre cron, dal lunedì al venerdì, sono:
+
+| Slot | Fuso orario | Orario |
+|---|---|---|
+| Mattina | Europe/Rome | 07:30 |
+| Pomeriggio | America/Chicago | 08:50 |
+| Sera | America/Chicago | 13:30 |
+
+L'ora di Chicago usa automaticamente DST. Il 30 ottobre 2026,
+quando Europa e Stati Uniti non hanno ancora allineato il cambio
+d'ora, gli ultimi due slot sono 14:50 e 19:30 italiane; dal 2
+novembre saranno 15:50 e 20:30 italiane.
+
+**Il cron programmato non implica un'acquisizione riuscita.**
+Per prelevare catene originali automaticamente, il runner richiede
+la conferma di titolarità a un feed API idoneo per uso automatico
+e i dati di accesso:
+
+- GitHub repository **Variable** `V2_AUTHORIZED_FEED_CONFIRMED=true`,
+  soltanto dopo aver confermato i diritti di accesso automatico;
+- GitHub **Secrets** `V2_FEED_NDX_URL`, `V2_FEED_GLD_URL`,
+  `V2_FEED_USO_URL` (endpoint HTTPS autorizzati che restituiscono
+  JSON originale opzioni compatibile con i parser della V2),
+  `V2_FEED_TOKEN` (se richiesto) e `V2_ARCHIVE_FERNET_KEY`.
+
+Il runner scarica e valida separatamente NDX, GLD e USO, cifra
+in Fernet + gzip, salva solo `.json.gz.enc` negli artifact GitHub,
+con log di successo/errore e senza Supabase. In mancanza di feed
+o chiave, registra `NON_CONFIGURATO` e NON inventa rilevamenti.
+Gli endpoint pubblici delle tabelle `delayed_quotes` Cboe non
+sono usati dai cron: Cboe pubblica un divieto di autoestrazione
+per i dati delle delayed-quote tables. L'acquisizione diretta
+su pulsante resta un comando esplicito dell'utente.
+Alternativa ufficiale: verifica di un feed autorizzato tramite
+`https://datashop.cboe.com/cboe-all-access-api`.
+La connessione Massive attuale consente i futures Daily, ma
+l'Option Chain Snapshot NDX/GLD/USO non è inclusa nel piano
+Massive collegato: non può essere impiegata come sorgente
+automatica senza un piano idoneo.
 
 ## Massive Futures · stessa fonte per Range e andamento giornaliero
 
