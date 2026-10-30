@@ -68,8 +68,8 @@ def make_etf_future_pine(symbol: str, profiles: dict, etf_previous_close: float,
     main = profiles.get(main_name, {"rows": [], "expiry": ""})
     weekly = profiles.get("Weekly", {"rows": [], "expiry": ""})
     main_rows, weekly_rows = main["rows"], weekly["rows"]
-    scale_p = [(dict(rows=[{"net_gamma": row["net"]} for row in main_rows]), 60),
-               (dict(rows=[{"net_gamma": row["net"]} for row in weekly_rows]), 160)]
+    scale_p = [(dict(rows=[{"net_gamma": row["net"]} for row in main_rows]), 100),
+               (dict(rows=[{"net_gamma": row["net"]} for row in weekly_rows]), 200)]
     scale, step = _initial_manual_scale(scale_p)
     # Keep the same manual presentation-scale concept as the tested NDX exporter.
     def n(x):
