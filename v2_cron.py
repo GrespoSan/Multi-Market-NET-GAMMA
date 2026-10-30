@@ -68,7 +68,15 @@ def fetch_authorized(url, token="", get=None):
         headers["Authorization"] = "Bearer " + token
     with caller(url, headers=headers, stream=True, timeout=(8, 55),
                 allow_redirects=True) as res:
-        safe_url(res.url)
+        # Cboe's CDN can redirect to a different response URL. The FIRST
+        # request is restricted by safe_url(url), but normal HTTPS redirects
+        # must not be mistaken for a forbidden source. This matches the
+        # existing one-click downloader's requests behavior. Parse and fully
+        # validate the returned chain before accepting any data.
+        final = urlsplit(str(res.url))
+        if (final.scheme != "https" or not final.hostname
+                or final.username or final.password):
+            raise ValueError("Sorgente HTTPS non valida.")
         if res.status_code in (401, 403, 429):
             raise ProviderAccessError(res.status_code)
         res.raise_for_status()
