@@ -32,7 +32,7 @@ class CommonMarketLayoutTests(unittest.TestCase):
         self.assertIn("width: 100% !important", PAGE_STYLE)
         self.assertIn('data-testid="stMainBlockContainer"', PAGE_STYLE)
         self.assertNotIn("max-width: 1460px", PAGE_STYLE)
-        for filename in ("app.py", "gld_cboe_view.py", "uso_cboe_view.py"):
+        for filename in ("v2_market_engine.py", "gld_cboe_view.py", "uso_cboe_view.py"):
             with self.subTest(page=filename):
                 src = source(filename)
                 self.assertTrue(
@@ -48,11 +48,11 @@ class CommonMarketLayoutTests(unittest.TestCase):
         self.assertIn("range=shared_y", style)
         self.assertIn("@media (max-width: 800px)", PAGE_STYLE)
         app = source("app.py")
-        self.assertEqual(len(calls_by_name("app.py", "render_dashboard_header")), 1)
+        self.assertIn("render_selected_market(market_key)", app)
         self.assertNotIn("st.title('Multi-Market", app)
 
     def test_acquisition_controls_are_shared_by_all_markets(self):
-        for filename, symbol in (("app.py", "NDX"),
+        for filename, symbol in (("v2_market_engine.py", "NDX"),
                                  ("gld_cboe_view.py", "GLD"),
                                  ("uso_cboe_view.py", "USO")):
             with self.subTest(market=symbol):
@@ -79,9 +79,9 @@ class CommonMarketLayoutTests(unittest.TestCase):
             s = source(filename)
             self.assertLess(s.index("render_acquisition_controls"),
                             s.index("archive_panel(\""))
-        app = source("app.py")
-        self.assertLess(app.index("fetch_pressed,uploaded=render_acquisition_controls"),
-                        app.index("archive_selected=archive_panel"))
+        engine = source("v2_market_engine.py")
+        self.assertLess(engine.index("fetch_pressed,uploaded=render_acquisition_controls"),
+                        engine.index("archive_selected=archive_panel"))
 
     def test_pine_and_gamma_calculations_stay_independent_of_layout(self):
         ui = source("market_ui.py")
