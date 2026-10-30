@@ -89,7 +89,7 @@ def make_pine(profiles: dict, basis: float, target: date, label: str) -> str:
     graphics = SPX_RENDER_FUNCTIONS
     main_call = (f'renderProfile(odteLevels, odteValues, bar_index + offsetOdte, '
                  f'"0DTE {first}", actualScale)' if odte["rows"] else "")
-    weekly_call = (f'renderProfile(weeklyLevels, weeklyValues, bar_index + offsetWeekly, '
+    weekly_call = (f'renderProfile(weeklyLevels, weeklyValues, bar_index + weeklyCenter, '
                    f'"Weekly {second}", actualScale)' if weekly["rows"] else "")
     draw = spx_last_bar(main_call, weekly_call, "odteValues", "weeklyValues")
     return f'''//@version=6
