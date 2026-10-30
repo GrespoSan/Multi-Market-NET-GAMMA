@@ -95,6 +95,9 @@ def render_gld_cboe():
         try:
             _save_snapshot(original_raw, stored_name,
                            "Archivio privato · rilevamento programmato")
+            st.session_state["gld_cboe_import_rome"] = (
+                st.session_state.get("v2_archive_capture_rome_GLD")
+                or st.session_state["gld_cboe_import_rome"])
             st.success("Fotografia programmata caricata dall'archivio privato.")
         except Exception as exc:
             st.error(f"Fotografia archivio non valida: {str(exc)[:240]}")
@@ -119,16 +122,26 @@ def render_gld_cboe():
                    "La data d'importazione non certifica la freschezza del mercato.")
 
     ny_today = datetime.now(ZoneInfo("America/New_York")).date()
-    future = [d for d in available if d >= ny_today]
-    first = ny_today if ny_today in available else (future[0] if future else available[-1])
+    archive_day = (
+        st.session_state.get("v2_archive_capture_nyday_GLD")
+        if st.session_state.get("v2_archive_choice_gld") != "manuale"
+        else None)
+    acquisition_day = archive_day or ny_today
+    future = [d for d in available if d >= acquisition_day]
+    first = (acquisition_day if acquisition_day in available
+             else future[0] if future else available[-1])
     base_day = st.selectbox(
-        "Scadenza principale (0DTE solo quando coincide con la data di New York)",
+        "Scadenza 0DTE della fotografia selezionata (ora New York)",
         available, index=available.index(first),
         format_func=lambda d: d.strftime("%d/%m/%Y"), key="gld_cboe_day")
-    is_0dte = base_day == ny_today
+    is_0dte = base_day == acquisition_day
     if not is_0dte:
-        st.warning(f"La scadenza {base_day:%d/%m/%Y} NON coincide con oggi "
-                   f"{ny_today:%d/%m/%Y} a New York: profilo storico/futuro, NON 0DTE corrente.")
+        st.warning(f"La scadenza {base_day:%d/%m/%Y} NON coincide con "
+                   f"la data della fotografia {acquisition_day:%d/%m/%Y}: "
+                   "profilo di altra scadenza, NON 0DTE del rilevamento.")
+    elif acquisition_day != ny_today:
+        st.caption(f"0DTE STORICO · fotografia del {acquisition_day:%d/%m/%Y} "
+                   "a New York. Non è una catena 0DTE corrente.")
     weekly = next_weekly(base_day, available)
     if weekly is None:
         st.info("Il prossimo venerdì successivo alla scadenza principale "
