@@ -50,8 +50,8 @@ class MassiveDailyTests(unittest.TestCase):
         result = previous_daily_context(bars)
         self.assertEqual(result["ticker"],"CLZ6")
         self.assertAlmostEqual(result["range_points"],3.21)
-        self.assertAlmostEqual(result["range_pct"],3.21/102.87*100)
-        self.assertAlmostEqual(result["change_pct"],(102.87/101.94-1)*100)
+        self.assertAlmostEqual(result["range_pct"],3.21/102.87*100, places=5)
+        self.assertAlmostEqual(result["change_pct"],(102.87/101.94-1)*100, places=5)
         self.assertGreater(result["change_pct"],0)
         # Settlement would be negative; must not use settlement_price.
         self.assertLess(102.0/102.78-1,0)
