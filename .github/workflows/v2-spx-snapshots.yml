@@ -29,8 +29,9 @@ concurrency:
 
 jobs:
   capture_v2:
-    # Execute all three cron slots. The runner reports NON_CONFIGURATO
-    # unless licensed feed URLs, owner confirmation and Fernet key exist.
+    # Three automatic NDX, GLD and USO direct Cboe CDN snapshots/day.
+    # A Fernet encryption key is still required to store private snapshots.
+    # No Supabase and no retries/bypass on Cboe 401/403/429.
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -43,7 +44,7 @@ jobs:
           python-version: '3.12'
       - name: Install V2 runtime requirements
         run: python -m pip install -r requirements.txt
-      - name: Check SPX session windows and capture authorized option chains
+      - name: Capture Cboe NDX GLD USO JSON with actual time and Fernet encryption
         env:
           V2_REQUESTED_SLOT: ${{ inputs.slot }}
           V2_EVENT_CRON: ${{ github.event.schedule }}
