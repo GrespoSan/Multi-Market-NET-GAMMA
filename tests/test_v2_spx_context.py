@@ -58,6 +58,38 @@ class SPXContextV2Tests(unittest.TestCase):
         self.assertIn("spx-vol-card", src)
         self.assertNotIn("previous_vix_curve", src)
 
+    def test_previous_session_change_is_separate_from_daily_range(self):
+        # High-Low is always positive, whereas Close/Close has a sign.
+        common = {"hi": 105., "lo": 95., "close": 100.}
+        day1, day2 = date(2026, 10, 28), date(2026, 10, 29)
+        up = evaluate_vol([
+            {"day": day1, "hi": 101., "lo": 99., "close": 100.},
+            {"day": day2, "hi": 105., "lo": 95., "close": 103.},
+        ], [])
+        self.assertEqual(up["range_text"], "10.00 pt · 9.71%")
+        self.assertAlmostEqual(up["change_pct"], 3.0)
+        self.assertEqual(up["previous_close_day"], day1)
+        down = evaluate_vol([
+            {"day": day1, **common},
+            {"day": day2, "hi": 102., "lo": 97., "close": 98.},
+        ], [])
+        self.assertEqual(down["range_text"], "5.00 pt · 5.10%")
+        self.assertAlmostEqual(down["change_pct"], -2.0)
+        flat = evaluate_vol([
+            {"day": day1, **common},
+            {"day": day2, "hi": 105., "lo": 95., "close": 100.},
+        ], [])
+        self.assertEqual(flat["change_pct"], 0.0)
+        first = evaluate_vol([{"day": day2, **common}], [])
+        self.assertIsNone(first["change_pct"])
+        src = (ROOT / "v2_volatility.py").read_text(encoding="utf-8")
+        self.assertIn("Variazione ieri (Close/Close)", src)
+        self.assertIn('class="{change_class}"', src)
+        self.assertIn('.spx-daily-change .up', src)
+        self.assertIn('.spx-daily-change .down', src)
+        self.assertIn('escape(result[\'range_text\'])', src)
+        self.assertNotIn('range_percentage_html(', src)
+
     def test_daily_trend_rule_unchanged_but_ticker_dynamic(self):
         dates = pd.date_range("2026-10-20", periods=5, freq="B")
         bars = pd.DataFrame([
