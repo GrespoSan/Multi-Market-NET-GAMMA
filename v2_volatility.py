@@ -15,9 +15,9 @@ import yfinance as yf
 from massive_futures_daily import previous_sessions, MassiveSourceError
 
 SOURCES = {
-    "NASDAQ": ("NQ=F", "^VXN", "VXN · Nasdaq-100"),
-    "GOLD": ("GC=F", "^GVZ", "GVZ · opzioni GLD"),
-    "WTI": ("CL=F", "^OVX", "OVX · opzioni USO"),
+    "NASDAQ": ("NQ=F", "^VXN", "VXN · volatilità implicita Nasdaq-100"),
+    "GOLD": ("GC=F", "^GVZ", "GVZ · volatilità implicita Gold"),
+    "WTI": ("CL=F", "^OVX", "OVX · volatilità implicita Petrolio"),
 }
 
 
@@ -163,8 +163,9 @@ def render(market, target_day):
     change = result["change_pct"]
     st.markdown(signed_daily_heading(change), unsafe_allow_html=True)
     if result["previous_range_pct"] is not None:
-        range_detail = (f"{result['range_trend']} · seduta precedente "
-                        f"{result['previous_range_pct']:.2f}%")
+        prior_day = result["previous_close_day"].strftime("%d/%m/%Y")
+        prior_range = f"{result['previous_range_pct']:.2f}".replace(".", ",")
+        range_detail = f"{result['range_trend']} · confronto con il {prior_day}: {prior_range}%"
     else:
         range_detail = "Confronto non disponibile"
     if future_error:
