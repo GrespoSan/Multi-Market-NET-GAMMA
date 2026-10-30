@@ -204,6 +204,11 @@ def render_gld_cboe():
     st.caption("Formula: Call [(OI+Volume)×Gamma] − Put [(OI+Volume)×Gamma]. "
                "Il Gamma è letto dal JSON Cboe, non stimato. "
                "Stessa fascia strike e stessa scala Gamma per entrambi i grafici.")
+    independent_scale = st.checkbox(
+        "Ingrandisci ogni profilo con scala indipendente",
+        value=False, key="v2_gld_independent_scale",
+        help="Disattivato: medesima scala Gamma dei due grafici 0DTE e Weekly, "
+             "come SPX. Attivato: barre non direttamente confrontabili.")
     cols = st.columns(len(groups), gap="medium")
     for (title, p), col in zip(groups.items(), cols):
         with col:
@@ -228,7 +233,8 @@ def render_gld_cboe():
             _, capture_label = capture_display(
                 stamp, st.session_state.get("gld_cboe_import_rome"),
                 st.session_state.get("gld_cboe_source", ""))
-            fig = _plot(p, reference, xlim, ylim, title=title,
+            gamma_x = spx_shared_gamma_bounds([p]) if independent_scale else xlim
+            fig = _plot(p, reference, gamma_x, ylim, title=title,
                         snapshot_label=capture_label, tick_levels=shared_ticks)
             st.plotly_chart(fig, use_container_width=True,
                             key=f"gld_spx_gamma_{title}_{p['expiry']}")
