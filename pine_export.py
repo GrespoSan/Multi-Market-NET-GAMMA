@@ -77,7 +77,7 @@ def make_pine(profiles: dict, basis: float, target: date, label: str) -> str:
         )
     odte=profiles.get("0DTE",{"rows":[],"expiry":""})
     weekly=profiles.get("Weekly",{"rows":[],"expiry":""})
-    scale, scale_step=_initial_manual_scale([(odte,60),(weekly,160)])
+    scale, scale_step=_initial_manual_scale([(odte,100),(weekly,200)])
     scale_text=f"{scale:.8f}".rstrip("0").rstrip(".")
     scale_step_text=f"{scale_step:.8f}".rstrip("0").rstrip(".")
     first=date.fromisoformat(odte["expiry"]).strftime("%d/%m") if odte["rows"] else ""
