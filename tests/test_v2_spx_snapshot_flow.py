@@ -24,7 +24,10 @@ class SPXSnapshotParityTests(unittest.TestCase):
 
     def test_same_archive_selector_and_manual_override_for_all_markets(self):
         accessor=(ROOT/"v2_storage_off.py").read_text(encoding="utf-8")
-        self.assertIn("Snapshot originale opzioni · archivio automatico", accessor)
+        self.assertIn('"Snapshot originale Cboe"', accessor)
+        self.assertIn("manca nei Secrets Streamlit:", accessor)
+        self.assertIn('"V2_GITHUB_TOKEN"', accessor)
+        self.assertNotIn('with st.expander("RILEVAMENTI PROGRAMMATI', accessor)
         self.assertIn('st.session_state[choice_key] = "ultimo" if artifacts else "manuale"', accessor)
         self.assertIn('for item in artifacts[:12]:', accessor)
         self.assertIn('packed, filename = _cached_snapshot(', accessor)
@@ -47,6 +50,16 @@ class SPXSnapshotParityTests(unittest.TestCase):
                 self.assertIn("v2_archive_capture_nyday_",source)
                 self.assertIn("v2_archive_capture_rome_",source)
                 self.assertIn("independent_scale",source)
+        for file in ("v2_market_engine.py", "gld_cboe_view.py", "uso_cboe_view.py"):
+            source=(ROOT/file).read_text()
+            self.assertIn("snapshot_placement = st.container()", source)
+            self.assertIn('with st.expander("Acquisizione manuale / importazione JSON"', source)
+            self.assertIn("with snapshot_placement:", source)
+            self.assertLess(source.index("snapshot_placement = st.container()"),
+                            source.index('with st.expander("Acquisizione manuale'))
+        ui=(ROOT/"market_ui.py").read_text()
+        self.assertIn("show_header=False", (ROOT/"v2_market_engine.py").read_text())
+        self.assertIn("show_header=True", ui)
         header=(ROOT/"app.py").read_text()
         self.assertIn('st.header("NET GAMMA · formula Serafini")',header)
         self.assertIn("60%/23%",header)
