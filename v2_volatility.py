@@ -79,6 +79,18 @@ def evaluate(future_bars, vol_bars):
         (future["close"] / previous_future["close"] - 1.0) * 100.0
         if previous_future else None
     )
+    if future and previous_future:
+        current_range_pct = 100.0 * (future["hi"] - future["lo"]) / future["close"]
+        previous_range_pct = 100.0 * (previous_future["hi"] - previous_future["lo"]) / previous_future["close"]
+        if abs(current_range_pct - previous_range_pct) < 1e-9:
+            range_trend = "INVARIATO"
+        else:
+            range_trend = "ESPANSIONE" if current_range_pct > previous_range_pct else "COMPRESSIONE"
+    else:
+        previous_range_pct, range_trend = None, "N/D"
+    # The user-confirmed Serafini warning is a signed DOWN move
+    # strictly beyond -1%. It is NOT the always-positive High-Low range.
+    bearish_volatility = None if change_pct is None else change_pct < -1.0
     if vol is None:
         vol_text = "Non disponibile"
     elif previous_vol and previous_vol["close"]:
@@ -88,6 +100,9 @@ def evaluate(future_bars, vol_bars):
         vol_text = f"{vol['close']:.2f} · variazione N/D"
     return {"range_text": range_text, "vol_text": vol_text,
             "change_pct": change_pct,
+            "previous_range_pct": previous_range_pct,
+            "range_trend": range_trend,
+            "bearish_volatility": bearish_volatility,
             "future_close": future["close"] if future else None,
             "previous_close": (previous_future["close"]
                                if previous_future else None),
@@ -147,6 +162,18 @@ def render(market, target_day):
     v_day = result["vol_day"].isoformat() if result["vol_day"] else "N/D"
     change = result["change_pct"]
     st.markdown(signed_daily_heading(change), unsafe_allow_html=True)
+    if result["bearish_volatility"] is True:
+        st.markdown('<div style="color:#ff676d;font-weight:750">Alta volatilità da ribasso · Close/Close &lt; −1%</div>',
+                    unsafe_allow_html=True)
+    elif result["bearish_volatility"] is False:
+        st.caption("Ribasso oltre −1% non rilevato: questo non esclude altre cause di alta volatilità.")
+    else:
+        st.caption("Regime da ribasso: N/D (mancano due chiusure Massive).")
+    if result["previous_range_pct"] is not None:
+        range_detail = (f"{result['range_trend']} · seduta precedente "
+                        f"{result['previous_range_pct']:.2f}%")
+    else:
+        range_detail = "Confronto non disponibile"
     if result["previous_close"] is not None and result["future_close"] is not None:
         st.caption(
             f"Massive Futures {contract} · 1session · stesso contratto: "
@@ -167,6 +194,8 @@ background:#090a0c;color:#f4f5f6;font-family:inherit;}}
 .spx-vol-kpi:first-child {{padding-left:0;border-left:0;}}
 .spx-vol-kpi .label {{font-size:.82rem;color:#b6bcc5;margin-bottom:5px;}}
 .spx-vol-kpi .number {{font-size:1.15rem;font-weight:740;overflow-wrap:anywhere;}}
+.spx-vol-kpi .range-direction {{font-size:.79rem;color:#abb6c4;margin-top:8px;line-height:1.5;}}
+.spx-vol-kpi .risk-text {{font-size:1.0rem;font-weight:750;}}
 .spx-vol-foot {{border-top:1px solid #292b30;padding-top:9px;margin-top:12px;
 color:#949ba6;font-size:.74rem;line-height:1.4;}}
 @media(max-width:700px){{
@@ -179,18 +208,21 @@ color:#949ba6;font-size:.74rem;line-height:1.4;}}
 <div class="spx-vol-grid">
 <div class="spx-vol-kpi"><div class="label">Range Daily precedente</div>
 <div class="number">{escape(result['range_text'])}</div>
+<div class="range-direction">{escape(range_detail)}</div>
 </div>
 <div class="spx-vol-kpi"><div class="label">{escape(vol_name)} precedente</div>
 <div class="number">{escape(result['vol_text'])}</div></div>
-<div class="spx-vol-kpi"><div class="label">Buffer standard</div>
-<div class="number">Non definito</div></div>
+<div class="spx-vol-kpi"><div class="label">Regime da ribasso Close/Close</div>
+<div class="number risk-text" style="color:{'#ff676d' if result['bearish_volatility'] else '#c4ccd5'}">{'ALTA VOLATILITÀ' if result['bearish_volatility'] else 'N/D' if result['bearish_volatility'] is None else 'Soglia −1% non superata'}</div></div>
 </div>
 <div class="spx-vol-foot">Futures Massive {escape(contract or 'N/D')}, sessione {escape(f_day)} ·
 Indice volatilità Yahoo {escape(vol_ticker)}: {escape(v_day)}.
-Stesso contratto e sessione Massive per Range High−Low e variazione Close/Close.
+Stesso contratto e sessione Massive: Close/Close &lt; −1% indica alta volatilità da ribasso;
+Range Daily in espansione/compressione rispetto alla seduta ancora precedente.
+Questa classificazione NON applica automaticamente il buffer SPX ad altri mercati.
 Riferimento {target_day:%d/%m/%Y} · I valori si basano su trade Close, NON settlement.
 {escape(vol_name)} non indica contango VX.
-Buffer SPX di 10/15 punti non trasferibile a NQ, GC o CL.
+Buffer ES di 10/15 punti riservato alla Serafini SPX.
 Verificare sempre la scadenza del contratto rispetto a TradingView 1!.</div>
 </div>""", unsafe_allow_html=True)
     if not future_bars or not vol_bars:
