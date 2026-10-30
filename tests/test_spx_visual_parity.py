@@ -19,13 +19,18 @@ def ndx_sample():
                      for j in range(3)]}}
 
 
-def etf_sample(symbol):
+def etf_sample(symbol, include_weekly=False):
     strike = 367. if symbol == "GLD" else 167.
     ref = 368.36 if symbol == "GLD" else 167.46
     future = 4070.10 if symbol == "GLD" else 101.14
     future_ticker = "COMEX:GCZ2026" if symbol == "GLD" else "NYMEX:CLZ2026"
     groups = {"0DTE": {"expiry": TODAY.isoformat(), "usable": True,
               "rows": [{"strike": strike+j, "net": (j-1)*0.1} for j in range(3)]}}
+    if include_weekly:
+        groups["Weekly"] = {
+            "expiry": date(2026, 10, 30).isoformat(), "usable": True,
+            "rows": [{"strike": strike+j, "net": (j-1)*0.12} for j in range(3)],
+        }
     mapping = {"etf_symbol": symbol, "etf_price": ref, "future_price": future,
                "ratio": future/ref, "bar_ny": "2026-10-29T15:30:00-04:00",
                "future_tv_symbol": future_ticker}
@@ -56,12 +61,29 @@ class SPXVisualParity(unittest.TestCase):
                 self.assertIn('if barstate.islast and validTicker', pine)
                 self.assertIn('float minimumSafe = math.max(', pine)
                 # Weekly segue 0DTE anche quando quest'ultima viene spostata.
-                self.assertIn('bar_index + weeklyCenter', pine)
                 self.assertEqual(160 + 100, 260)
                 self.assertIn('xloc=xloc.bar_index, extend=extend.none', pine)
                 self.assertNotIn('showContext', pine)
                 self.assertNotIn('label notice = label.new', pine)
                 self.assertNotIn('array.push(drawnLabels, notice)', pine)
+
+    def test_weekly_is_relative_with_both_profiles(self):
+        ndx = ndx_sample()
+        ndx["Weekly"] = {
+            "expiry": date(2026, 10, 30).isoformat(), "band_pct": 3.,
+            "rows": [{"strike_index": 30000.+j*5, "net_gamma": (j-1)*0.12}
+                     for j in range(3)],
+        }
+        scripts = (
+            make_pine(ndx, 140., TODAY, "29/10"),
+            etf_sample("GLD", include_weekly=True),
+            etf_sample("USO", include_weekly=True),
+        )
+        for pine in scripts:
+            self.assertIn("int weeklyCenter = offsetOdte + offsetWeekly", pine)
+            self.assertIn("requiredScale(", pine)
+            self.assertIn("bar_index + weeklyCenter", pine)
+            self.assertNotIn("bar_index + offsetWeekly,", pine)
 
     def test_futures_are_guarded_and_ratio_only_maps_etf_strikes(self):
         nq = make_pine(ndx_sample(), 140., TODAY, "29/10")
