@@ -1,6 +1,6 @@
 """SPX-style V2 scheduled collections, WITHOUT any Supabase connection.
 
-Three 07:30/15:50/20:30 Europe/Rome daily workflow slots.
+Three 07:30 Rome / 08:50 Chicago / 13:30 Chicago daily workflow slots.
 Actual feeds require separately approved unattended API rights. Cboe's
 delayed_quotes webpage endpoints are forbidden for this use and rejected.
 
@@ -19,7 +19,7 @@ from urllib.parse import urlsplit
 
 import requests
 
-from scheduled_slots import schedule_decision, INSTRUMENTS
+from v2_schedule import decision, INSTRUMENTS
 from ndx_engine import unpack_snapshot, available_expirations, contract_parts
 from gld_cboe import read_gld, expirations as expiries_gld
 from uso_cboe import read_uso, expirations as expiries_uso
@@ -105,12 +105,16 @@ def run_capture(now=None, env=None, output=None, downloader=None):
     output.mkdir(parents=True, exist_ok=True)
     manual = str(env.get("V2_MANUAL_RUN", "")).lower() == "true"
     requested = env.get("V2_REQUESTED_SLOT", "").strip() or None
-    decision = schedule_decision(now, requested, manual)
+    event_cron = env.get("V2_EVENT_CRON", "").strip() or None
+    slot = decision(now, requested=requested, event_cron=event_cron, manual=manual)
     report = {"download_utc": now.astimezone(timezone.utc).isoformat(),
-              "download_rome": decision["rome"].isoformat(),
-              "slot": decision["slot"], "reason": decision["reason"],
+              "download_rome": slot["rome"].isoformat(),
+              "download_chicago": slot["chicago"].isoformat(),
+              "slot": slot["slot"], "reason": slot["reason"],
+              "schedule_reference": slot["time_zone"],
+              "requested_slot": slot.get("requested_slot", ""),
               "markets": {}}
-    if not decision["run"]:
+    if not slot["run"]:
         report["status"] = "FUORI_FINESTRA"
     else:
         consent = str(env.get("V2_AUTHORIZED_FEED_CONFIRMED", "")).lower() == "true"
@@ -133,7 +137,7 @@ def run_capture(now=None, env=None, output=None, downloader=None):
                     encrypted = encryptor.encrypt(packed)
                     digest = hashlib.sha256(raw).hexdigest()
                     file = (f"{market}_{now:%Y%m%dT%H%M%SZ}_"
-                            f"{decision['slot'].replace(':','')}_{digest[:12]}.json.gz.enc")
+                            f"{slot['slot'].replace(':','')}_{digest[:12]}.json.gz.enc")
                     (output/file).write_bytes(encrypted)
                     status = {"status": "SCARICATO_CIFRATO", "file": file,
                               "sha256": digest, "source_meta": details}
