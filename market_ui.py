@@ -73,7 +73,7 @@ def render_dashboard_header(markets):
     return key
 
 
-def render_acquisition_controls(symbol, source_url):
+def render_acquisition_controls(symbol, source_url, show_header=True):
     """Reusable acquisition UI: primary button, collapsed import, source notice.
 
     Returns only UI intent; market-specific caller does ALL validation/state
@@ -82,7 +82,8 @@ def render_acquisition_controls(symbol, source_url):
     """
     if symbol not in UPLOAD_KEYS:
         raise ValueError("Sottostante grafico non riconosciuto.")
-    st.subheader(f"Fotografia opzioni Cboe · {symbol}")
+    if show_header:
+        st.subheader(f"Fotografia opzioni Cboe · {symbol}")
     clicked = st.button(
         f"Aggiorna fotografia {symbol} da Cboe",
         type="primary",
@@ -95,9 +96,9 @@ def render_acquisition_controls(symbol, source_url):
             type=["json", "gz"], key=UPLOAD_KEYS[symbol],
         )
     st.caption(
-        "Fonte: Cboe delayed quotes · Il timestamp originale è mostrato senza "
-        "attribuire un fuso orario non documentato. "
-        "I rilevamenti programmati richiedono un feed autorizzato."
+        "Acquisizione diretta solo su richiesta. Le fotografie programmate "
+        "Cboe sono consultabili dal selettore Snapshot originale Cboe "
+        "quando l'archivio GitHub è configurato."
     )
     return clicked, uploaded
 
