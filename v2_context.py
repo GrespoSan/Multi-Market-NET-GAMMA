@@ -122,7 +122,6 @@ def render(market):
     from macro_calendar import render as render_macro_calendar
     render_macro_calendar()
     st.divider()
-    st.markdown("#### Volatilità — seduta precedente")
     if source_day is None:
         st.caption("Nessuna fotografia Cboe selezionata: si utilizza la data odierna "
                    f"{display_day} come riferimento per le barre Daily precedenti.")
