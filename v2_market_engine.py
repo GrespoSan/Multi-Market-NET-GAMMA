@@ -44,47 +44,49 @@ def render_selected_market(market_key):
         st.stop()
     
     
-    fetch_pressed,uploaded=render_acquisition_controls('NDX',NDX_URL)
-    if fetch_pressed:
-        try:
-            with st.spinner('Lettura fotografia NDX da Cboe...'):
-                raw=download_ndx()
-                unpack_snapshot(raw)
-            prefer_manual_source('NDX')
-            st.session_state['ndx_blob']=raw
-            st.session_state['ndx_name']='NDX_CBOE_online.json'
-            st.session_state['ndx_download_rome']=datetime.now(ROME).strftime('%d/%m/%Y %H:%M:%S Roma')
-            st.success('Fotografia NDX ricevuta e verificata nella struttura.')
-        except Exception as exc:
-            st.error(f'Fonte live non disponibile: {str(exc)[:260]}')
-    if uploaded is not None:
-        content=uploaded.getvalue()
-        if st.session_state.get('ndx_upload_tag') != (uploaded.name, len(content),hash(content)):
+    st.subheader("Fotografia opzioni Cboe · NDX")
+    snapshot_placement = st.container()
+    with st.expander("Acquisizione manuale / importazione JSON", expanded=False):
+        fetch_pressed,uploaded=render_acquisition_controls('NDX',NDX_URL, show_header=False)
+        if fetch_pressed:
             try:
-                unpack_snapshot(content)
+                with st.spinner('Lettura fotografia NDX da Cboe...'):
+                    raw=download_ndx()
+                    unpack_snapshot(raw)
                 prefer_manual_source('NDX')
-                st.session_state['ndx_blob']=content
-                st.session_state['ndx_name']=uploaded.name
-                st.session_state['ndx_download_rome']=None
-                st.session_state['ndx_upload_tag']=(uploaded.name,len(content),hash(content))
-                st.success('JSON originale NDX importato e validato.')
+                st.session_state['ndx_blob']=raw
+                st.session_state['ndx_name']='NDX_CBOE_online.json'
+                st.session_state['ndx_download_rome']=datetime.now(ROME).strftime('%d/%m/%Y %H:%M:%S Roma')
+                st.success('Fotografia NDX ricevuta e verificata nella struttura.')
             except Exception as exc:
-                st.error(f'File NDX non riconosciuto: {exc}')
-    
-    archive_selected=archive_panel('NDX')
-    if archive_selected is not None:
-        scheduled_raw, scheduled_name=archive_selected
-        try:
-            unpack_snapshot(scheduled_raw)
-            st.session_state['ndx_blob']=scheduled_raw
-            st.session_state['ndx_name']=scheduled_name
-            st.session_state['ndx_download_rome']=(
-                st.session_state.get('v2_archive_capture_rome_NDX')
-                or 'Archivio privato · ora acquisizione non verificabile')
-            st.success('Fotografia programmata NDX validata e caricata.')
-        except Exception as exc:
-            st.error(f'Archivio NDX non valido: {str(exc)[:230]}')
-    
+                st.error(f'Fonte live non disponibile: {str(exc)[:260]}')
+        if uploaded is not None:
+            content=uploaded.getvalue()
+            if st.session_state.get('ndx_upload_tag') != (uploaded.name, len(content),hash(content)):
+                try:
+                    unpack_snapshot(content)
+                    prefer_manual_source('NDX')
+                    st.session_state['ndx_blob']=content
+                    st.session_state['ndx_name']=uploaded.name
+                    st.session_state['ndx_download_rome']=None
+                    st.session_state['ndx_upload_tag']=(uploaded.name,len(content),hash(content))
+                    st.success('JSON originale NDX importato e validato.')
+                except Exception as exc:
+                    st.error(f'File NDX non riconosciuto: {exc}')
+    with snapshot_placement:
+        archive_selected=archive_panel('NDX')
+        if archive_selected is not None:
+            scheduled_raw, scheduled_name=archive_selected
+            try:
+                unpack_snapshot(scheduled_raw)
+                st.session_state['ndx_blob']=scheduled_raw
+                st.session_state['ndx_name']=scheduled_name
+                st.session_state['ndx_download_rome']=(
+                    st.session_state.get('v2_archive_capture_rome_NDX')
+                    or 'Archivio privato · ora acquisizione non verificabile')
+                st.success('Fotografia programmata NDX validata e caricata.')
+            except Exception as exc:
+                st.error(f'Archivio NDX non valido: {str(exc)[:230]}')
     
     blob=st.session_state.get('ndx_blob')
     if not blob:
