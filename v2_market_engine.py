@@ -13,7 +13,7 @@ import streamlit as st
 
 from markets import MARKETS
 from gamma_chart_style import profile_chart, panel_heading, capture_display, spx_shared_gamma_bounds
-from v2_storage_off import archive_panel
+from v2_storage_off import archive_panel, prefer_manual_source
 from market_ui import render_acquisition_controls, render_empty_snapshot
 from data_sources import download_ndx, NDX_URL
 from ndx_engine import (unpack_snapshot, available_expirations, close_from_payload,
@@ -50,6 +50,7 @@ def render_selected_market(market_key):
             with st.spinner('Lettura fotografia NDX da Cboe...'):
                 raw=download_ndx()
                 unpack_snapshot(raw)
+            prefer_manual_source('NDX')
             st.session_state['ndx_blob']=raw
             st.session_state['ndx_name']='NDX_CBOE_online.json'
             st.session_state['ndx_download_rome']=datetime.now(ROME).strftime('%d/%m/%Y %H:%M:%S Roma')
@@ -61,6 +62,7 @@ def render_selected_market(market_key):
         if st.session_state.get('ndx_upload_tag') != (uploaded.name, len(content),hash(content)):
             try:
                 unpack_snapshot(content)
+                prefer_manual_source('NDX')
                 st.session_state['ndx_blob']=content
                 st.session_state['ndx_name']=uploaded.name
                 st.session_state['ndx_download_rome']=None
