@@ -28,10 +28,14 @@ selettore mercato.
   Gli indici VXN/GVZ/OVX rimangono indipendenti (Yahoo).
   Il buffer ES 10/15 punti NON è definito per NQ/GC/CL e non viene
   inventato; eventuali fonti assenti sono indicate N/D.
-- **Trend Daily**: porting del metodo SPX con range, struttura, numero
-  candele dello stesso colore, baricentro e candela d'impulso, applicato
-  ai futures `NQ=F`, `GC=F`, `CL=F`. Solo barre precedenti alla
-  data di riferimento e nessuna modifica ai calcoli NET GAMMA.
+- **Trend Daily**: struttura dei massimi/minimi, chiusura rispetto
+  al baricentro, livello del baricentro, numero di candele consecutive
+  dello stesso colore e ultima candela d'impulso. USA LE STESSE
+  barre OHLC `1session` Massive già scaricate per la volatilità
+  (NQ/GC/CL, contratto selezionato). Niente più secondi Range
+  discrepanti da Yahoo, né una seconda chiamata API. Solo sedute
+  precedenti alla data di riferimento e nessuna modifica ai calcoli
+  NET GAMMA.
 - **Apertura iniziale**: Analisi del contesto aperta prima delle 13
   di Roma, Analisi NET GAMMA chiusa per impostazione predefinita come
   nella Serafini SPX.
@@ -57,6 +61,34 @@ VIX/VX e il buffer specifico ES non sono copiati su mercati diversi.
 - `gamma_chart_style.py` e `pine_spx_visual.py` — visualizzazione stile SPX.
 
 La sezione Contesto contiene News/Calendario, volatilità VXN/GVZ/OVX e Trend Daily per NQ/GC/CL; i dati specifici SPX non vengono attribuiti ad altri mercati.
+
+## Trend Daily — nessun duplicato del Range
+
+Il **Range Daily precedente** in punti, percentuale e
+**ESPANSIONE / COMPRESSIONE** è visibile soltanto nel primo pannello
+Andamento e volatilità. Nel Trend Daily le quattro caselle ora sono:
+
+1. **Struttura Daily**: confronto tra High/Low delle ultime due sedute
+   (rialzista, ribassista, neutra/mista).
+2. **Chiusura vs baricentro**: sopra/sotto `(High+Low)/2` della
+   Daily precedente, con distanza percentuale.
+3. **Baricentro Daily**: prezzo del punto medio della stessa candela
+   Massive.
+4. **Barre stesso colore**: conteggio consecutivo delle candele
+   rialziste/ribassiste in base a Open/Close Massive.
+
+Resta sotto la lettura della **candela d'impulso** sperimentale
+(criterio preesistente), calcolata sulle medesime barre Massive.
+L'ultimo Close e il baricentro sono verificati con la medesima
+data di sessione. Ad esempio, per NQZ6 al 29/10/2026 il Close
+29218,25 è **sotto** il baricentro 29452,625. Il vecchio Trend Daily
+Yahoo riportava un Range 2,28% e una lettura della candela
+potenzialmente divergenti: non vengono più usati.
+
+Se manca Open nelle barre Massive o non sono presenti almeno
+cinque sessioni chiuse, il Trend mostra N/D senza inventare
+candele. L'archivio 75 giorni è letto attraverso la stessa
+chiamata Massive (cache) della scheda Range.
 
 ## Regime da ribasso e variazione del Range Daily
 
