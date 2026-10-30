@@ -110,7 +110,7 @@ with st.expander("ANALISI DEL CONTESTO — News · Volatilità · Trend Daily",
     from v2_context import render as render_market_context
     render_market_context(market_key)
 
-with st.expander("ANALISI NET GAMMA", expanded=True):
+with st.expander("ANALISI NET GAMMA", expanded=False):
     render_selected_market(market_key)
 
 # No GEX EDGE, REPLAY E CONFRONTO, or REPORT GIORNALIERO AI.
