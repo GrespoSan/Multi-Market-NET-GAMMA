@@ -1,49 +1,82 @@
-"""V2 snapshot reader: NO Supabase connection, no remote storage calls.
+"""No-Supabase V2 snapshot browser, matching SPX archived-capture workflow.
 
-Scheduled encrypted GitHub Actions artifacts may be imported manually.
-The private Fernet key lives only in V2 Streamlit Secrets, never in GitHub.
+Only encrypted GitHub Actions artifacts are loaded (server-side Github read
+token + Fernet key); never access Supabase or its credentials.
 """
 import streamlit as st
 
+from v2_github_archive import (
+    list_v2_artifacts, fetch_artifact_snapshot, decrypt_encrypted,
+)
+
 
 def archive_panel(symbol: str):
-    with st.expander("RILEVAMENTI CBOE · 07:30 / 15:50 / 20:30", expanded=False):
-        st.caption(
-            "Fotografie programmate V2: disponibili solo con feed autorizzato. "
-            "Non sono collegate al bucket SPX né al bucket V1."
-        )
-        st.info("Supabase completamente disattivato. Le fotografie cifrate "
-                "possono essere scaricate dagli artifact GitHub Actions e "
-                "importate qui, oppure si può usare il download manuale Cboe.")
-        try:
-            secret = str(st.secrets.get("V2_ARCHIVE_FERNET_KEY", "")).strip()
-        except Exception:
-            secret = ""
-        if not secret:
-            st.caption("Per leggere gli artifact cifrati, configura "
-                       "V2_ARCHIVE_FERNET_KEY nei Secrets di questa app.")
-            return None
+    with st.expander("RILEVAMENTI CBOE · 07:30 Roma / 08:50 e 13:30 Chicago",
+                     expanded=False):
+        st.caption("Archivio indipendente dalla SPX e dalla V1: "
+                   "fotografie V2 cifrate, conservate negli artifact GitHub "
+                   "(30 giorni). Nessuna connessione Supabase.")
         if st.session_state.get("v2_role") != "admin":
-            st.caption("L'importazione degli archivi è riservata all'amministratore.")
+            st.caption("Archivio riservato all'amministratore.")
             return None
-        uploaded = st.file_uploader(
-            f"Carica fotografia {symbol} cifrata (.json.gz.enc)",
-            type=["enc"], key=f"v2_{symbol.lower()}_encrypted",
-        )
-        if not uploaded:
+        try:
+            key = str(st.secrets.get("V2_ARCHIVE_FERNET_KEY", "")).strip()
+            github_token = str(st.secrets.get("V2_GITHUB_TOKEN", "")).strip()
+        except Exception:
+            key, github_token = "", ""
+        if not key:
+            st.info("Per aprire le fotografie cifrate, configura "
+                    "V2_ARCHIVE_FERNET_KEY nei Secrets della V2.")
             return None
-        if st.button("Decifra e carica questa fotografia", key=f"v2_{symbol.lower()}_decrypt"):
-            try:
-                from cryptography.fernet import Fernet
-                if uploaded.size > 120 * 1024 * 1024:
-                    raise ValueError("File archivio troppo grande.")
-                packed = Fernet(secret.encode("ascii")).decrypt(uploaded.getvalue())
-                if len(packed) > 80 * 1024 * 1024:
-                    raise ValueError("File decifrato supera il limite previsto.")
-                if not packed.startswith(b"\x1f\x8b"):
-                    raise ValueError("Il contenuto non è un originale JSON gzip.")
-                return packed, uploaded.name.removesuffix(".enc")
-            except Exception:
-                st.error("Impossibile decifrare o validare l'archivio. "
-                         "Controlla file e chiave V2 senza divulgarla.")
+
+        if github_token:
+            if st.button("Elenca rilevamenti GitHub", key=f"v2_{symbol.lower()}_gh_list"):
+                try:
+                    with st.spinner("Lettura elenco delle fotografie cifrate..."):
+                        st.session_state["v2_github_artifacts"] = list_v2_artifacts(
+                            github_token)
+                except Exception:
+                    st.error("Elenco GitHub non accessibile: verifica token Actions "
+                             "di sola lettura e permessi sul repository.")
+            options = st.session_state.get("v2_github_artifacts", [])
+            if options:
+                selected = st.selectbox(
+                    "Rilevamento programmato",
+                    options,
+                    format_func=lambda x: f"{x['created_at']} · {x['name']}",
+                    key=f"v2_{symbol.lower()}_gh_selected",
+                )
+                if st.button("Carica fotografia " + symbol + " da GitHub",
+                             key=f"v2_{symbol.lower()}_gh_download"):
+                    try:
+                        with st.spinner("Lettura e decifratura in memoria..."):
+                            packed, name = fetch_artifact_snapshot(
+                                selected["url"], symbol, github_token, key)
+                        st.success("Fotografia " + symbol + " caricata dall'archivio.")
+                        return packed, name
+                    except Exception as exc:
+                        st.warning("Questo artifact non contiene una fotografia "
+                                   f"{symbol} utilizzabile o non è accessibile. "
+                                   "L'acquisizione del relativo slot potrebbe "
+                                   "essere stata saltata.")
+        else:
+            st.caption("Per elencare e caricare direttamente i rilevamenti, "
+                       "aggiungi V2_GITHUB_TOKEN (fine-grained PAT con "
+                       "Actions: Read) nei Secrets Streamlit.")
+
+        with st.expander("Caricamento manuale di un artifact cifrato",
+                         expanded=False):
+            uploaded = st.file_uploader(
+                f"File {symbol} (.json.gz.enc) dall'artifact GitHub",
+                type=["enc"], key=f"v2_{symbol.lower()}_encrypted",
+            )
+            if uploaded is not None and st.button(
+                    "Decifra e carica file", key=f"v2_{symbol.lower()}_decrypt"):
+                try:
+                    packed = decrypt_encrypted(uploaded.getvalue(), key)
+                    st.success("Fotografia cifrata caricata.")
+                    return packed, uploaded.name.removesuffix(".enc")
+                except Exception:
+                    st.error("File o chiave V2 non validi. Non condividere "
+                             "la chiave di decifratura.")
     return None
