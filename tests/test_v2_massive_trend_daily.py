@@ -44,7 +44,7 @@ class TrendFromMassiveTests(unittest.TestCase):
         self.assertAlmostEqual(trend["midpoint_delta_pct"],-0.79577,places=3)
         self.assertEqual(trend["direction"],"RIBASSISTA")
         self.assertEqual(trend["bar_color"],"ROSSA")
-        self.assertEqual(trend["same_color"],1)
+        self.assertEqual(trend["same_color"],2) # 28 e 29 ottobre: entrambe candele rosse Massive
 
     def test_no_lookahead_for_target_date(self):
         rows=self.sample()
