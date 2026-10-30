@@ -59,12 +59,23 @@ def archive_panel(symbol: str):
         github_token = str(st.secrets.get("V2_GITHUB_TOKEN", "")).strip()
     except Exception:
         key, github_token = "", ""
+    # Same top-level, immediately visible snapshot selection as Serafini SPX.
+    # Never hide the missing-token explanation inside a closed expander.
     if not github_token or not key:
-        with st.expander("RILEVAMENTI PROGRAMMATI · archivio V2", expanded=False):
-            st.caption("Tre slot GitHub Actions: 07:30 Roma, 08:50 e 13:30 Chicago. "
-                       "La configurazione dell'archivio richiede V2_GITHUB_TOKEN "
-                       "(Actions Read) e V2_ARCHIVE_FERNET_KEY nei Secrets della V2. "
-                       "Le catene restano importabili manualmente.")
+        missing = []
+        if not github_token:
+            missing.append("V2_GITHUB_TOKEN")
+        if not key:
+            missing.append("V2_ARCHIVE_FERNET_KEY")
+        st.markdown("**Snapshot originale Cboe**")
+        st.warning("Archivio automatico non ancora collegato alla V2: "
+                   "manca nei Secrets Streamlit: **" + ", ".join(missing) + "**. "
+                   "GitHub ha già acquisito e cifrato i JSON; occorre solo "
+                   "abilitare la lettura dell'archivio. "
+                   "Il token GitHub deve avere Actions: Read per il repository "
+                   "GrespoSan/Multi-Market-NET-GAMMA.")
+        st.caption("La modalità manuale resta disponibile nella sezione "
+                   "«Acquisizione manuale / importazione JSON» sottostante.")
         return None
 
     col_select, col_refresh = st.columns([3.2, 0.8], gap="small",
@@ -72,8 +83,10 @@ def archive_panel(symbol: str):
     try:
         artifacts = _cached_artifacts(github_token)
     except Exception:
-        st.warning("Archivio V2 non raggiungibile: verifica il token GitHub Actions "
-                   "di sola lettura. Rimane disponibile l'importazione manuale.")
+        st.markdown("**Snapshot originale Cboe**")
+        st.warning("Non riesco a leggere l'archivio GitHub: controlla che "
+                   "V2_GITHUB_TOKEN sia valido e abbia Actions: Read "
+                   "su GrespoSan/Multi-Market-NET-GAMMA.")
         return None
 
     # "ultimo" is stable across reruns: if a new photograph appears, it
@@ -87,7 +100,7 @@ def archive_panel(symbol: str):
 
     with col_select:
         chosen = st.selectbox(
-            "Snapshot originale opzioni · archivio automatico",
+            "Snapshot originale Cboe",
             options, key=choice_key,
             format_func=lambda url: (
                 "ULTIMO rilevamento automatico · " + _archive_label(artifacts[0])
@@ -98,15 +111,15 @@ def archive_panel(symbol: str):
                  "per 30 giorni. L'ultima è proposta per impostazione predefinita.",
         )
     with col_refresh:
-        if st.button("Aggiorna elenco", key=f"v2_{symbol.lower()}_gh_refresh",
+        if st.button("Aggiorna fotografie", key=f"v2_{symbol.lower()}_gh_refresh",
                      use_container_width=True):
             _cached_artifacts.clear()
             st.session_state[choice_key] = "ultimo" if artifacts else "manuale"
             st.rerun()
 
     if chosen == "manuale":
-        st.caption("Modalità manuale: i file caricati o scaricati su richiesta "
-                   "non vengono sovrascritti dall'archivio.")
+        st.caption("Fotografia manuale selezionata. Per ripristinare il rilevamento "
+                   "programmato, scegli «ULTIMO rilevamento automatico» in alto.")
     else:
         try:
             if chosen == "ultimo":
