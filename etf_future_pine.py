@@ -89,7 +89,7 @@ def make_etf_future_pine(symbol: str, profiles: dict, etf_previous_close: float,
         "Scala grafica MANUALE comune ai profili. NET GAMMA ETF invariato.")
     main_call = (f'renderProfile(odteLevels, mainGammaETF, bar_index + offsetOdte, '
                  f'"{main_label}", actualScale)' if main_rows else "")
-    weekly_call = (f'renderProfile(weeklyLevels, weeklyGammaETF, bar_index + offsetWeekly, '
+    weekly_call = (f'renderProfile(weeklyLevels, weeklyGammaETF, bar_index + weeklyCenter, '
                    f'"{weekly_label}", actualScale)' if weekly_rows else "")
     prepare = (
         "array<float> odteLevels = mapETF(mainStrikesETF, ratioToDraw)\n"
