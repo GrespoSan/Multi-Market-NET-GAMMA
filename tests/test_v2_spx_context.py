@@ -53,7 +53,8 @@ class SPXContextV2Tests(unittest.TestCase):
         self.assertIn("36.00", x["vol_text"])
         self.assertIn("+2.86%", x["vol_text"])
         src = (ROOT / "v2_volatility.py").read_text(encoding="utf-8")
-        self.assertIn("Non definito", src)
+        self.assertIn("Regime da ribasso Close/Close", src)
+        self.assertIn("Soglia −1% non superata", src)
         self.assertIn("SPX", src)
         self.assertIn("spx-vol-card", src)
         self.assertNotIn("previous_vix_curve", src)
@@ -69,12 +70,16 @@ class SPXContextV2Tests(unittest.TestCase):
         self.assertEqual(up["range_text"], "10.00 pt · 9.71%")
         self.assertAlmostEqual(up["change_pct"], 3.0)
         self.assertEqual(up["previous_close_day"], day1)
+        self.assertEqual(up["range_trend"], "ESPANSIONE")
+        self.assertIs(up["bearish_volatility"], False)
         down = evaluate_vol([
             {"day": day1, **common},
             {"day": day2, "hi": 102., "lo": 97., "close": 98.},
         ], [])
         self.assertEqual(down["range_text"], "5.00 pt · 5.10%")
         self.assertAlmostEqual(down["change_pct"], -2.0)
+        self.assertEqual(down["range_trend"], "COMPRESSIONE")
+        self.assertIs(down["bearish_volatility"], True)
         flat = evaluate_vol([
             {"day": day1, **common},
             {"day": day2, "hi": 105., "lo": 95., "close": 100.},
@@ -82,6 +87,13 @@ class SPXContextV2Tests(unittest.TestCase):
         self.assertEqual(flat["change_pct"], 0.0)
         first = evaluate_vol([{"day": day2, **common}], [])
         self.assertIsNone(first["change_pct"])
+        self.assertIsNone(first["bearish_volatility"])
+        self.assertEqual(first["range_trend"], "N/D")
+        threshold = evaluate_vol([
+            {"day": day1, "hi": 110., "lo": 90., "close": 100.},
+            {"day": day2, "hi": 105., "lo": 95., "close": 99.},
+        ], [])
+        self.assertIs(threshold["bearish_volatility"], False)
         src = (ROOT / "v2_volatility.py").read_text(encoding="utf-8")
         from v2_volatility import signed_daily_heading
         self.assertIn('color:#56d49e', signed_daily_heading(0.9))
