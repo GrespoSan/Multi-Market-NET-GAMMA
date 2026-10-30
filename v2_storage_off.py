@@ -76,19 +76,24 @@ def archive_panel(symbol: str):
                    "di sola lettura. Rimane disponibile l'importazione manuale.")
         return None
 
-    options = ["manuale"] + [item["url"] for item in artifacts]
+    # "ultimo" is stable across reruns: if a new photograph appears, it
+    # automatically follows the newest one. Selecting a historical URL pins it.
+    options = (["ultimo", "manuale"] + [item["url"] for item in artifacts[1:]]
+               if artifacts else ["manuale"])
     labels = {item["url"]: _archive_label(item) for item in artifacts}
     choice_key = f"v2_archive_choice_{symbol.lower()}"
     if st.session_state.get(choice_key) not in options:
-        # New app sessions prefer the newest automated capture if one exists.
-        st.session_state[choice_key] = options[1] if len(options) > 1 else "manuale"
+        st.session_state[choice_key] = "ultimo" if artifacts else "manuale"
 
     with col_select:
         chosen = st.selectbox(
             "Snapshot originale opzioni · archivio automatico",
             options, key=choice_key,
-            format_func=lambda url: ("Fotografia manuale / acquisizione diretta"
-                                     if url == "manuale" else labels.get(url, url)),
+            format_func=lambda url: (
+                "ULTIMO rilevamento automatico · " + _archive_label(artifacts[0])
+                if url == "ultimo" and artifacts else
+                "Fotografia manuale / acquisizione diretta"
+                if url == "manuale" else labels.get(url, url)),
             help="Le fotografie programmate sono archiviate cifrate su GitHub "
                  "per 30 giorni. L'ultima è proposta per impostazione predefinita.",
         )
@@ -96,6 +101,7 @@ def archive_panel(symbol: str):
         if st.button("Aggiorna elenco", key=f"v2_{symbol.lower()}_gh_refresh",
                      use_container_width=True):
             _cached_artifacts.clear()
+            st.session_state[choice_key] = "ultimo" if artifacts else "manuale"
             st.rerun()
 
     if chosen == "manuale":
@@ -103,7 +109,9 @@ def archive_panel(symbol: str):
                    "non vengono sovrascritti dall'archivio.")
     else:
         try:
-            packed, filename = _cached_snapshot(chosen, symbol, github_token, key)
+            chosen_url = artifacts[0]["url"] if chosen == "ultimo" else chosen
+            packed, filename = _cached_snapshot(
+                chosen_url, symbol, github_token, key)
             parts = filename.split("_")
             slot = next((SLOTS.get(p, "") for p in parts if p in SLOTS), "")
             # Filename carries the REAL capture UTC time; unlike GitHub
