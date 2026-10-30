@@ -61,7 +61,7 @@ class TestPercentageStrikeSelection(unittest.TestCase):
         self.assertIn(expected, code)
         self.assertIn('if actualScale < minimumSafe * 0.999999', code)
         self.assertAlmostEqual(a["rows"][0]["net_gamma"], 0.4)
-        self.assertIn('Distanza Weekly da ultima candela', code)
+        self.assertIn('Distanza Weekly dalle 0DTE', code)
         self.assertIn('NET GAMMA positivo', code)
         self.assertIn("0DTE 29/10", code)
         self.assertIn("Weekly 30/10", code)
