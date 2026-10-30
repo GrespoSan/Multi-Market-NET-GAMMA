@@ -50,10 +50,13 @@ Serafini SPX: ciò potrebbe interrompere la SPX.
    GitHub o nei file versionati; non servono Secrets Supabase.
 3. Per ora le tre catene possono essere acquisite col pulsante manuale,
    come nella V1, o caricando il JSON originale Cboe.
-4. Per importare un file cifrato, l'app deve avere anche
-   `V2_ARCHIVE_FERNET_KEY`, identica a quella del workflow GitHub.
-   Nell'espander **RILEVAMENTI CBOE** si può caricare manualmente
-   il file `.json.gz.enc` scaricato dagli artifact GitHub Actions.
+4. Per consultare i rilevamenti cifrati direttamente dall'app, aggiungere
+   nei **Secrets Streamlit** `V2_ARCHIVE_FERNET_KEY` (identica a
+   GitHub Actions) e `V2_GITHUB_TOKEN` (PAT fine-grained, limitato al
+   repository Multi-Market con **Actions: Read-only**). Nessuna chiave
+   Supabase. Nell'espander **RILEVAMENTI CBOE** l'amministratore
+   usa “Elenca rilevamenti GitHub” e “Carica fotografia ... da GitHub”.
+   È disponibile anche l'upload manuale `.json.gz.enc`.
 
 ## Tre cronjob GitHub Actions
 
@@ -62,19 +65,29 @@ Workflow **sul ramo predefinito `main`**:
 `v2-spx` prima di eseguire lo script. Questo permette di mantenere la V1
 sospesa senza dover pubblicare o promuovere il codice V2.
 
-Cron lunedì-venerdì, fuso `Europe/Rome` (DST automatico):
-- `07:30`
-- `15:50`
-- `20:30`
+Cron lunedì-venerdì, ESATTAMENTE come la Serafini SPX:
+- `07:30` **Europe/Rome**, etichetta `07:30`.
+- `08:50` **America/Chicago**, etichetta storica `15:50`.
+- `13:30` **America/Chicago**, etichetta storica `20:30`.
 
-La finestra di avvio valida è compresa tra l'orario nominale e 12 minuti
-dopo. Le GitHub Actions possono partire in ritardo: i job fuori finestra
+In ottobre/marzo le transizioni CET/CEST e CST/CDT avvengono in
+settimane diverse. Per esempio il 30 ottobre 2026 gli slot USA sono
+alle **14:50 e 19:30 Roma**, dal 2 novembre ritornano **15:50 e
+20:30 Roma**. Lo storico conserva i nomi logici, ma il log registra
+l'ora effettiva a Roma e Chicago. Le GitHub Actions ora supportano
+fusi orari IANA nello scheduler, quindi **non servono cronjob.org** per
+questa V2.
+
+La finestra di avvio valida è compresa tra l'orario nominale **nel
+fuso scelto (Roma oppure Chicago)** e 12 minuti dopo. Le GitHub Actions possono partire in ritardo: i job fuori finestra
 registrano uno SKIP e **non si presentano falsamente come rilevamenti puntuali**.
 
-Le esecuzioni **programmate** sono disabilitate finché la variabile Actions
-`V2_AUTHORIZED_FEED_CONFIRMED` non vale `true`. Il workflow può essere
-lanciato manualmente per un test di configurazione senza download non
-autorizzati.
+I **cronjob sono attivi**: il workflow GitHub Actions viene avviato
+ai tre orari programmati e produce i log di stato. L'**acquisizione**
+delle opzioni resta `NON_CONFIGURATO` se la variabile Actions
+`V2_AUTHORIZED_FEED_CONFIRMED` non vale `true`, mancano endpoint
+licenziati o la chiave di cifratura. Anche un'esecuzione manuale
+può produrre solo log, senza fotografie.
 
 Per attivare realmente il download automatico, configurare
 **GitHub → Settings → Secrets and variables → Actions**:
@@ -98,10 +111,11 @@ e i redirect verso di esse. Il formato API autorizzato deve ancora
 essere verificato sul vero provider: non è stato inventato un endpoint.
 
 Gli artifact sono salvati **cifrati**, non contengono chiavi o JSON in
-chiaro, e vengono conservati 30 giorni. Il caricamento nell'app V2
-richiede oggi un passaggio manuale dall'artifact GitHub; la selezione
-automatica remota come SPX richiede ancora un backend separato e
-autorizzato, che non può essere Supabase finché resta il blocco richiesto.
+chiaro, e vengono conservati 30 giorni. L'app V2 può
+**elencarli e leggerli direttamente**, dietro accesso amministratore,
+con un PAT read-only. Gli artifact `NON_CONFIGURATO` contengono
+esclusivamente un log e non possono creare retroattivamente una
+fotografia. Non vengono fatte chiamate a Supabase.
 
 ## Condizioni di validazione
 
