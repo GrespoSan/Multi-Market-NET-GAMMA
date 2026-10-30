@@ -86,6 +86,38 @@ def fetch_authorized(url, token="", get=None):
     return b"".join(chunks)
 
 
+def error_code(exc):
+    """Stable, secret-free diagnostics for logs and GitHub artifacts."""
+    if isinstance(exc, ProviderAccessError):
+        return "PROVIDER_ACCESS_DENIED"
+    message = str(exc).lower()
+    classes = (
+        ("endpoint cdn cboe diverso", "UNEXPECTED_CBOE_REDIRECT"),
+        ("sorgente https non valida", "UNEXPECTED_RESPONSE_URL"),
+        ("catena supera il limite", "RESPONSE_TOO_LARGE"),
+        ("risposta senza contratti", "EMPTY_RESPONSE"),
+        ("non contiene json cboe valido", "INVALID_JSON"),
+        ("expecting value", "INVALID_JSON"),
+        ("file cboe non valido", "INVALID_CBOE_STRUCTURE"),
+        ("catena opzioni", "INVALID_CBOE_STRUCTURE"),
+        ("atteso ndx", "WRONG_SYMBOL"),
+        ("atteso gld", "WRONG_SYMBOL"),
+        ("atteso uso", "WRONG_SYMBOL"),
+        ("greche / oi / volume insufficienti", "GAMMA_OI_VOLUME_INSUFFICIENT"),
+        ("scadenze", "EXPIRATIONS_OR_GAMMA_INSUFFICIENT"),
+        ("file gld assente o troppo grande", "RESPONSE_TOO_LARGE"),
+        ("file uso assente o troppo grande", "RESPONSE_TOO_LARGE"),
+        ("la chiave fernet", "INVALID_FERNET_KEY"),
+        ("fernet key must", "INVALID_FERNET_KEY"),
+        ("non-zero base64", "INVALID_FERNET_KEY"),
+        ("html", "HTML_INSTEAD_OF_JSON"),
+    )
+    for prefix, code in classes:
+        if prefix in message:
+            return code
+    return type(exc).__name__.upper()
+
+
 def validate_options(symbol, raw):
     if symbol == "NDX":
         doc = unpack_snapshot(raw)
@@ -150,13 +182,16 @@ def run_capture(now=None, env=None, output=None, downloader=None):
             status = {"status": "NON_CONFIGURATO", "source":
                       "CBOE_PUBLIC_CDN" if is_public_cboe else "CUSTOM_FEED"}
             if secret and (is_public_cboe or consent):
+                phase = "ENCRYPTION_SETUP"
                 try:
-                    # Do not import cryptography or read data until keys are set.
                     from cryptography.fernet import Fernet
                     encryptor = Fernet(secret.encode("ascii"))
+                    phase = "FETCH_HTTP"
                     raw = (downloader or fetch_authorized)(
                         url, env.get("V2_FEED_TOKEN", ""))
+                    phase = "VALIDATE_CHAIN"
                     details = validate_options(market, raw)
+                    phase = "ARCHIVE_ENCRYPTED"
                     if raw.startswith(b"\x1f\x8b"):
                         packed = raw
                     else:
@@ -173,12 +208,15 @@ def run_capture(now=None, env=None, output=None, downloader=None):
                 except ProviderAccessError as exc:
                     status = {
                         "status": "BLOCCATO_PROVIDER", "http_status": exc.status_code,
+                        "phase": phase, "error_code": error_code(exc),
                         "source": "CBOE_PUBLIC_CDN" if is_public_cboe
                                   else "CUSTOM_FEED",
                     }
                 except Exception as exc:
-                    # Never write exception text: it can contain private URL credentials.
+                    # Report only phase and a known, non-sensitive error code:
+                    # raw HTTP bodies, URLs and secret values never enter logs.
                     status = {"status": "ERRORE", "error_type": type(exc).__name__,
+                              "phase": phase, "error_code": error_code(exc),
                               "source": "CBOE_PUBLIC_CDN" if is_public_cboe
                                         else "CUSTOM_FEED"}
             elif not secret:
@@ -192,8 +230,11 @@ def run_capture(now=None, env=None, output=None, downloader=None):
     (output/"run_status.json").write_text(
         json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
     print(json.dumps({"slot": report["slot"], "status": report["status"],
-                      "markets": {key: val["status"] for key, val
-                                  in report["markets"].items()}}, ensure_ascii=False))
+                      "markets": {
+                          key: {k: val.get(k) for k in ("status", "phase", "error_code")
+                                if val.get(k) is not None}
+                          for key, val in report["markets"].items()
+                      }}, ensure_ascii=False))
     return report
 
 
