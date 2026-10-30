@@ -111,6 +111,19 @@ with st.expander("ANALISI DEL CONTESTO — News · Volatilità · Trend Daily",
     render_market_context(market_key)
 
 with st.expander("ANALISI NET GAMMA", expanded=False):
+    st.header("NET GAMMA · formula Serafini")
+    if market_key == "NASDAQ":
+        st.caption("Opzioni NDX/NDXP · proiezione indicativa su NQ/MNQ mediante "
+                   "differenziale NQ−NDX. Formula Call/Put invariata.")
+    else:
+        st.caption("Opzioni ETF " + ("GLD" if market_key == "GOLD" else "USO")
+                   + " · profili Gamma sui veri strike dell'ETF. "
+                   "La mappatura percentuale su future è indicativa e NON "
+                   "trasforma queste opzioni in opzioni su GC o CL.")
+    st.caption("0DTE e Weekly: medesimo criterio grafico della Serafini SPX; "
+               "Gamma da (OI + Volume) × Gamma, non GEX monetario. "
+               "Le proporzioni 60%/23% citate per SPX non sono "
+               "automaticamente valide per NDX, GLD e USO.")
     render_selected_market(market_key)
 
 # No GEX EDGE, REPLAY E CONFRONTO, or REPORT GIORNALIERO AI.
