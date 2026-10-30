@@ -1,12 +1,15 @@
-"""SPX-style V2 scheduled collections, WITHOUT any Supabase connection.
+"""V2 three-slot unattended Cboe original option-chain acquisitions.
 
-Three 07:30 Rome / 08:50 Chicago / 13:30 Chicago daily workflow slots.
-Actual feeds require separately approved unattended API rights. Cboe's
-delayed_quotes webpage endpoints are forbidden for this use and rejected.
+User requested direct public Cboe CDN downloads notwithstanding provider
+automated-access restrictions. This runner does not bypass rate limits,
+authentication, access denials, CAPTCHAs or other technical controls.
+One bounded HTTPS GET per market per scheduled run; on HTTP 401/403/429
+the market is marked failed with no retry or workaround.
 
-Original chains are saved ONLY as Fernet-encrypted GitHub Actions artifacts;
-the key is never published. If the source or encryption key is missing,
-the runner records NON_CONFIGURATO without making a request.
+Three schedules: 07:30 Rome / 08:50 and 13:30 Chicago. Each successfully
+validated original JSON is gzip-compressed and Fernet-encrypted inside
+GitHub Actions artifacts, never written as plaintext or to Supabase.
+V2_ARCHIVE_FERNET_KEY is required for a durable archived capture.
 """
 from datetime import datetime, timezone
 import gzip
@@ -26,29 +29,39 @@ from uso_cboe import read_uso, expirations as expiries_uso
 
 OUT = Path("v2_capture_output")
 MAX_SOURCE_BYTES = 80 * 1024 * 1024
+CBOE_PUBLIC_URLS = {
+    "NDX": "https://cdn.cboe.com/api/global/delayed_quotes/options/_NDX.json",
+    "GLD": "https://cdn.cboe.com/api/global/delayed_quotes/options/GLD.json",
+    "USO": "https://cdn.cboe.com/api/global/delayed_quotes/options/USO.json",
+}
 
 
 def safe_url(url):
     parts = urlsplit(str(url).strip())
     if parts.scheme != "https" or not parts.hostname or parts.username or parts.password:
-        raise ValueError("Feed autorizzato HTTPS non valido.")
-    host = parts.hostname.lower()
-    if (host == "cboe.com" or host.endswith(".cboe.com")) and (
-        "delayed_quotes" in parts.path.lower()
-    ):
-        raise ValueError("Endpoint delayed_quotes Cboe escluso dai download automatici.")
+        raise ValueError("Sorgente HTTPS non valida.")
+    if parts.hostname.lower().endswith(".cboe.com"):
+        # Only three known, unmodified public CDN paths are eligible;
+        # do not use alternate hosts/paths to evade provider restrictions.
+        if url not in CBOE_PUBLIC_URLS.values():
+            raise ValueError("Endpoint CDN Cboe diverso dai tre JSON previsti.")
     return str(url)
 
 
 def fetch_authorized(url, token="", get=None):
     safe_url(url)
     caller = get or requests.get
-    headers = {"Accept": "application/json, application/gzip"}
-    if token:
+    headers = {
+        "User-Agent": "MultiMarketNetGammaV2/1.0 (single scheduled snapshot)",
+        "Accept": "application/json, application/gzip",
+    }
+    if token and url not in CBOE_PUBLIC_URLS.values():
         headers["Authorization"] = "Bearer " + token
     with caller(url, headers=headers, stream=True, timeout=(8, 55),
                 allow_redirects=True) as res:
         safe_url(res.url)
+        if res.status_code in (401, 403, 429):
+            raise RuntimeError(f"HTTP {res.status_code}: provider accesso negato/limitato.")
         res.raise_for_status()
         size = 0
         chunks = []
@@ -120,9 +133,14 @@ def run_capture(now=None, env=None, output=None, downloader=None):
         consent = str(env.get("V2_AUTHORIZED_FEED_CONFIRMED", "")).lower() == "true"
         secret = env.get("V2_ARCHIVE_FERNET_KEY", "")
         for market in INSTRUMENTS:
-            url = env.get(f"V2_FEED_{market}_URL", "")
-            status = {"status": "NON_CONFIGURATO"}
-            if consent and secret and url:
+            override_url = str(env.get(f"V2_FEED_{market}_URL", "")).strip()
+            # Public Cboe paths are used without any additional endpoint secret.
+            # A licensed custom feed is an optional explicit override.
+            url = override_url or CBOE_PUBLIC_URLS[market]
+            is_public_cboe = url == CBOE_PUBLIC_URLS[market]
+            status = {"status": "NON_CONFIGURATO", "source":
+                      "CBOE_PUBLIC_CDN" if is_public_cboe else "CUSTOM_FEED"}
+            if secret and (is_public_cboe or consent):
                 try:
                     # Do not import cryptography or read data until keys are set.
                     from cryptography.fernet import Fernet
@@ -140,10 +158,18 @@ def run_capture(now=None, env=None, output=None, downloader=None):
                             f"{slot['slot'].replace(':','')}_{digest[:12]}.json.gz.enc")
                     (output/file).write_bytes(encrypted)
                     status = {"status": "SCARICATO_CIFRATO", "file": file,
+                              "source": "CBOE_PUBLIC_CDN" if is_public_cboe
+                                        else "CUSTOM_FEED",
                               "sha256": digest, "source_meta": details}
                 except Exception as exc:
                     # Never write exception text: it can contain private URL credentials.
-                    status = {"status": "ERRORE", "error_type": type(exc).__name__}
+                    status = {"status": "ERRORE", "error_type": type(exc).__name__,
+                              "source": "CBOE_PUBLIC_CDN" if is_public_cboe
+                                        else "CUSTOM_FEED"}
+            elif not secret:
+                status["reason"] = "V2_ARCHIVE_FERNET_KEY non configurata"
+            elif not is_public_cboe and not consent:
+                status["reason"] = "Feed esterno: consenso/licenza non confermati"
             report["markets"][market] = status
         report["status"] = ("TUTTI_ARCHIVIATI" if all(
             x["status"] == "SCARICATO_CIFRATO" for x in report["markets"].values())
