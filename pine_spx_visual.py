@@ -19,8 +19,8 @@ def spx_inputs(scale: str, scale_step: str, primary_label: str = "0DTE",
     tooltip = tooltip.replace('"', "'").replace("\n", " ")
     weekly_anchor = "dalle 0DTE" if primary_label == "0DTE" else "dal profilo Principale"
     return f'''gammaPerCandle = input.float({scale}, "Scala MANUALE · Gamma/barra", minval=0.000001, step={scale_step}, tooltip="{tooltip}")
-offsetOdte = input.int(60, "Distanza {primary_label} da ultima candela", minval=45, maxval=170)
-offsetWeekly = input.int(100, "Distanza Weekly {weekly_anchor}", minval=20, maxval=300)
+offsetOdte = input.int(100, "Distanza {primary_label} da ultima candela", minval=45, maxval=250)
+offsetWeekly = input.int(100, "Distanza Weekly {weekly_anchor}", minval=20, maxval=600)
 positiveColor = input.color(color.rgb(0, 230, 117), "NET GAMMA positivo")
 negativeColor = input.color(color.rgb(242, 54, 69), "NET GAMMA negativo")
 showTitles = input.bool(true, "Mostra intestazioni")'''
@@ -36,7 +36,7 @@ SPX_RENDER_FUNCTIONS = """requiredScale(array<float> gamma, int offsetBars) =>
     for g in gamma
         maxPos := math.max(maxPos, g)
         maxNeg := math.max(maxNeg, -g)
-    float rightCapacity = float(480 - offsetBars)
+    float rightCapacity = float(math.max(1, 480 - offsetBars))
     float leftCapacity = float(9500 + offsetBars)
     math.max(maxPos / rightCapacity, maxNeg / leftCapacity)
 
@@ -80,8 +80,12 @@ def spx_last_bar(main_call: str, weekly_call: str, main_values: str,
     array.clear(drawnLabels)
 {prefix}    float actualScale = gammaPerCandle
     int weeklyCenter = offsetOdte + offsetWeekly
+    bool beyondLimit = (array.size({main_values}) > 0 and offsetOdte >= 480) or (array.size({weekly_values}) > 0 and weeklyCenter >= 480)
     float minimumSafe = math.max(requiredScale({main_values}, offsetOdte), requiredScale({weekly_values}, weeklyCenter))
-    if actualScale < minimumSafe * 0.999999
+    if beyondLimit
+        label warningLimit = label.new(bar_index + 10, close, "Distanza Weekly/0DTE oltre il limite TradingView (+500 barre): riduci la distanza.", xloc=xloc.bar_index, yloc=yloc.price, style=label.style_label_left, color=color.orange, textcolor=color.black, size=size.small)
+        array.push(drawnLabels, warningLimit)
+    else if actualScale < minimumSafe * 0.999999
         label unsafe = label.new(bar_index + 10, close, "Scala manuale troppo piccola. Imposta almeno " + str.tostring(minimumSafe, "#.########") + " G/bar", xloc=xloc.bar_index, yloc=yloc.price, style=label.style_label_left, color=color.orange, textcolor=color.black, size=size.small)
         array.push(drawnLabels, unsafe)
     else
