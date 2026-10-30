@@ -81,12 +81,26 @@ def evaluate(future_bars, vol_bars):
         vol_text = f"{vol['close']:.2f} · variazione N/D"
     return {"range_text": range_text, "vol_text": vol_text,
             "change_pct": change_pct,
+            "future_close": future["close"] if future else None,
             "previous_close": (previous_future["close"]
                                if previous_future else None),
             "previous_close_day": (previous_future["day"]
                                    if previous_future else None),
             "future_day": future["day"] if future else None,
             "vol_day": vol["day"] if vol else None}
+
+
+def signed_daily_heading(change_pct):
+    """Show the signed Close/Close variation, never the nonnegative range."""
+    base = "Volatilità — seduta precedente"
+    if change_pct is None:
+        return f'<h4 style="font-size:1.4rem;font-weight:700">{base} (N/D)</h4>'
+    pct = float(change_pct)
+    if not isfinite(pct):
+        return f'<h4 style="font-size:1.4rem;font-weight:700">{base} (N/D)</h4>'
+    color = "#56d49e" if pct > 0 else "#ff676d" if pct < 0 else "#b6bcc5"
+    return (f'<h4 style="font-size:1.4rem;font-weight:700">{base} '
+            f'<span style="color:{color}">({pct:+.2f}%)</span></h4>')
 
 
 def render(market, target_day):
@@ -106,12 +120,16 @@ def render(market, target_day):
     f_day = result["future_day"].isoformat() if result["future_day"] else "N/D"
     v_day = result["vol_day"].isoformat() if result["vol_day"] else "N/D"
     change = result["change_pct"]
-    if change is not None and isfinite(change):
-        change_class = ("up" if change > 0 else
-                        "down" if change < 0 else "flat")
-        change_text = f"{change:+.2f}%"
-    else:
-        change_class, change_text = "flat", "N/D"
+    st.markdown(signed_daily_heading(change), unsafe_allow_html=True)
+    if result["previous_close"] is not None and result["future_close"] is not None:
+        st.caption(
+            f"Variazione Close/Close · Yahoo Finance {future_ticker} · "
+            f"{result['future_day'].isoformat()}: {result['future_close']:,.2f} / "
+            f"{result['previous_close_day'].isoformat()}: "
+            f"{result['previous_close']:,.2f}. "
+            "È la variazione della seduta chiusa, non l'ultima oscillazione intraday. "
+            "Il future continuo Yahoo può differire da quello del contratto TradingView."
+        )
     st.markdown(f"""
 <style>
 .spx-vol-card {{border:1px solid #34363c;border-radius:13px;padding:14px 18px;
@@ -121,10 +139,6 @@ background:#090a0c;color:#f4f5f6;font-family:inherit;}}
 .spx-vol-kpi:first-child {{padding-left:0;border-left:0;}}
 .spx-vol-kpi .label {{font-size:.82rem;color:#b6bcc5;margin-bottom:5px;}}
 .spx-vol-kpi .number {{font-size:1.15rem;font-weight:740;overflow-wrap:anywhere;}}
-.spx-daily-change {{font-size:.82rem;color:#adb6c2;margin-top:7px;line-height:1.5;}}
-.spx-daily-change .up {{color:#56d49e;font-weight:750;}}
-.spx-daily-change .down {{color:#ff676d;font-weight:750;}}
-.spx-daily-change .flat {{color:#b6bcc5;font-weight:750;}}
 .spx-vol-foot {{border-top:1px solid #292b30;padding-top:9px;margin-top:12px;
 color:#949ba6;font-size:.74rem;line-height:1.4;}}
 @media(max-width:700px){{
@@ -137,8 +151,7 @@ color:#949ba6;font-size:.74rem;line-height:1.4;}}
 <div class="spx-vol-grid">
 <div class="spx-vol-kpi"><div class="label">Range Daily precedente</div>
 <div class="number">{escape(result['range_text'])}</div>
-<div class="spx-daily-change">Variazione ieri (Close/Close):
-<span class="{change_class}">{escape(change_text)}</span></div></div>
+</div>
 <div class="spx-vol-kpi"><div class="label">{escape(vol_name)} precedente</div>
 <div class="number">{escape(result['vol_text'])}</div></div>
 <div class="spx-vol-kpi"><div class="label">Buffer standard</div>
