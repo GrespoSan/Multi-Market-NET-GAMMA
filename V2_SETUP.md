@@ -58,6 +58,24 @@ VIX/VX e il buffer specifico ES non sono copiati su mercati diversi.
 
 La sezione Contesto contiene News/Calendario, volatilità VXN/GVZ/OVX e Trend Daily per NQ/GC/CL; i dati specifici SPX non vengono attribuiti ad altri mercati.
 
+## Regime da ribasso e variazione del Range Daily
+
+Per NQ, GC e CL la lettura del contesto distingue:
+
+- **ALTA VOLATILITÀ DA RIBASSO** quando la variazione Close/Close della
+  seduta precedente è strettamente inferiore a **−1%** (es. NQ −1,81%).
+  Se la soglia non scatta, non si afferma automaticamente che tutte le
+  condizioni di volatilità siano basse.
+- **ESPANSIONE** quando il Range percentuale (High−Low)/Close di ieri
+  supera quello della sessione ancora precedente; **COMPRESSIONE** se
+  è più basso, **INVARIATO** in caso di uguaglianza.
+- Il Range Daily non è usato come condizione per la soglia negativa.
+  Il buffer ES 10/15 punti rimane **esclusivo della SPX**, mai calcolato
+  per Nasdaq, Gold o Petrolio.
+
+Tutti i valori vengono calcolati sulle stesse due sessioni del medesimo
+contratto futures Massive (non settlement e nessun fallback Yahoo).
+
 ## Massive Futures · stessa fonte per Range e andamento giornaliero
 
 La V2 interroga direttamente dal server Python l'endpoint
