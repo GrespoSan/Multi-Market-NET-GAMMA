@@ -90,7 +90,7 @@ def evaluate(future_bars, vol_bars):
         previous_range_pct, range_trend = None, "N/D"
     # The user-confirmed Serafini warning is a signed DOWN move
     # strictly beyond -1%. It is NOT the always-positive High-Low range.
-    bearish_volatility = None if change_pct is None else change_pct < -1.0
+    bearish_volatility = None if change_pct is None else round(change_pct, 6) < -1.0
     if vol is None:
         vol_text = "Non disponibile"
     elif previous_vol and previous_vol["close"]:
