@@ -237,6 +237,11 @@ def render_selected_market(market_key):
             f'+ differenziale NQ–NDX {basis:+,.4f} = **{previous_close_nq:,.2f}**'
         )
     
+    independent_scale = st.checkbox(
+        'Ingrandisci ogni profilo con scala indipendente', value=False,
+        key='v2_ndx_independent_scale',
+        help='Disattivato: scala Gamma comune fra 0DTE e Weekly, come SPX. '
+             'Attivato: le lunghezze delle barre non sono più confrontabili.')
     cols=st.columns(len(profiles),gap='medium')
     for (kind,group),column in zip(profiles.items(),cols):
         with column:
@@ -253,7 +258,9 @@ def render_selected_market(market_key):
                 doc.get('timestamp'), st.session_state.get('ndx_download_rome'),
                 st.session_state.get('ndx_name', ''))
             fg = profile_chart(
-                group['rows'], 'NDX', reference, shared_gamma_range,
+                group['rows'], 'NDX', reference,
+                (spx_shared_gamma_bounds([group], field='net_gamma')
+                 if independent_scale else shared_gamma_range),
                 shared_price_range, level_field='strike_index',
                 gamma_field='net_gamma', price_shift=price_shift,
                 ndx=True, show_close=basis is not None,
