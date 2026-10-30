@@ -1,7 +1,7 @@
 """Shared TradingView Pine v6 VISUAL standard, taken from Serafini SPX export.
 
 Only the presentation layer is shared: manual common Gamma/bar scale,
-60/160-bar 0DTE/Weekly placement, colors, dotted vertical baselines,
+0DTE offset 60 and relative Weekly offset 100, colors, dotted vertical baselines,
 5px Gamma segments, headings, ticker guard and TradingView line-limit check.
 Market data, contract selection and price transformations stay separate.
 
@@ -19,7 +19,7 @@ def spx_inputs(scale: str, scale_step: str, primary_label: str = "0DTE",
     tooltip = tooltip.replace('"', "'").replace("\n", " ")
     return f'''gammaPerCandle = input.float({scale}, "Scala MANUALE · Gamma/barra", minval=0.000001, step={scale_step}, tooltip="{tooltip}")
 offsetOdte = input.int(60, "Distanza {primary_label} da ultima candela", minval=45, maxval=170)
-offsetWeekly = input.int(160, "Distanza Weekly da ultima candela", minval=55, maxval=300)
+offsetWeekly = input.int(100, "Distanza Weekly dalle 0DTE", minval=20, maxval=300)
 positiveColor = input.color(color.rgb(0, 230, 117), "NET GAMMA positivo")
 negativeColor = input.color(color.rgb(242, 54, 69), "NET GAMMA negativo")
 showTitles = input.bool(true, "Mostra intestazioni")'''
@@ -78,7 +78,8 @@ def spx_last_bar(main_call: str, weekly_call: str, main_values: str,
         label.delete(lb)
     array.clear(drawnLabels)
 {prefix}    float actualScale = gammaPerCandle
-    float minimumSafe = math.max(requiredScale({main_values}, offsetOdte), requiredScale({weekly_values}, offsetWeekly))
+    int weeklyCenter = offsetOdte + offsetWeekly
+    float minimumSafe = math.max(requiredScale({main_values}, offsetOdte), requiredScale({weekly_values}, weeklyCenter))
     if actualScale < minimumSafe * 0.999999
         label unsafe = label.new(bar_index + 10, close, "Scala manuale troppo piccola. Imposta almeno " + str.tostring(minimumSafe, "#.########") + " G/bar", xloc=xloc.bar_index, yloc=yloc.price, style=label.style_label_left, color=color.orange, textcolor=color.black, size=size.small)
         array.push(drawnLabels, unsafe)
