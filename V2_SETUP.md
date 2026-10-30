@@ -23,7 +23,9 @@ selettore mercato.
   pubblico e la sua disponibilità dipende da Finance Calendar/Yahoo.
 - **Volatilità precedente**: stesso schema grafico a 3 colonne SPX;
   NQ con VXN, GC con GVZ e CL con OVX (indici Cboe derivati dalle
-  rispettive opzioni). Range Daily del future continuo Yahoo.
+  rispettive opzioni). **Range Daily e variazione Close/Close
+  dal medesimo contratto futures reale di Massive**, mai da settlement.
+  Gli indici VXN/GVZ/OVX rimangono indipendenti (Yahoo).
   Il buffer ES 10/15 punti NON è definito per NQ/GC/CL e non viene
   inventato; eventuali fonti assenti sono indicate N/D.
 - **Trend Daily**: porting del metodo SPX con range, struttura, numero
@@ -55,6 +57,50 @@ VIX/VX e il buffer specifico ES non sono copiati su mercati diversi.
 - `gamma_chart_style.py` e `pine_spx_visual.py` — visualizzazione stile SPX.
 
 La sezione Contesto contiene News/Calendario, volatilità VXN/GVZ/OVX e Trend Daily per NQ/GC/CL; i dati specifici SPX non vengono attribuiti ad altri mercati.
+
+## Massive Futures · stessa fonte per Range e andamento giornaliero
+
+La V2 interroga direttamente dal server Python l'endpoint
+`GET https://api.massive.com/futures/v1/aggs/{ticker}` con barre
+`resolution=1session`. Per ogni mercato sono usate **le stesse
+due sessioni precedenti alla data di riferimento e lo stesso
+contratto reale** per:
+
+- **Range Daily** = High−Low; percentuale (High−Low)/Close × 100,
+  visualizzata senza colore direzionale.
+- **Andamento della seduta** = (Close ultimo giorno / Close giorno
+  precedente − 1) × 100; verde per positivo, rosso per negativo.
+
+Il titolo è **Andamento e volatilità — seduta precedente**; una
+riga separata indica esplicitamente "Variazione chiusura della
+seduta (Close/Close)". `Close` significa ultimo prezzo della
+sessione Massive, **non `settlement_price`**. Il ticker, la
+data e le due chiusure sono visibili in un testo di controllo.
+
+Nei **Secrets Streamlit della V2**, oltre alle password già presenti,
+configurare:
+
+```toml
+MASSIVE_API_KEY = "CHIAVE_API_PERSONALE_DA_MASSIVE"
+MASSIVE_NQ_CONTRACT = "NQZ6"
+MASSIVE_GC_CONTRACT = "GCZ6"
+MASSIVE_CL_CONTRACT = "CLZ6"
+```
+
+Questi contratti sono **esempi riferiti a ottobre 2026**; vanno
+aggiornati quando cambiano i futures attivi sui grafici
+TradingView NQ1!, GC1! e CL1!. Il codice **non passa
+silenziosamente** a una scadenza diversa. La chiave del plugin
+Massive in ChatGPT non è trasferita automaticamente a Streamlit:
+servono API key e abilitazione Futures nel proprio account.
+Non condividere mai la chiave nella chat o sul repository.
+
+L'accesso a Massive riguarda soltanto questo contesto Daily;
+il NET GAMMA da Cboe, il calcolo del differenziale, la curva di
+volatilità implicita e l'analisi Trend Daily rimangono
+indipendenti. Se Massive non è configurato, **Range e variazione
+risultano N/D**, senza sostituirli con Yahoo.
+Supabase resta completamente disattivato nella V2.
 
 ## Sospensione V1 e Supabase
 
