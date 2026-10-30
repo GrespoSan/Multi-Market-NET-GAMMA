@@ -23,7 +23,7 @@ class SPXContextV2Tests(unittest.TestCase):
         context = (ROOT / "v2_context.py").read_text(encoding="utf-8")
         for name in ("Settimana ISO (AAAA-WNN)", "Snapshot distinti",
                      "Registri", "News e calendario macroeconomico",
-                     "Volatilità — seduta precedente", "render_trend_daily(",
+                     "render_volatility(market, reference_day)", "render_trend_daily(",
                      "render_macro_calendar()", "st.divider()"):
             with self.subTest(name=name):
                 self.assertIn(name, context)
@@ -83,12 +83,18 @@ class SPXContextV2Tests(unittest.TestCase):
         first = evaluate_vol([{"day": day2, **common}], [])
         self.assertIsNone(first["change_pct"])
         src = (ROOT / "v2_volatility.py").read_text(encoding="utf-8")
-        self.assertIn("Variazione ieri (Close/Close)", src)
-        self.assertIn('class="{change_class}"', src)
-        self.assertIn('.spx-daily-change .up', src)
-        self.assertIn('.spx-daily-change .down', src)
+        from v2_volatility import signed_daily_heading
+        self.assertIn('color:#56d49e', signed_daily_heading(0.9))
+        self.assertIn('(+0.90%)', signed_daily_heading(0.9))
+        self.assertIn('color:#ff676d', signed_daily_heading(-0.76))
+        self.assertIn('(-0.76%)', signed_daily_heading(-0.76))
+        self.assertIn('(N/D)', signed_daily_heading(None))
+        self.assertIn("Variazione Close/Close · Yahoo Finance", src)
         self.assertIn('escape(result[\'range_text\'])', src)
         self.assertNotIn('range_percentage_html(', src)
+        self.assertNotIn("Variazione ieri (Close/Close):", src)
+        context = (ROOT / "v2_context.py").read_text(encoding="utf-8")
+        self.assertNotIn('st.markdown("#### Volatilità — seduta precedente")', context)
 
     def test_daily_trend_rule_unchanged_but_ticker_dynamic(self):
         dates = pd.date_range("2026-10-20", periods=5, freq="B")
