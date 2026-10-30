@@ -51,11 +51,14 @@ class TestPercentageStrikeSelection(unittest.TestCase):
         self.assertIn('Scala MANUALE · Gamma/barra', code)
         # Stesso controllo MANUALE di SPX, ma scala iniziale derivata dai
         # valori Gamma NDX: non puo' essere sempre 1 Gamma/bar.
-        scale, step = _initial_manual_scale([(a, 60), (b, 160)])
+        # Il Pine usa ora gli offset SPX 100/200: testare la scala
+        # effettivamente derivata dai Gamma, non il vecchio default 60/160.
+        scale, step = _initial_manual_scale([(a, 100), (b, 200)])
         self.assertGreater(scale, 0.0)
         self.assertLess(scale, 1.0)
-        self.assertAlmostEqual(scale, 0.0048, places=5)
-        self.assertIn('gammaPerCandle = input.float(0.0048, "Scala MANUALE · Gamma/barra", minval=0.000001, step=0.0001', code)
+        expected = (f'gammaPerCandle = input.float({scale:g}, '
+                    f'"Scala MANUALE · Gamma/barra", minval=0.000001, step={step:g}')
+        self.assertIn(expected, code)
         self.assertIn('if actualScale < minimumSafe * 0.999999', code)
         self.assertAlmostEqual(a["rows"][0]["net_gamma"], 0.4)
         self.assertIn('Distanza Weekly da ultima candela', code)
