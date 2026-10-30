@@ -29,9 +29,10 @@ concurrency:
 
 jobs:
   capture_v2:
-    # Three automatic NDX, GLD and USO direct Cboe CDN snapshots/day.
-    # A Fernet encryption key is still required to store private snapshots.
-    # No Supabase and no retries/bypass on Cboe 401/403/429.
+    # Three automatic NDX, GLD and USO public Cboe CDN snapshots/day.
+    # Hard-wire public URLs in v2_cron.py, no legacy feed-secret overrides
+    # can hijack these scheduled captures.
+    # Fernet secret is required; no Supabase or bypass of 401/403/429.
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -49,11 +50,6 @@ jobs:
           V2_REQUESTED_SLOT: ${{ inputs.slot }}
           V2_EVENT_CRON: ${{ github.event.schedule }}
           V2_MANUAL_RUN: ${{ github.event_name == 'workflow_dispatch' }}
-          V2_AUTHORIZED_FEED_CONFIRMED: ${{ vars.V2_AUTHORIZED_FEED_CONFIRMED }}
-          V2_FEED_NDX_URL: ${{ secrets.V2_FEED_NDX_URL }}
-          V2_FEED_GLD_URL: ${{ secrets.V2_FEED_GLD_URL }}
-          V2_FEED_USO_URL: ${{ secrets.V2_FEED_USO_URL }}
-          V2_FEED_TOKEN: ${{ secrets.V2_FEED_TOKEN }}
           V2_ARCHIVE_FERNET_KEY: ${{ secrets.V2_ARCHIVE_FERNET_KEY }}
         run: python v2_cron.py
       - name: Keep audit logs and encrypted snapshots (never plaintext)
