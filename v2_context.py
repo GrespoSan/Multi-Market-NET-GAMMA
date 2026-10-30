@@ -128,7 +128,7 @@ def render(market):
     else:
         st.caption(f"Fotografia di riferimento: {display_day} (data Cboe originale, "
                    "fuso non documentato).")
-    render_volatility(market, reference_day)
+    daily_context = render_volatility(market, reference_day)
     st.divider()
     symbol, _, _ = SOURCES[market]
     names = {
@@ -137,4 +137,7 @@ def render(market):
         "WTI": "Petrolio WTI / CL",
     }
     render_trend_daily(reference_day=reference_day, ticker=symbol,
-                       market_name=names[market])
+                       market_name=names[market],
+                       daily_bars=daily_context.get("daily_bars"),
+                       contract=daily_context.get("contract"),
+                       daily_error=daily_context.get("daily_error"))
