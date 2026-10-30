@@ -29,6 +29,15 @@ from uso_cboe import read_uso, expirations as expiries_uso
 
 OUT = Path("v2_capture_output")
 MAX_SOURCE_BYTES = 80 * 1024 * 1024
+
+
+class ProviderAccessError(RuntimeError):
+    """A terminal access block; never retry with another host or identity."""
+    def __init__(self, status_code):
+        self.status_code = status_code
+        super().__init__(f"HTTP {status_code}: provider accesso negato/limitato.")
+
+
 CBOE_PUBLIC_URLS = {
     "NDX": "https://cdn.cboe.com/api/global/delayed_quotes/options/_NDX.json",
     "GLD": "https://cdn.cboe.com/api/global/delayed_quotes/options/GLD.json",
@@ -61,7 +70,7 @@ def fetch_authorized(url, token="", get=None):
                 allow_redirects=True) as res:
         safe_url(res.url)
         if res.status_code in (401, 403, 429):
-            raise RuntimeError(f"HTTP {res.status_code}: provider accesso negato/limitato.")
+            raise ProviderAccessError(res.status_code)
         res.raise_for_status()
         size = 0
         chunks = []
@@ -161,6 +170,12 @@ def run_capture(now=None, env=None, output=None, downloader=None):
                               "source": "CBOE_PUBLIC_CDN" if is_public_cboe
                                         else "CUSTOM_FEED",
                               "sha256": digest, "source_meta": details}
+                except ProviderAccessError as exc:
+                    status = {
+                        "status": "BLOCCATO_PROVIDER", "http_status": exc.status_code,
+                        "source": "CBOE_PUBLIC_CDN" if is_public_cboe
+                                  else "CUSTOM_FEED",
+                    }
                 except Exception as exc:
                     # Never write exception text: it can contain private URL credentials.
                     status = {"status": "ERRORE", "error_type": type(exc).__name__,
@@ -183,4 +198,8 @@ def run_capture(now=None, env=None, output=None, downloader=None):
 
 
 if __name__ == "__main__":
-    run_capture()
+    # GitHub Actions must be red for a failed/missing acquisition rather than
+    # reporting success with only a run_status.json in the artifact.
+    report = run_capture()
+    raise SystemExit(0 if report["status"] in ("TUTTI_ARCHIVIATI", "FUORI_FINESTRA")
+                     else 1)
