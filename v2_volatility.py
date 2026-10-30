@@ -2,8 +2,8 @@
 
 The three-column SPX presentation is preserved. Do not apply the
 SPX-specific VX contango/backwardation buffer rule to other instruments.
-NQ/GC/CL daily range from Yahoo futures, Cboe volatility indexes VXN/GVZ/OVX
-where available. All dates are strictly PRIOR to the reference day.
+NQ/GC/CL OHLC 1session and Close/Close from Massive; VXN/GVZ/OVX
+volatility indices remain from Yahoo where available. All dates are strictly PRIOR to the reference day.
 """
 from datetime import date, timedelta
 from html import escape
@@ -12,6 +12,7 @@ from math import isfinite
 import pandas as pd
 import streamlit as st
 import yfinance as yf
+from massive_futures_daily import previous_sessions, MassiveSourceError
 
 SOURCES = {
     "NASDAQ": ("NQ=F", "^VXN", "VXN · Nasdaq-100"),
@@ -49,6 +50,12 @@ def fetch_daily(ticker: str, target_day: date):
     if not bars or (target_day - bars[-1]["day"]).days > 7:
         raise ValueError("Nessuna chiusura Daily precedente recente.")
     return bars
+
+
+@st.cache_data(ttl=3600, max_entries=60, show_spinner=False)
+def fetch_massive_futures(contract, target_day, api_key):
+    """OHLC from one named futures contract; no silent roll."""
+    return previous_sessions(contract, target_day, api_key)
 
 
 def evaluate(future_bars, vol_bars):
@@ -107,11 +114,26 @@ def render(market, target_day):
     if market not in SOURCES:
         raise ValueError("Mercato non configurato per il contesto.")
     future_ticker, vol_ticker, vol_name = SOURCES[market]
-    future_bars, vol_bars = [], []
+    product = {"NASDAQ": "NQ", "GOLD": "GC", "WTI": "CL"}[market]
     try:
-        future_bars = fetch_daily(future_ticker, target_day)
+        key = str(st.secrets.get("MASSIVE_API_KEY", "")).strip()
+        contract = str(st.secrets.get(f"MASSIVE_{product}_CONTRACT", "")).strip().upper()
     except Exception:
-        pass
+        key, contract = "", ""
+    future_bars, vol_bars = [], []
+    future_error = ""
+    if not key or not contract:
+        future_error = (
+            f"Configura MASSIVE_API_KEY e MASSIVE_{product}_CONTRACT "
+            "nei Secrets di questa app. Nessun fallback Yahoo sui futures."
+        )
+    else:
+        try:
+            future_bars = fetch_massive_futures(contract, target_day, key)
+        except MassiveSourceError as exc:
+            future_error = str(exc)
+        except Exception:
+            future_error = "Massive non disponibile: verifica il piano Futures e il contratto."
     try:
         vol_bars = fetch_daily(vol_ticker, target_day)
     except Exception:
@@ -123,13 +145,15 @@ def render(market, target_day):
     st.markdown(signed_daily_heading(change), unsafe_allow_html=True)
     if result["previous_close"] is not None and result["future_close"] is not None:
         st.caption(
-            f"Variazione Close/Close · Yahoo Finance {future_ticker} · "
-            f"{result['future_day'].isoformat()}: {result['future_close']:,.2f} / "
-            f"{result['previous_close_day'].isoformat()}: "
+            f"Massive Futures {contract} · 1session · stesso contratto: "
+            f"chiusura {result['future_day'].isoformat()} "
+            f"{result['future_close']:,.2f}, chiusura "
+            f"{result['previous_close_day'].isoformat()} "
             f"{result['previous_close']:,.2f}. "
-            "È la variazione della seduta chiusa, non l'ultima oscillazione intraday. "
-            "Il future continuo Yahoo può differire da quello del contratto TradingView."
+            "Variazione su trade Close, NON settlement."
         )
+    elif future_error:
+        st.warning(future_error)
     st.markdown(f"""
 <style>
 .spx-vol-card {{border:1px solid #34363c;border-radius:13px;padding:14px 18px;
@@ -157,13 +181,13 @@ color:#949ba6;font-size:.74rem;line-height:1.4;}}
 <div class="spx-vol-kpi"><div class="label">Buffer standard</div>
 <div class="number">Non definito</div></div>
 </div>
-<div class="spx-vol-foot">Yahoo Finance Daily {escape(future_ticker)}: {escape(f_day)} ·
-{escape(vol_ticker)}: {escape(v_day)}.
-Solo barre precedenti al giorno di riferimento {target_day:%d/%m/%Y}.
-Variazione ieri = (Close ultima seduta / Close seduta ancora precedente − 1) × 100.
-{escape(vol_name)} indica volatilità implicita, NON contango dei futures VX.
-Il buffer SPX di 10/15 punti non è trasferibile automaticamente a NQ, GC o CL.
-Le barre Yahoo possono differire da quelle dei contratti CME/TradingView.</div>
+<div class="spx-vol-foot">Futures Massive {escape(contract or 'N/D')}, sessione {escape(f_day)} ·
+Indice volatilità Yahoo {escape(vol_ticker)}: {escape(v_day)}.
+Stesso contratto e sessione Massive per Range High−Low e variazione Close/Close.
+Riferimento {target_day:%d/%m/%Y} · I valori si basano su trade Close, NON settlement.
+{escape(vol_name)} non indica contango VX.
+Buffer SPX di 10/15 punti non trasferibile a NQ, GC o CL.
+Verificare sempre la scadenza del contratto rispetto a TradingView 1!.</div>
 </div>""", unsafe_allow_html=True)
     if not future_bars or not vol_bars:
         st.caption("Una o più fonti Daily non sono disponibili: la sezione "
