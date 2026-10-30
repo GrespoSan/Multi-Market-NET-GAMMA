@@ -58,7 +58,7 @@ VIX/VX e il buffer specifico ES non sono copiati su mercati diversi.
   del rilevamento cifrato più recente e scelta di fotografie precedenti.
   Lettura consentita ad admin e lettore autenticato; override manuale
   e importazione eccezionale di file cifrati riservata all'admin.
-- `v2_cron.py` — acquisizione da API **autorizzate per uso automatico**,
+- `v2_cron.py` — acquisizione diretta dai CDN pubblici Cboe richiesti dall'utente,
   validazione dati, archiviazione con crittografia Fernet in GitHub Actions.
   Nessun JSON opzioni non cifrato viene scritto sul disco del job.
 - `gamma_chart_style.py` e `pine_spx_visual.py` — visualizzazione stile SPX.
@@ -146,49 +146,58 @@ download e a New York per stabilire la giornata operativa 0DTE.
 Riaprire una fotografia storica NON la fa apparire come il nuovo
 0DTE di oggi.
 
-### Acquisizioni automatiche: cron attivi, feed da configurare
+### Download programmati Cboe: NDX, GLD, USO
 
-Il workflow GitHub `.github/workflows/v2-spx-snapshots.yml` è su
-`main` (ramo predefinito, requisito GitHub), ma usa il codice
-`v2-spx`. I tre cron, dal lunedì al venerdì, sono:
+Il workflow `.github/workflows/v2-spx-snapshots.yml` è già installato
+sul ramo predefinito `main` e lancia `v2_cron.py` da `v2-spx`.
+Il runner usa direttamente gli **stessi endpoint CDN pubblici**
+utilizzati dai pulsanti manuali Cboe nell'app:
 
-| Slot | Fuso orario | Orario |
-|---|---|---|
-| Mattina | Europe/Rome | 07:30 |
-| Pomeriggio | America/Chicago | 08:50 |
-| Sera | America/Chicago | 13:30 |
+- NDX: `https://cdn.cboe.com/api/global/delayed_quotes/options/_NDX.json`
+- Gold (GLD): `https://cdn.cboe.com/api/global/delayed_quotes/options/GLD.json`
+- Petrolio (USO): `https://cdn.cboe.com/api/global/delayed_quotes/options/USO.json`
 
-L'ora di Chicago usa automaticamente DST. Il 30 ottobre 2026,
-quando Europa e Stati Uniti non hanno ancora allineato il cambio
-d'ora, gli ultimi due slot sono 14:50 e 19:30 italiane; dal 2
-novembre saranno 15:50 e 20:30 italiane.
+Tre rilevamenti ogni giorno feriale: **07:30 Europe/Rome**,
+**08:50 America/Chicago** e **13:30 America/Chicago** (DST automatico).
+Il 30/10/2026 gli ultimi due rilevamenti sono alle 14:50 e 19:30
+italiane; dal 02/11/2026 sono alle 15:50 e 20:30. I timestamp
+corrispondono all'**effettiva ora di acquisizione**, mai retrodatata.
 
-**Il cron programmato non implica un'acquisizione riuscita.**
-Per prelevare catene originali automaticamente, il runner richiede
-la conferma di titolarità a un feed API idoneo per uso automatico
-e i dati di accesso:
+Ad ogni cron il runner esegue una sola GET HTTPS per simbolo;
+non tenta bypass, proxy, login, cambio endpoint, ritentativi in caso
+di HTTP 401/403/429 o elusione di limiti del provider.
+Valida simbolo, struttura della catena, Gamma, Open Interest,
+Volume e scadenze. I file validi sono **compressi e cifrati Fernet**
+e caricati negli artifact GitHub Actions con retention di 30 giorni.
+Supabase non viene chiamato.
 
-- GitHub repository **Variable** `V2_AUTHORIZED_FEED_CONFIRMED=true`,
-  soltanto dopo aver confermato i diritti di accesso automatico;
-- GitHub **Secrets** `V2_FEED_NDX_URL`, `V2_FEED_GLD_URL`,
-  `V2_FEED_USO_URL` (endpoint HTTPS autorizzati che restituiscono
-  JSON originale opzioni compatibile con i parser della V2),
-  `V2_FEED_TOKEN` (se richiesto) e `V2_ARCHIVE_FERNET_KEY`.
+**Unica credenziale necessaria in GitHub per archiviare:**
+`V2_ARCHIVE_FERNET_KEY` come GitHub Actions Secret;
+la stessa identica chiave deve essere presente nei Secrets della
+nuova app Streamlit. Generarla sul proprio computer:
 
-Il runner scarica e valida separatamente NDX, GLD e USO, cifra
-in Fernet + gzip, salva solo `.json.gz.enc` negli artifact GitHub,
-con log di successo/errore e senza Supabase. In mancanza di feed
-o chiave, registra `NON_CONFIGURATO` e NON inventa rilevamenti.
-Gli endpoint pubblici delle tabelle `delayed_quotes` Cboe non
-sono usati dai cron: Cboe pubblica un divieto di autoestrazione
-per i dati delle delayed-quote tables. L'acquisizione diretta
-su pulsante resta un comando esplicito dell'utente.
-Alternativa ufficiale: verifica di un feed autorizzato tramite
-`https://datashop.cboe.com/cboe-all-access-api`.
-La connessione Massive attuale consente i futures Daily, ma
-l'Option Chain Snapshot NDX/GLD/USO non è inclusa nel piano
-Massive collegato: non può essere impiegata come sorgente
-automatica senza un piano idoneo.
+```bash
+python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+```
+
+Per leggere l'archivio in Streamlit serve inoltre
+`V2_GITHUB_TOKEN` con Actions: Read sul repository.
+Non condividere in chat né nel codice alcuna chiave.
+**Se manca la Fernet key, il job registra NON_CONFIGURATO e non
+esegue il download.** Un run con test superati non prova un
+download reale da Cboe: lo confermano solo il log `run_status.json`
+e tre file `.json.gz.enc` dell'esecuzione effettiva.
+
+Gli URL `V2_FEED_NDX_URL`, `V2_FEED_GLD_URL`,
+`V2_FEED_USO_URL` non sono più richiesti. Se configurati, sono
+override personalizzati e richiedono ancora la variabile
+`V2_AUTHORIZED_FEED_CONFIRMED=true` per la loro sorgente.
+
+**Avvertenza provider:** Cboe limita contrattualmente
+l'acquisizione automatizzata dalle delayed quote tables e può
+bloccare gli accessi. Questa attivazione è una scelta esplicita
+dell'utente; il software rispetta i blocchi tecnici. In alternativa,
+per un feed autorizzato esiste Cboe All Access API.
 
 ## Massive Futures · stessa fonte per Range e andamento giornaliero
 
@@ -256,8 +265,9 @@ Serafini SPX: ciò potrebbe interrompere la SPX.
 2. Nella nuova app, in **Secrets**, imposta due password DISTINTE:
    `V2_ADMIN_PASSWORD` e `V2_FRIENDS_PASSWORD`. Non copiarle in chat,
    GitHub o nei file versionati; non servono Secrets Supabase.
-3. Per ora le tre catene possono essere acquisite col pulsante manuale,
-   come nella V1, o caricando il JSON originale Cboe.
+3. Le tre catene vengono tentate dal cron Cboe nei giorni feriali,
+   purché il Secret Fernet sia configurato. Rimangono i pulsanti manuali
+   per acquisizioni straordinarie e il caricamento del JSON originale.
 4. Per consultare i rilevamenti cifrati direttamente dall'app, aggiungere
    nei **Secrets Streamlit** `V2_ARCHIVE_FERNET_KEY` (identica a
    GitHub Actions) e `V2_GITHUB_TOKEN` (PAT fine-grained, limitato al
@@ -265,65 +275,23 @@ Serafini SPX: ciò potrebbe interrompere la SPX.
    Supabase. Nell'espander **RILEVAMENTI CBOE** l'amministratore
    usa “Elenca rilevamenti GitHub” e “Carica fotografia ... da GitHub”.
    È disponibile anche l'upload manuale `.json.gz.enc`.
+   Il selettore mostra automaticamente lo snapshot più recente.
 
-## Tre cronjob GitHub Actions
+## Cron GitHub e archivio (nessun Supabase)
 
-Workflow **sul ramo predefinito `main`**:
-`.github/workflows/v2-spx-snapshots.yml`; effettua checkout del ramo
-`v2-spx` prima di eseguire lo script. Questo permette di mantenere la V1
-sospesa senza dover pubblicare o promuovere il codice V2.
+I tre cron sono definiti nel workflow `main/.github/workflows/v2-spx-snapshots.yml`,
+con checkout esplicito del codice `v2-spx`.
+Il selettore `ULTIMO rilevamento automatico` in Streamlit legge
+il nuovo artifact cifrato appena disponibile, usando
+`V2_GITHUB_TOKEN` e `V2_ARCHIVE_FERNET_KEY` server-side.
+La lettura delle fotografie storiche è disponibile anche agli amici
+autenticati; l'importazione dei file cifrati rimane riservata all'admin.
 
-Cron lunedì-venerdì, ESATTAMENTE come la Serafini SPX:
-- `07:30` **Europe/Rome**, etichetta `07:30`.
-- `08:50` **America/Chicago**, etichetta storica `15:50`.
-- `13:30` **America/Chicago**, etichetta storica `20:30`.
-
-In ottobre/marzo le transizioni CET/CEST e CST/CDT avvengono in
-settimane diverse. Per esempio il 30 ottobre 2026 gli slot USA sono
-alle **14:50 e 19:30 Roma**, dal 2 novembre ritornano **15:50 e
-20:30 Roma**. Lo storico conserva i nomi logici, ma il log registra
-l'ora effettiva a Roma e Chicago. Le GitHub Actions ora supportano
-fusi orari IANA nello scheduler, quindi **non servono cronjob.org** per
-questa V2.
-
-La finestra di avvio valida è compresa tra l'orario nominale **nel
-fuso scelto (Roma oppure Chicago)** e 12 minuti dopo. Le GitHub Actions possono partire in ritardo: i job fuori finestra
-registrano uno SKIP e **non si presentano falsamente come rilevamenti puntuali**.
-
-I **cronjob sono attivi**: il workflow GitHub Actions viene avviato
-ai tre orari programmati e produce i log di stato. L'**acquisizione**
-delle opzioni resta `NON_CONFIGURATO` se la variabile Actions
-`V2_AUTHORIZED_FEED_CONFIRMED` non vale `true`, mancano endpoint
-licenziati o la chiave di cifratura. Anche un'esecuzione manuale
-può produrre solo log, senza fotografie.
-
-Per attivare realmente il download automatico, configurare
-**GitHub → Settings → Secrets and variables → Actions**:
-
-| Tipo | Nome | Significato |
-|---|---|---|
-| Variable | `V2_AUTHORIZED_FEED_CONFIRMED` | `true` SOLO dopo aver verificato la licenza dati |
-| Secret | `V2_FEED_NDX_URL` | URL HTTPS della catena NDX da API autorizzata |
-| Secret | `V2_FEED_GLD_URL` | URL HTTPS della catena GLD da API autorizzata |
-| Secret | `V2_FEED_USO_URL` | URL HTTPS della catena USO da API autorizzata |
-| Secret | `V2_FEED_TOKEN` | Token Bearer, se richiesto dal provider |
-| Secret | `V2_ARCHIVE_FERNET_KEY` | Chiave per cifrare snapshot negli artifact GitHub |
-
-Genera la chiave Fernet sul TUO computer con
-`python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"`
-e inseriscila nei Secrets. Non condividerla in chat.
-
-Cboe delayed_quotes **non è** un feed autorizzato per scraping
-automatico: il downloader rifiuta espressamente gli URL di quelle pagine
-e i redirect verso di esse. Il formato API autorizzato deve ancora
-essere verificato sul vero provider: non è stato inventato un endpoint.
-
-Gli artifact sono salvati **cifrati**, non contengono chiavi o JSON in
-chiaro, e vengono conservati 30 giorni. L'app V2 può
-**elencarli e leggerli direttamente**, dietro accesso amministratore,
-con un PAT read-only. Gli artifact `NON_CONFIGURATO` contengono
-esclusivamente un log e non possono creare retroattivamente una
-fotografia. Non vengono fatte chiamate a Supabase.
+La GitHub Action può partire in ritardo. Il runner accetta solo una
+finestra di 12 minuti dallo slot pianificato; oltre registra
+`FUORI_FINESTRA` senza attribuire al file un orario fittizio.
+Se Cboe nega o limita l'accesso, il log segnala `ERRORE`;
+se la chiave manca, `NON_CONFIGURATO`.
 
 ## Condizioni di validazione
 
@@ -331,8 +299,9 @@ La V2 richiede:
 - test unitari Python superati sul ramo `v2-spx`;
 - prova con una catena reale NDX/GLD/USO da Streamlit;
 - prova nell'editor Pine TradingView per NQ, GC e CL;
-- prova cron con feed davvero autorizzati e controllo di tre
-  file `.json.gz.enc`/rilevamento.
+- prova del workflow Cboe reale con riscontro del log di stato
+  e tre file cifrati `.json.gz.enc` (NDX, GLD, USO).
 
-**Non considerare attivi i download automatici prima che questi
-prerequisiti siano soddisfatti.** La Serafini SPX originale è invariata.
+**Il codice dei download programmati è attivo, ma la riuscita dipende
+dalla chiave di cifratura, dall'accessibilità Cboe e dall'esecuzione
+effettiva di GitHub Actions.** La Serafini SPX originale è invariata.
