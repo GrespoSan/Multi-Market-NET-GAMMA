@@ -59,48 +59,51 @@ def _save_snapshot(raw, filename, source):
 
 
 def render_gld_cboe():
-    fetch_pressed, uploaded = render_acquisition_controls("GLD", GLD_URL)
-    if fetch_pressed:
-        try:
-            with st.spinner("Lettura catena GLD originale da Cboe..."):
-                raw_online = download_gld()
-                prefer_manual_source("GLD")
-                changed = _save_snapshot(raw_online, "GLD_CBOE_online.json",
-                                         "Acquisizione diretta su richiesta")
-            if changed:
-                st.success("Nuova fotografia GLD ricevuta e validata.")
-            else:
-                st.info("Cboe ha restituito la stessa fotografia GLD già caricata.")
-        except Exception as exc:
-            st.warning(f"Acquisizione diretta GLD non riuscita: {str(exc)[:260]}. "
-                       "La fotografia precedente, se disponibile, non è stata modificata.")
-
-    if uploaded is not None:
-        raw_uploaded = uploaded.getvalue()
-        fingerprint = hashlib.sha256(raw_uploaded).hexdigest()
-        # L'upload rimane un'alternativa esplicita: non ripristina vecchi
-        # file ogni volta che Streamlit riesegue la pagina.
-        if st.session_state.get("gld_cboe_upload_handled") != fingerprint:
+    st.subheader("Fotografia opzioni Cboe · GLD")
+    snapshot_placement = st.container()
+    with st.expander("Acquisizione manuale / importazione JSON", expanded=False):
+        fetch_pressed, uploaded = render_acquisition_controls("GLD", GLD_URL, show_header=False)
+        if fetch_pressed:
             try:
-                prefer_manual_source("GLD")
-                _save_snapshot(raw_uploaded, uploaded.name, "Importazione manuale")
-                st.session_state["gld_cboe_upload_handled"] = fingerprint
-                st.success("File originale GLD importato e validato.")
+                with st.spinner("Lettura catena GLD originale da Cboe..."):
+                    raw_online = download_gld()
+                    prefer_manual_source("GLD")
+                    changed = _save_snapshot(raw_online, "GLD_CBOE_online.json",
+                                             "Acquisizione diretta su richiesta")
+                if changed:
+                    st.success("Nuova fotografia GLD ricevuta e validata.")
+                else:
+                    st.info("Cboe ha restituito la stessa fotografia GLD già caricata.")
             except Exception as exc:
-                st.error(f"File GLD non valido: {str(exc)[:300]}")
+                st.warning(f"Acquisizione diretta GLD non riuscita: {str(exc)[:260]}. "
+                           "La fotografia precedente, se disponibile, non è stata modificata.")
 
-    archive_selected = archive_panel("GLD")
-    if archive_selected is not None:
-        original_raw, stored_name = archive_selected
-        try:
-            _save_snapshot(original_raw, stored_name,
-                           "Archivio privato · rilevamento programmato")
-            st.session_state["gld_cboe_import_rome"] = (
-                st.session_state.get("v2_archive_capture_rome_GLD")
-                or st.session_state["gld_cboe_import_rome"])
-            st.success("Fotografia programmata caricata dall'archivio privato.")
-        except Exception as exc:
-            st.error(f"Fotografia archivio non valida: {str(exc)[:240]}")
+        if uploaded is not None:
+            raw_uploaded = uploaded.getvalue()
+            fingerprint = hashlib.sha256(raw_uploaded).hexdigest()
+            # L'upload rimane un'alternativa esplicita: non ripristina vecchi
+            # file ogni volta che Streamlit riesegue la pagina.
+            if st.session_state.get("gld_cboe_upload_handled") != fingerprint:
+                try:
+                    prefer_manual_source("GLD")
+                    _save_snapshot(raw_uploaded, uploaded.name, "Importazione manuale")
+                    st.session_state["gld_cboe_upload_handled"] = fingerprint
+                    st.success("File originale GLD importato e validato.")
+                except Exception as exc:
+                    st.error(f"File GLD non valido: {str(exc)[:300]}")
+    with snapshot_placement:
+        archive_selected = archive_panel("GLD")
+        if archive_selected is not None:
+            original_raw, stored_name = archive_selected
+            try:
+                _save_snapshot(original_raw, stored_name,
+                               "Archivio privato · rilevamento programmato")
+                st.session_state["gld_cboe_import_rome"] = (
+                    st.session_state.get("v2_archive_capture_rome_GLD")
+                    or st.session_state["gld_cboe_import_rome"])
+                st.success("Fotografia programmata caricata dall'archivio privato.")
+            except Exception as exc:
+                st.error(f"Fotografia archivio non valida: {str(exc)[:240]}")
 
     raw = st.session_state.get("gld_cboe_raw")
     if not raw:
