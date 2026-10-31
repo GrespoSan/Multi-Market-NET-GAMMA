@@ -76,19 +76,60 @@ class V2SPXSetupTests(unittest.TestCase):
                 self.assertEqual(d["time_zone"], zone)
                 self.assertEqual(d["rome"].strftime("%H:%M"), rome_time)
 
-    def test_wrong_chicago_slot_or_delay_does_not_backdate_snapshot(self):
+    def test_delayed_github_schedules_run_at_actual_time_without_backdating(self):
+        # Real runs 30/10/2026: +5h after the afternoon slot,
+        # +4h after the evening slot. Both had been rejected as FUORI_FINESTRA.
+        for now, cron, label in (
+            (datetime(2026, 10, 30, 18, 54, tzinfo=timezone.utc),
+             "50 8 * * 1-5", "15:50"),
+            (datetime(2026, 10, 30, 22, 35, tzinfo=timezone.utc),
+             "30 13 * * 1-5", "20:30"),
+        ):
+            with self.subTest(now=now):
+                result = decision(now, event_cron=cron)
+                self.assertTrue(result["run"])
+                self.assertEqual(result["reason"], "GITHUB_SCHEDULE_DELAYED")
+                self.assertEqual(result["slot"], label)
+                self.assertGreater(result["lag_seconds"], 12*60)
+                self.assertEqual(result["rome"], now.astimezone(
+                    __import__("zoneinfo").ZoneInfo("Europe/Rome")))
+        # No false official frame on a manual request outside the window.
         wrong = decision(datetime(2026, 10, 30, 14, 50,
                                   tzinfo=timezone.utc),
-                         event_cron="50 8 * * 1-5")
+                         requested="20:30")
         self.assertFalse(wrong["run"])
-        late = decision(datetime(2026, 10, 30, 14, 5,
-                                 tzinfo=timezone.utc),
-                        event_cron="50 8 * * 1-5")
-        self.assertFalse(late["run"])
+        # A GitHub run BEFORE its scheduled clock is not backdated.
+        early = decision(datetime(2026, 10, 30, 13, 40,
+                                  tzinfo=timezone.utc),
+                         event_cron="50 8 * * 1-5")
+        self.assertFalse(early["run"])
         manual = decision(datetime(2026, 10, 31, 15, 20,
                                    tzinfo=timezone.utc),
                           requested="20:30", manual=True)
         self.assertEqual(manual["slot"], "manuale")
+
+    def test_actual_late_run_produces_encrypted_files_and_late_label(self):
+        key = Fernet.generate_key().decode()
+        calls = []
+        def source(url, token):
+            calls.append(url)
+            market = next(m for m, link in CBOE_PUBLIC_URLS.items()
+                          if link == url)
+            return synthetic(market)
+        with tempfile.TemporaryDirectory() as tmp:
+            r = run_capture(
+                now=datetime(2026, 10, 30, 18, 54, tzinfo=timezone.utc),
+                env={"V2_ARCHIVE_FERNET_KEY": key,
+                     "V2_EVENT_CRON": "50 8 * * 1-5"},
+                output=Path(tmp), downloader=source)
+            self.assertEqual(r["status"], "TUTTI_ARCHIVIATI_IN_RITARDO")
+            self.assertEqual(r["reason"], "GITHUB_SCHEDULE_DELAYED")
+            self.assertEqual(r["slot"], "15:50")
+            self.assertEqual(len(calls), 3)
+            self.assertEqual(len(list(Path(tmp).glob("*.enc"))), 3)
+            for name, item in r["markets"].items():
+                self.assertIn("20261030T1854", item["file"])
+            self.assertEqual(r["download_rome"][11:16], "19:54")
 
     def test_original_gamma_json_quality_and_root(self):
         for instrument in ("NDX", "GLD", "USO"):
