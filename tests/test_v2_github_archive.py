@@ -75,7 +75,7 @@ class GitHubArchiveTests(unittest.TestCase):
             "expired": False,
             "size_in_bytes": 324,  # Friday scheduled job: only run_status.json
         })
-        dataset["artifacts"][1]["size_in_bytes"] = len(zip_bytes)
+        dataset["artifacts"][1]["size_in_bytes"] = 1578490
         items = list_v2_artifacts(
             "fake-token", session=FakeRequests(json.dumps(dataset).encode(),
                                                  zip_bytes))
