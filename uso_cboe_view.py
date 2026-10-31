@@ -1,7 +1,7 @@
 """Cboe USO module: one-click snapshot, with manual JSON fallback.
 No Alpaca, scheduled polling, or conversion to NYMEX CL strikes.
 """
-from datetime import datetime
+from datetime import datetime, date
 from zoneinfo import ZoneInfo
 import csv
 import hashlib
@@ -9,6 +9,7 @@ import io
 
 import streamlit as st
 from gamma_chart_style import profile_chart, panel_heading, capture_display, spx_shared_gamma_bounds
+from v2_visual_extension import expanded_display
 
 from etf_pine_view import render_etf_pine_exports
 from v2_storage_off import archive_panel, prefer_manual_source
@@ -192,11 +193,29 @@ def render_uso_cboe():
     if not groups:
         return
 
-    good = [v for v in groups.values() if v["usable"]]
+    show_extension = st.checkbox(
+        "Estensione automatica NET GAMMA — solo grafici e Pine",
+        value=True, key="v2_uso_visual_extension",
+        help="Estensione dei livelli ETF reali nello stesso file Cboe. "
+             "La formula e il CSV dei profili originari non cambiano.")
+    visual_groups, extension_info = {}, {}
+    for name, original in groups.items():
+        if show_extension and original.get("usable"):
+            visual_groups[name], extension_info[name] = expanded_display(
+                original,
+                lambda width, expiry=date.fromisoformat(original["expiry"]): profile(
+                    data, expiry, reference, band_pct=width),
+                reference, price, band, strike_field="strike", gamma_field="net",
+                upper_band_limit=10.0)
+        else:
+            visual_groups[name], extension_info[name] = original, {"extra": 0}
+    good = [v for v in visual_groups.values() if v["usable"]]
     # SPX gamma_section uses one common min/max with 8% spread margin.
     # Independent of bar presentation: no change to original Cboe Gamma.
     xlim = spx_shared_gamma_bounds(good)
-    ylim = [reference * (1 - band / 100), reference * (1 + band / 100)]
+    all_strikes = [float(row["strike"]) for p in good for row in p["rows"]]
+    ylim = [min(reference * (1 - band / 100), min(all_strikes)),
+            max(reference * (1 + band / 100), max(all_strikes))]
     # The same strike ticks on both plots, as in SPX. Never synthesize
     # market levels: ticks are from actual option strikes.
     shared_ticks = sorted({float(row["strike"]) for p in good for row in p["rows"]})
@@ -236,8 +255,13 @@ def render_uso_cboe():
             _, capture_label = capture_display(
                 stamp, st.session_state.get("uso_cboe_import_rome"),
                 st.session_state.get("uso_cboe_source", ""))
-            gamma_x = spx_shared_gamma_bounds([p]) if independent_scale else xlim
-            fig = _plot(p, reference, gamma_x, ylim, title=title,
+            shown = visual_groups[title]
+            extra = extension_info[title].get("extra", 0)
+            if extra:
+                st.caption(f"Estensione grafica: +{extra} strike autentici; "
+                           "valori originali invariati.")
+            gamma_x = spx_shared_gamma_bounds([shown]) if independent_scale else xlim
+            fig = _plot(shown, reference, gamma_x, ylim, title=title,
                         snapshot_label=capture_label, tick_levels=shared_ticks)
             st.plotly_chart(fig, use_container_width=True,
                             key=f"uso_spx_gamma_{title}_{p['expiry']}")
@@ -255,4 +279,4 @@ def render_uso_cboe():
     # Keep 4-argument call compatible with a previous module during Streamlit hot reload.
     # The current exporter reads source SHA and Cboe timestamp from session state.
     st.session_state["uso_cboe_timestamp"] = stamp
-    render_etf_pine_exports("USO", groups, reference, base_day)
+    render_etf_pine_exports("USO", visual_groups, reference, base_day)
