@@ -65,6 +65,32 @@ class GitHubArchiveTests(unittest.TestCase):
         self.assertEqual(len(items), 1)
         self.assertEqual(items[0]["name"], "v2-multi-market-456")
 
+    def test_audit_only_github_runs_are_not_presented_as_snapshots(self):
+        key, raw, encrypted, zip_bytes, listing = example()
+        dataset = json.loads(listing)
+        dataset["artifacts"].insert(0, {
+            "name": "v2-multi-market-999",
+            "archive_download_url": BASE + "/actions/artifacts/999/zip",
+            "created_at": "2026-10-30T23:35:00Z",
+            "expired": False,
+            "size_in_bytes": 324,  # Friday scheduled job: only run_status.json
+        })
+        dataset["artifacts"][1]["size_in_bytes"] = len(zip_bytes)
+        items = list_v2_artifacts(
+            "fake-token", session=FakeRequests(json.dumps(dataset).encode(),
+                                                 zip_bytes))
+        self.assertEqual([x["name"] for x in items], ["v2-multi-market-456"])
+
+    def test_rome_labels_delayed_chicago_capture_explicitly(self):
+        from datetime import datetime, timezone
+        from v2_storage_off import _late_capture
+        self.assertFalse(_late_capture(
+            "1550", datetime(2026, 10, 30, 13, 50, tzinfo=timezone.utc)))
+        self.assertTrue(_late_capture(
+            "1550", datetime(2026, 10, 30, 18, 54, tzinfo=timezone.utc)))
+        self.assertTrue(_late_capture(
+            "2030", datetime(2026, 10, 30, 22, 35, tzinfo=timezone.utc)))
+
     def test_decrypts_only_requested_market_from_zip(self):
         key, raw, encrypted, zip_bytes, listing = example()
         packed, name = fetch_artifact_snapshot(
