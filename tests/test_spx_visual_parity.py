@@ -62,7 +62,7 @@ class SPXVisualParity(unittest.TestCase):
                 self.assertIn('showCurrentOdte = input.bool(true, "Mostra 0DTE corrente")', pine)
                 self.assertIn('showCurrentWeekly = input.bool(true, "Mostra Weekly corrente")', pine)
                 self.assertIn("if showCurrentOdte", pine)
-                self.assertIn("if showCurrentWeekly", pine)
+                self.assertNotIn("if showCurrentWeekly\n            //", pine)
                 self.assertIn("showCurrentOdte and array.size(", pine)
                 self.assertIn("showCurrentWeekly and array.size(", pine)
                 self.assertIn("showCurrentWeekly ? requiredScale(", pine)
