@@ -372,13 +372,22 @@ i job 4–5 ore in ritardo. Non è un problema del suffisso Cboe
   `v2_schedule.decision(...,external=True)`, preservando lo
   slot ufficiale (07:30, 15:50, 20:30) e l'orario di download reale.
 - I test della V2 simulano tutte e tre le fasce anche nel cambio DST.
-- `V2_USE_EXTERNAL_CRONJOB` è **variabile GitHub Actions**, NON
-  secret: se è `true`, i vecchi `schedule` GitHub vengono
-  saltati e rimane attivo soltanto il trigger esterno.
-  NON impostarla prima che i tre job cron-job.org siano creati
-  e verificati: altrimenti si interrompe il fallback automatico.
+- **31/10/2026: i tre schedule interni GitHub sono stati rimossi
+  dal workflow su main.** L'avvio programmato dipende esclusivamente dai
+  tre job cron-job.org già verificati via HTTP 204.
+  La variabile `V2_USE_EXTERNAL_CRONJOB=true` può rimanere in GitHub,
+  ma non è più letta dal workflow (non serve per disattivare nulla).
+  Il workflow `workflow_dispatch` resta utilizzabile manualmente per test.
 
-**Da configurare in cron-job.org** (tre NUOVI job, mai alterare quelli SPX):
+
+**Pulizia vecchio sistema (31/10):** eliminato anche il workflow
+V1 disattivato `.github/workflows/multi-market-snapshots.yml`
+dal ramo `v2-spx`. I moduli Python legacy di acquisizione V1
+restano inattivi e sono mantenuti soltanto per compatibilità dei test:
+non esiste alcun workflow automatizzato che li richiami.
+Non eliminare il workflow di test Python o gli artifact cifrati V2.
+
+**Configurati in cron-job.org** (tre NUOVI job, mai alterare quelli SPX):
 - URL POST comune:
   `https://api.github.com/repos/GrespoSan/Multi-Market-NET-GAMMA/actions/workflows/v2-spx-snapshots.yml/dispatches`
 - Headers comuni: `Authorization: Bearer <PAT_FINE_GRAINED>`,
