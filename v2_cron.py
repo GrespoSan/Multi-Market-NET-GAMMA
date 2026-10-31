@@ -168,7 +168,9 @@ def run_capture(now=None, env=None, output=None, downloader=None):
     manual = str(env.get("V2_MANUAL_RUN", "")).lower() == "true"
     requested = env.get("V2_REQUESTED_SLOT", "").strip() or None
     event_cron = env.get("V2_EVENT_CRON", "").strip() or None
-    slot = decision(now, requested=requested, event_cron=event_cron, manual=manual)
+    external = str(env.get("V2_EXTERNAL_CRONJOB", "")).lower() == "true"
+    slot = decision(now, requested=requested, event_cron=event_cron,
+                    manual=manual, external=external)
     report = {"download_utc": now.astimezone(timezone.utc).isoformat(),
               "download_rome": slot["rome"].isoformat(),
               "download_chicago": slot["chicago"].isoformat(),
@@ -238,7 +240,8 @@ def run_capture(now=None, env=None, output=None, downloader=None):
             x["status"] == "SCARICATO_CIFRATO" for x in report["markets"].values())
         report["status"] = (
             "TUTTI_ARCHIVIATI_IN_RITARDO"
-            if fully_archived and slot["reason"] == "GITHUB_SCHEDULE_DELAYED"
+            if fully_archived and slot["reason"] in
+            ("GITHUB_SCHEDULE_DELAYED", "EXTERNAL_DISPATCH_DELAYED")
             else "TUTTI_ARCHIVIATI" if fully_archived
             else "PARZIALE_O_NON_CONFIGURATO")
     (output/"run_status.json").write_text(
