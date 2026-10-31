@@ -174,6 +174,8 @@ def run_capture(now=None, env=None, output=None, downloader=None):
               "download_chicago": slot["chicago"].isoformat(),
               "slot": slot["slot"], "reason": slot["reason"],
               "schedule_reference": slot["time_zone"],
+              "scheduled_local": slot.get("scheduled_local"),
+              "lag_seconds": slot.get("lag_seconds"),
               "requested_slot": slot.get("requested_slot", ""),
               "markets": {}}
     if not slot["run"]:
@@ -232,12 +234,18 @@ def run_capture(now=None, env=None, output=None, downloader=None):
             elif not is_public_cboe and not consent:
                 status["reason"] = "Feed esterno: consenso/licenza non confermati"
             report["markets"][market] = status
-        report["status"] = ("TUTTI_ARCHIVIATI" if all(
+        fully_archived = all(
             x["status"] == "SCARICATO_CIFRATO" for x in report["markets"].values())
+        report["status"] = (
+            "TUTTI_ARCHIVIATI_IN_RITARDO"
+            if fully_archived and slot["reason"] == "GITHUB_SCHEDULE_DELAYED"
+            else "TUTTI_ARCHIVIATI" if fully_archived
             else "PARZIALE_O_NON_CONFIGURATO")
     (output/"run_status.json").write_text(
         json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
     print(json.dumps({"slot": report["slot"], "status": report["status"],
+                      "reason": report["reason"],
+                      "lag_seconds": report.get("lag_seconds"),
                       "markets": {
                           key: {k: val.get(k) for k in ("status", "phase", "error_code")
                                 if val.get(k) is not None}
@@ -250,5 +258,6 @@ if __name__ == "__main__":
     # GitHub Actions must be red for a failed/missing acquisition rather than
     # reporting success with only a run_status.json in the artifact.
     report = run_capture()
-    raise SystemExit(0 if report["status"] in ("TUTTI_ARCHIVIATI", "FUORI_FINESTRA")
+    raise SystemExit(0 if report["status"] in
+                     ("TUTTI_ARCHIVIATI", "TUTTI_ARCHIVIATI_IN_RITARDO")
                      else 1)
