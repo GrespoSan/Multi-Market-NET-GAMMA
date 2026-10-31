@@ -56,6 +56,18 @@ def decision(now: datetime, requested=None, event_cron=None, manual=False):
                     "time_zone": zone,
                     "scheduled_local": scheduled.isoformat(),
                     "lag_seconds": int(lag)}
+        # GitHub schedules were delayed by 5+ hours on Oct 30: the old
+        # 12-minute hard stop caused success status but ZERO option files.
+        # A scheduled EVENT may capture its *actual* timestamp if delayed,
+        # on the same market calendar day. NEVER backdate the observation.
+        # Manual/non-cron invocations still require the normal window.
+        if event_cron and requested == label and lag > MAX_LAG_SECONDS:
+            if scheduled.date() == clock.date():
+                return {"run": True, "reason": "GITHUB_SCHEDULE_DELAYED",
+                        "slot": label, "rome": roma, "chicago": chicago,
+                        "requested_slot": label, "time_zone": zone,
+                        "scheduled_local": scheduled.isoformat(),
+                        "lag_seconds": int(lag)}
     return {"run": False,
             "reason": "FUORI_FINESTRA" if requested else "NESSUNO_SLOT",
             "slot": requested or "", "rome": roma, "chicago": chicago,
