@@ -305,3 +305,51 @@ La V2 richiede:
 **Il codice dei download programmati è attivo, ma la riuscita dipende
 dalla chiave di cifratura, dall'accessibilità Cboe e dall'esecuzione
 effettiva di GitHub Actions.** La Serafini SPX originale è invariata.
+
+
+## Correzioni del 31/10/2026 — verifiche eseguite
+
+**Diagnosi effettiva GitHub Actions 30/10/2026:**
+
+- Workflow schedulato alle 18:54 UTC (id 41110865054): terminato verde
+  ma `v2_cron.py` riportava `FUORI_FINESTRA`, caricando soltanto
+  `run_status.json` (324 byte). Nessuna fotografia di NDX/GLD/USO.
+- Workflow schedulato alle 22:35 UTC (id 41139129251): stesso problema,
+  `FUORI_FINESTRA`, artifact di 323 byte, nessun download.
+- Workflow manuale (id 41054963063, 30/10): `TUTTI_ARCHIVIATI`,
+  **3 fotografie Cboe cifrate** NDX/GLD/USO; artifact circa 1,58 MB.
+- **Causa:** GitHub può avviare gli schedule ore dopo la finestra di
+  12 minuti; il precedente runner scartava tutto e restituiva codice 0.
+
+**Correzione:** un evento `schedule` riconosciuto in ritardo sullo stesso
+giorno di mercato viene elaborato, ma marcato
+`GITHUB_SCHEDULE_DELAYED` e `TUTTI_ARCHIVIATI_IN_RITARDO`
+se tutti i tre file sono davvero prodotti. Il timestamp del file è
+l'ora reale di acquisizione, mai quella teorica. In caso di catena
+assente o accesso negato l'Action fallisce (rosso), con log e codice
+d'errore senza credenziali. Una esecuzione non cron fuori finestra
+non può fingersi snapshot ufficiale.
+
+L'interfaccia evidenzia `ACQUISIZIONE RITARDATA`; gli artifacts di
+soli registri (sotto 1 KB) vengono filtrati dal selettore. GitHub
+Actions usa fusi IANA per le tre pianificazioni, ma **non garantisce
+puntualità dei runner**. Il primo esito del codice modificato richiede
+una nuova esecuzione; il 31/10 è sabato e non ci sono cron del mercato.
+
+**Parità NET GAMMA con Serafini SPX:** le tre V2 hanno due istogrammi
+affiancati, riferimento/guide percentuali, stessa scala Gamma per
+default, interruttori Pine `Mostra 0DTE corrente` e
+`Mostra Weekly corrente` (entrambi ON). Il modulo condiviso di
+estensione automatica, ON nelle tre pagine V2, legge SOLO ulteriori
+strike realmente presenti nella catena Cboe già caricata. Mantiene
+invariata la selezione originaria degli strike, la formula Call−Put,
+i CSV originali e i rapporti NDX→NQ, GLD→GC, USO→CL. L'estensione
+è limitata a 140 righe per profilo quando il nucleo è più piccolo;
+un nucleo con più righe non viene troncato. **Non attribuire il
+criterio SPX 25+25 o le sue percentuali 60%/23% agli ETF.**
+
+**Limite operativo:** l'accesso automatizzato alle delayed quotes Cboe
+può essere bloccato per condizioni di utilizzo; nessun bypass,
+sorgente alternativa nascosta o retry elusivo è implementato.
+Una garanzia contrattuale per raccolta automatica richiede un
+provider/feed che autorizzi tale impiego. Nessun dato V2 su Supabase.
