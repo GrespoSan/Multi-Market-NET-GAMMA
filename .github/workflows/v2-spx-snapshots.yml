@@ -1,13 +1,8 @@
 name: Multi-Market V2 · SPX 07:30 Roma · 08:50 e 13:30 Chicago
 
+# Downloads are launched exclusively by cron-job.org via workflow_dispatch.
+# Manual runs remain available for diagnostics. No native GitHub schedule.
 on:
-  schedule:
-    - cron: "30 7 * * 1-5"
-      timezone: "Europe/Rome"
-    - cron: "50 8 * * 1-5"
-      timezone: "America/Chicago"
-    - cron: "30 13 * * 1-5"
-      timezone: "America/Chicago"
   workflow_dispatch:
     inputs:
       slot:
@@ -37,12 +32,10 @@ concurrency:
 
 jobs:
   capture_v2:
-    # External cron-job.org dispatches use trigger=cron-job and the slot.
-    # Until confirmed active, built-in GitHub schedules remain a fallback.
-    # Set repository variable V2_USE_EXTERNAL_CRONJOB=true AFTER all three
-    # external jobs are configured and verified, to avoid duplicate captures.
-    if: ${{ github.event_name != 'schedule' || vars.V2_USE_EXTERNAL_CRONJOB != 'true' }}
-    # Three automatic NDX, GLD and USO public Cboe CDN snapshots/day.
+    # cron-job.org provides the three scheduled dispatches with slot
+    # and trigger=cron-job. Built-in GitHub schedule permanently removed.
+    # The historical V2_USE_EXTERNAL_CRONJOB variable is now unnecessary.
+    # Three NDX, GLD and USO Cboe option-chain captures per dispatch.
     # Hard-wire public URLs in v2_cron.py, no legacy feed-secret overrides
     # can hijack these scheduled captures.
     # Fernet secret is required; no Supabase or bypass of 401/403/429.
@@ -61,9 +54,8 @@ jobs:
       - name: Capture Cboe NDX GLD USO JSON with actual time and Fernet encryption
         env:
           V2_REQUESTED_SLOT: ${{ inputs.slot }}
-          V2_EVENT_CRON: ${{ github.event.schedule }}
-          V2_MANUAL_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.trigger != 'cron-job' }}
-          V2_EXTERNAL_CRONJOB: ${{ github.event_name == 'workflow_dispatch' && inputs.trigger == 'cron-job' }}
+          V2_MANUAL_RUN: ${{ inputs.trigger != 'cron-job' }}
+          V2_EXTERNAL_CRONJOB: ${{ inputs.trigger == 'cron-job' }}
           V2_ARCHIVE_FERNET_KEY: ${{ secrets.V2_ARCHIVE_FERNET_KEY }}
         run: python v2_cron.py
       - name: Keep audit logs and encrypted snapshots (never plaintext)
