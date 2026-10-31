@@ -46,7 +46,12 @@ def list_v2_artifacts(token, session=None):
     for item in result.get("artifacts", []):
         title = str(item.get("name", ""))
         url = str(item.get("archive_download_url", ""))
-        if (not item.get("expired") and title.startswith("v2-multi-market-")
+        # GitHub runs can succeed with ONLY run_status.json; the 30 Oct
+        # two delayed runs contained 323/324 bytes and ZERO option files.
+        # Never present such audit-only artifacts as available photographs.
+        if (not item.get("expired") and
+                int(item.get("size_in_bytes", 2048)) >= 1024 and
+                title.startswith("v2-multi-market-")
                 and re.fullmatch(r"v2-multi-market-\d+", title)
                 and re.fullmatch(
                     re.escape(API) + r"/actions/artifacts/\d+/zip", url)):
