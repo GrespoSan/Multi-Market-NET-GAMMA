@@ -71,8 +71,9 @@ def spx_last_bar(main_call: str, weekly_call: str, main_values: str,
     It never changes Gamma arrays and is run only when the ticker is valid.
     """
     prefix = (indent(prepare.strip(), "    ") + "\n") if prepare.strip() else ""
-    main = main_call if main_call else "// Profilo principale assente"
-    weekly = weekly_call if weekly_call else "// Profilo Weekly assente"
+    # Non creare if Pine privi di istruzioni se un profilo non esiste.
+    main = ("if showCurrentOdte\n            " + main_call) if main_call else "// Profilo principale assente"
+    weekly = ("if showCurrentWeekly\n            " + weekly_call) if weekly_call else "// Profilo Weekly assente"
     return f'''if barstate.islast and validTicker
     for ln in drawnLines
         line.delete(ln)
@@ -91,7 +92,5 @@ def spx_last_bar(main_call: str, weekly_call: str, main_values: str,
         label unsafe = label.new(bar_index + 10, close, "Scala manuale troppo piccola. Imposta almeno " + str.tostring(minimumSafe, "#.########") + " G/bar", xloc=xloc.bar_index, yloc=yloc.price, style=label.style_label_left, color=color.orange, textcolor=color.black, size=size.small)
         array.push(drawnLabels, unsafe)
     else
-        if showCurrentOdte
-            {main}
-        if showCurrentWeekly
-            {weekly}'''
+        {main}
+        {weekly}'''
