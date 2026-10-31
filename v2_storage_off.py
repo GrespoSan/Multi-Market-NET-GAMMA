@@ -23,6 +23,24 @@ SLOTS = {"0730": "Mattina 07:30 Roma",
          "manuale": "Rilevamento manuale"}
 
 
+def _late_capture(slot_code, instant):
+    """True if the archival timestamp differs from the scheduled clock >12m.
+
+    Never use the logical slot to forge a capture time. The historic logical
+    label is retained for compatibility with downloaded filenames.
+    """
+    clocks = {"0730": (ROME, 7, 30),
+              "1550": (ZoneInfo("America/Chicago"), 8, 50),
+              "2030": (ZoneInfo("America/Chicago"), 13, 30)}
+    if slot_code not in clocks:
+        return False
+    zone, hour, minute = clocks[slot_code]
+    local = instant.astimezone(zone)
+    scheduled = local.replace(hour=hour, minute=minute,
+                              second=0, microsecond=0)
+    return (local - scheduled).total_seconds() > 12 * 60
+
+
 def prefer_manual_source(symbol):
     """Explicit button/upload takes priority over automatic archive selection."""
     if symbol not in AVAILABLE_MARKETS:
@@ -142,7 +160,8 @@ def archive_panel(symbol: str):
                 packed, filename = _cached_snapshot(
                     chosen_url, symbol, github_token, key)
             parts = filename.split("_")
-            slot = next((SLOTS.get(p, "") for p in parts if p in SLOTS), "")
+            slot_code = next((p for p in parts if p in SLOTS), "")
+            slot = SLOTS.get(slot_code, "")
             # Filename carries the REAL capture UTC time; unlike GitHub
             # artifact created_at it records acquisition, not upload time.
             from datetime import timezone
@@ -152,9 +171,12 @@ def archive_panel(symbol: str):
                 ROME).isoformat(timespec="seconds")
             st.session_state[f"v2_archive_capture_nyday_{symbol}"] = stamp.astimezone(
                 ZoneInfo("America/New_York")).date()
-            st.session_state[f"v2_archive_slot_{symbol}"] = slot or "Slot non verificabile"
-            st.caption(f"Fotografia archivio V2: {slot or 'slot non verificabile'} · "
-                       f"acquisita {stamp.astimezone(ROME):%d/%m/%Y %H:%M} Roma · "
+            delayed = _late_capture(slot_code, stamp)
+            slot_label = (slot + " · ACQUISIZIONE RITARDATA"
+                          if delayed else slot)
+            st.session_state[f"v2_archive_slot_{symbol}"] = slot_label or "Slot non verificabile"
+            st.caption(f"Fotografia archivio V2: {slot_label or 'slot non verificabile'} · "
+                       f"acquisita realmente {stamp.astimezone(ROME):%d/%m/%Y %H:%M} Roma · "
                        f"file {filename} · conservata cifrata su GitHub.")
             return packed, filename
         except Exception:
