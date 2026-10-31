@@ -210,6 +210,10 @@ def render_gld_cboe():
         else:
             visual_groups[name], extension_info[name] = original, {"extra": 0}
     good = [v for v in visual_groups.values() if v["usable"]]
+    if not good:
+        st.warning("Nessun profilo NET GAMMA utilizzabile nella fotografia "
+                   "selezionata; non vengono inventati strike o Gamma.")
+        return
     # SPX gamma_section uses one common min/max with 8% spread margin.
     # Independent of bar presentation: no change to original Cboe Gamma.
     xlim = spx_shared_gamma_bounds(good)
