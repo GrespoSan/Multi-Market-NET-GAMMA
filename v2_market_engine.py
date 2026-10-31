@@ -13,6 +13,7 @@ import streamlit as st
 
 from markets import MARKETS
 from gamma_chart_style import profile_chart, panel_heading, capture_display, spx_shared_gamma_bounds
+from v2_visual_extension import expanded_display
 from v2_storage_off import archive_panel, prefer_manual_source
 from market_ui import render_acquisition_controls, render_empty_snapshot
 from data_sources import download_ndx, NDX_URL
@@ -210,18 +211,40 @@ def render_selected_market(market_key):
     if not profiles:
         st.error('Nessuno strike disponibile nella fascia percentuale: NET GAMMA e Pine non generati.')
         st.stop()
+    show_extension = st.checkbox(
+        "Estensione automatica NET GAMMA — solo grafici e Pine",
+        value=True, key="v2_ndx_visual_extension",
+        help="Estende soltanto la visualizzazione usando gli strike già nel JSON Cboe. "
+             "Il nucleo e i calcoli originari NDX rimangono invariati.")
+    visual_profiles = {}
+    visual_notes = {}
+    spot_ndx = doc["data"].get("current_price")
+    for kind, group in profiles.items():
+        if show_extension:
+            visual_profiles[kind], visual_notes[kind] = expanded_display(
+                group,
+                lambda width, exp=date.fromisoformat(group["expiry"]): profile(
+                    doc, exp, reference, band_pct=width),
+                reference, spot_ndx, band_pct,
+                strike_field="strike_index", gamma_field="net_gamma",
+                upper_band_limit=20.0)
+        else:
+            visual_profiles[kind], visual_notes[kind] = group, {"extra": 0}
     
     # Stessa finestra di prezzo per 0DTE e Weekly, basata sul close indice precedente.
     band_low = reference * (1 - band_pct / 100)
     band_high = reference * (1 + band_pct / 100)
     # Identical 0DTE/Weekly X scale to SPX (raw values plus 8% span).
-    shared_gamma_range = spx_shared_gamma_bounds(profiles.values(), field='net_gamma')
+    shared_gamma_range = spx_shared_gamma_bounds(visual_profiles.values(), field='net_gamma')
     shared_ticks = sorted({float(r['strike_index']) + (basis or 0.0)
-                           for p in profiles.values() for r in p['rows']})
+                           for p in visual_profiles.values() for r in p['rows']})
     if len(shared_ticks) > 80:
         shared_ticks = shared_ticks[::(len(shared_ticks) + 79) // 80]
     price_shift = basis if basis is not None else 0.0
-    shared_price_range = [band_low + price_shift, band_high + price_shift]
+    shown_strikes = [float(r["strike_index"])
+                    for p in visual_profiles.values() for r in p["rows"]]
+    shared_price_range = [min(band_low, min(shown_strikes)) + price_shift,
+                          max(band_high, max(shown_strikes)) + price_shift]
     
     st.subheader(f'NET GAMMA — NDX · fascia ±{band_pct:g}%')
     st.caption('Formula invariata: NET = [(OI+Volume)×Gamma] Call − [(OI+Volume)×Gamma] Put. '
@@ -255,13 +278,14 @@ def render_selected_market(market_key):
             st.caption(source_details)
             st.caption(f'{group["contract_count"]} contratti · '
                        f'{group["available_strikes"]} strike disponibili · '
-                       f'{group["selected_strikes"]} strike selezionati')
+                       f'{group["selected_strikes"]} originali · '
+                       f'{visual_notes[kind].get("extra", 0)} aggiuntivi solo grafica/Pine')
             _, capture_label = capture_display(
                 doc.get('timestamp'), st.session_state.get('ndx_download_rome'),
                 st.session_state.get('ndx_name', ''))
             fg = profile_chart(
-                group['rows'], 'NDX', reference,
-                (spx_shared_gamma_bounds([group], field='net_gamma')
+                visual_profiles[kind]['rows'], 'NDX', reference,
+                (spx_shared_gamma_bounds([visual_profiles[kind]], field='net_gamma')
                  if independent_scale else shared_gamma_range),
                 shared_price_range, level_field='strike_index',
                 gamma_field='net_gamma', price_shift=price_shift,
@@ -304,9 +328,9 @@ def render_selected_market(market_key):
         st.stop()
     
     choices=[]
-    if '0DTE' in profiles: choices.append(('Solo 0DTE',{'0DTE':profiles['0DTE']}))
-    if 'Weekly' in profiles: choices.append(('Solo Weekly',{'Weekly':profiles['Weekly']}))
-    if len(profiles)==2: choices.append(('0DTE + Weekly',profiles))
+    if '0DTE' in visual_profiles: choices.append(('Solo 0DTE',{'0DTE':visual_profiles['0DTE']}))
+    if 'Weekly' in visual_profiles: choices.append(('Solo Weekly',{'Weekly':visual_profiles['Weekly']}))
+    if len(visual_profiles)==2: choices.append(('0DTE + Weekly',visual_profiles))
     # Le linee macro usano gli eventi già pubblicati dal calendario Finance Calendar,
     # con conversione in Europe/Rome; nessun orario inventato per news senza timestamp.
     try:
