@@ -21,13 +21,15 @@ SLOTS = {
 SLOT_FOR_CRON = {values[3]: label for label, values in SLOTS.items()}
 
 
-def decision(now: datetime, requested=None, event_cron=None, manual=False):
+def decision(now: datetime, requested=None, event_cron=None, manual=False, external=False):
     if now.tzinfo is None:
         raise ValueError("Il timestamp di esecuzione deve avere un fuso orario.")
     roma = now.astimezone(ROME)
     chicago = now.astimezone(CHICAGO)
     if requested and requested not in SLOTS:
         raise ValueError("Slot logico non riconosciuto.")
+    if external and (manual or event_cron or not requested):
+        raise ValueError("cron-job.org richiede uno slot riconosciuto e non manuale.")
     if event_cron:
         canonical = SLOT_FOR_CRON.get(event_cron)
         if not canonical:
@@ -61,9 +63,11 @@ def decision(now: datetime, requested=None, event_cron=None, manual=False):
         # A scheduled EVENT may capture its *actual* timestamp if delayed,
         # on the same market calendar day. NEVER backdate the observation.
         # Manual/non-cron invocations still require the normal window.
-        if event_cron and requested == label and lag > MAX_LAG_SECONDS:
+        if (event_cron or external) and requested == label and lag > MAX_LAG_SECONDS:
             if scheduled.date() == clock.date():
-                return {"run": True, "reason": "GITHUB_SCHEDULE_DELAYED",
+                return {"run": True, "reason": (
+                            "EXTERNAL_DISPATCH_DELAYED" if external else
+                            "GITHUB_SCHEDULE_DELAYED"),
                         "slot": label, "rome": roma, "chicago": chicago,
                         "requested_slot": label, "time_zone": zone,
                         "scheduled_local": scheduled.isoformat(),
