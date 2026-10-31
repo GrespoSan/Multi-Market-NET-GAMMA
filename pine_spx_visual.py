@@ -21,6 +21,8 @@ def spx_inputs(scale: str, scale_step: str, primary_label: str = "0DTE",
     return f'''gammaPerCandle = input.float({scale}, "Scala MANUALE · Gamma/barra", minval=0.000001, step={scale_step}, tooltip="{tooltip}")
 offsetOdte = input.int(100, "Distanza 0DTE da ultima candela", minval=45, maxval=250)
 offsetWeekly = input.int(100, "Distanza Weekly dalle 0DTE", minval=20, maxval=600)
+showCurrentOdte = input.bool(true, "Mostra 0DTE corrente")
+showCurrentWeekly = input.bool(true, "Mostra Weekly corrente")
 positiveColor = input.color(color.rgb(0, 230, 117), "NET GAMMA positivo")
 negativeColor = input.color(color.rgb(242, 54, 69), "NET GAMMA negativo")
 showTitles = input.bool(true, "Mostra intestazioni")'''
@@ -69,8 +71,8 @@ def spx_last_bar(main_call: str, weekly_call: str, main_values: str,
     It never changes Gamma arrays and is run only when the ticker is valid.
     """
     prefix = (indent(prepare.strip(), "    ") + "\n") if prepare.strip() else ""
-    main = main_call if main_call else "// Profilo principale assente"
-    weekly = weekly_call if weekly_call else "// Profilo Weekly assente"
+    main = ("if showCurrentOdte\n            " + main_call) if main_call else "// Profilo principale assente"
+    weekly = ("if showCurrentWeekly\n            " + weekly_call) if weekly_call else "// Profilo Weekly assente"
     return f'''if barstate.islast and validTicker
     for ln in drawnLines
         line.delete(ln)
@@ -80,8 +82,8 @@ def spx_last_bar(main_call: str, weekly_call: str, main_values: str,
     array.clear(drawnLabels)
 {prefix}    float actualScale = gammaPerCandle
     int weeklyCenter = offsetOdte + offsetWeekly
-    bool beyondLimit = (array.size({main_values}) > 0 and offsetOdte >= 480) or (array.size({weekly_values}) > 0 and weeklyCenter >= 480)
-    float minimumSafe = math.max(requiredScale({main_values}, offsetOdte), requiredScale({weekly_values}, weeklyCenter))
+    bool beyondLimit = (showCurrentOdte and array.size({main_values}) > 0 and offsetOdte >= 480) or (showCurrentWeekly and array.size({weekly_values}) > 0 and weeklyCenter >= 480)
+    float minimumSafe = math.max(showCurrentOdte ? requiredScale({main_values}, offsetOdte) : 0.0, showCurrentWeekly ? requiredScale({weekly_values}, weeklyCenter) : 0.0)
     if beyondLimit
         label warningLimit = label.new(bar_index + 10, close, "Distanza Weekly/0DTE oltre il limite TradingView (+500 barre): riduci la distanza.", xloc=xloc.bar_index, yloc=yloc.price, style=label.style_label_left, color=color.orange, textcolor=color.black, size=size.small)
         array.push(drawnLabels, warningLimit)
