@@ -131,6 +131,55 @@ class V2SPXSetupTests(unittest.TestCase):
                 self.assertIn("20261030T1854", item["file"])
             self.assertEqual(r["download_rome"][11:16], "19:54")
 
+    def test_external_cronjob_three_correct_market_clock_slots(self):
+        for moment, slot in (
+            (datetime(2026, 10, 30, 6, 30, tzinfo=timezone.utc), "07:30"),
+            (datetime(2026, 10, 30, 13, 50, tzinfo=timezone.utc), "15:50"),
+            (datetime(2026, 10, 30, 18, 30, tzinfo=timezone.utc), "20:30"),
+            (datetime(2026, 11, 2, 14, 50, tzinfo=timezone.utc), "15:50"),
+            (datetime(2026, 11, 2, 19, 30, tzinfo=timezone.utc), "20:30"),
+        ):
+            with self.subTest(moment=moment, slot=slot):
+                status = decision(moment, requested=slot, external=True)
+                self.assertTrue(status["run"])
+                self.assertEqual(status["slot"], slot)
+                self.assertEqual(status["reason"], "IN_WINDOW")
+        with self.assertRaises(ValueError):
+            decision(datetime(2026, 11, 2, 14, 50,
+                              tzinfo=timezone.utc), external=True)
+
+    def test_cronjob_delayed_run_is_real_and_encrypted(self):
+        key = Fernet.generate_key().decode()
+        calls = []
+        def source(url, token):
+            calls.append(url)
+            market = next(m for m, link in CBOE_PUBLIC_URLS.items()
+                          if link == url)
+            return synthetic(market)
+        with tempfile.TemporaryDirectory() as tmp:
+            result = run_capture(
+                now=datetime(2026, 11, 2, 16, 0, tzinfo=timezone.utc),
+                env={"V2_ARCHIVE_FERNET_KEY": key,
+                     "V2_EXTERNAL_CRONJOB": "true",
+                     "V2_REQUESTED_SLOT": "15:50",
+                     "V2_MANUAL_RUN": "false"},
+                output=Path(tmp), downloader=source)
+            self.assertEqual(result["status"], "TUTTI_ARCHIVIATI_IN_RITARDO")
+            self.assertEqual(result["reason"], "EXTERNAL_DISPATCH_DELAYED")
+            self.assertEqual(result["slot"], "15:50")
+            self.assertEqual(len(calls), 3)
+            self.assertEqual(len(list(Path(tmp).glob("*.enc"))), 3)
+            self.assertEqual(result["download_rome"][11:16], "17:00")
+        with tempfile.TemporaryDirectory() as tmp:
+            result = run_capture(
+                now=datetime(2026, 11, 2, 15, 0, tzinfo=timezone.utc),
+                env={"V2_ARCHIVE_FERNET_KEY": key,
+                     "V2_REQUESTED_SLOT": "15:50",
+                     "V2_MANUAL_RUN": "true"},
+                output=Path(tmp), downloader=source)
+            self.assertEqual(result["slot"], "manuale")
+            self.assertEqual(result["reason"], "MANUALE")
+
     def test_original_gamma_json_quality_and_root(self):
         for instrument in ("NDX", "GLD", "USO"):
             with self.subTest(instrument=instrument):
