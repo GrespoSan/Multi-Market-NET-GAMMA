@@ -353,3 +353,54 @@ può essere bloccato per condizioni di utilizzo; nessun bypass,
 sorgente alternativa nascosta o retry elusivo è implementato.
 Una garanzia contrattuale per raccolta automatica richiede un
 provider/feed che autorizzi tale impiego. Nessun dato V2 su Supabase.
+
+
+## cron-job.org — nuovo trigger esterno (31/10/2026)
+
+**Motivo:** il progetto Serafini-SPX-Cloud riceve i suoi avvii
+`workflow_dispatch` da cron-job.org, mentre Multi-Market V2 dipendeva
+esclusivamente dal `schedule` interno GitHub, che il 30/10 ha avviato
+i job 4–5 ore in ritardo. Non è un problema del suffisso Cboe
+`_NDX.json` / `GLD.json` / `USO.json`: il test manuale del
+30/10 ha acquisito e cifrato tutti e tre i JSON.
+
+**Predisposizione GitHub già eseguita**:
+- `main/.github/workflows/v2-spx-snapshots.yml` accetta
+  `workflow_dispatch.inputs.trigger=cron-job` oltre allo `slot`.
+- Il checkout resta sul ramo applicativo `v2-spx`.
+- `V2_EXTERNAL_CRONJOB=true` raggiunge `v2_cron.py` e
+  `v2_schedule.decision(...,external=True)`, preservando lo
+  slot ufficiale (07:30, 15:50, 20:30) e l'orario di download reale.
+- I test della V2 simulano tutte e tre le fasce anche nel cambio DST.
+- `V2_USE_EXTERNAL_CRONJOB` è **variabile GitHub Actions**, NON
+  secret: se è `true`, i vecchi `schedule` GitHub vengono
+  saltati e rimane attivo soltanto il trigger esterno.
+  NON impostarla prima che i tre job cron-job.org siano creati
+  e verificati: altrimenti si interrompe il fallback automatico.
+
+**Da configurare in cron-job.org** (tre NUOVI job, mai alterare quelli SPX):
+- URL POST comune:
+  `https://api.github.com/repos/GrespoSan/Multi-Market-NET-GAMMA/actions/workflows/v2-spx-snapshots.yml/dispatches`
+- Headers comuni: `Authorization: Bearer <PAT_FINE_GRAINED>`,
+  `Accept: application/vnd.github+json`,
+  `Content-Type: application/json`.
+- Il PAT fine-grained GitHub deve essere circoscritto SOLO al repository
+  `GrespoSan/Multi-Market-NET-GAMMA`, permission `Actions: Write`.
+  Non usare il token di lettura Streamlit `V2_GITHUB_TOKEN`
+  se ha permessi solo read; NON inserirlo nel codice o in chat.
+- Job A: feriali lun–ven 07:30 `Europe/Rome`,
+  body `{"ref":"main","inputs":{"slot":"07:30","trigger":"cron-job"}}`
+- Job B: feriali lun–ven 08:50 `America/Chicago`,
+  body `{"ref":"main","inputs":{"slot":"15:50","trigger":"cron-job"}}`
+- Job C: feriali lun–ven 13:30 `America/Chicago`,
+  body `{"ref":"main","inputs":{"slot":"20:30","trigger":"cron-job"}}`
+
+La API GitHub restituisce risposta 204/200 quando accetta il dispatch;
+questo verifica la **creazione del workflow**, non l'acquisizione.
+L'esito operativo è `TUTTI_ARCHIVIATI` e 3 file
+`{NDX,GLD,USO}_...json.gz.enc` negli artifacts GitHub.
+
+**Importante:** l'account cron-job.org non è collegato a questa
+integrazione GitHub. I tre job esterni non sono creati automaticamente
+dalla modifica del workflow. Se il provider blocca/rifiuta il
+fetch automatizzato, il runner lo segnalerà senza bypass.
