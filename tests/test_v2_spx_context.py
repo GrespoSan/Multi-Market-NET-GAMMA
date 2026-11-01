@@ -107,7 +107,7 @@ class SPXContextV2Tests(unittest.TestCase):
         self.assertNotIn('Variazione chiusura della seduta (Close/Close)', signed_daily_heading(.9))
         self.assertIn('Andamento e volatilità — seduta precedente', signed_daily_heading(.9))
         self.assertIn("Massive Futures", src)
-        self.assertIn('escape(result[\'range_text\'])', src)
+        self.assertIn('escape(range_value)', src)
         self.assertNotIn('range_percentage_html(', src)
         self.assertNotIn("Variazione ieri (Close/Close):", src)
         context = (ROOT / "v2_context.py").read_text(encoding="utf-8")
