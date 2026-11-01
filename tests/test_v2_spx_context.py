@@ -147,7 +147,9 @@ class SPXContextV2Tests(unittest.TestCase):
         code = (ROOT / "v2_volatility.py").read_text(encoding="utf-8")
         self.assertNotIn("def relative_daily_volatility", code)
         self.assertNotIn("median(values)", code)
-        self.assertIn("market_term_structure_pct = None", code)
+        self.assertIn("market_term_structure_pct =", code)
+        self.assertIn("fetch_market_curve(product, latest_future[\"day\"], key)", code)
+        self.assertIn("Regime futures", code)
         self.assertIn("same_spx_regime(", code)
 
     def test_daily_trend_rule_unchanged_but_ticker_dynamic(self):

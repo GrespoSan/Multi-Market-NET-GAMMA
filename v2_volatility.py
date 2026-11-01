@@ -13,6 +13,7 @@ import pandas as pd
 import streamlit as st
 import yfinance as yf
 from massive_futures_daily import previous_sessions, MassiveSourceError
+from v2_term_structure import fetch_term_structure, CurveUnavailable
 
 SOURCES = {
     "NASDAQ": ("NQ=F", "^VXN", "VXN · volatilità implicita Nasdaq-100"),
@@ -56,6 +57,12 @@ def fetch_daily(ticker: str, target_day: date):
 def fetch_massive_futures(contract, target_day, api_key):
     """OHLC from one named futures contract; no silent roll."""
     return previous_sessions(contract, target_day, api_key, history_days=75)
+
+
+@st.cache_data(ttl=3600, max_entries=120, show_spinner=False)
+def fetch_market_curve(product, session_day, api_key):
+    """Cached Massive PIT contract pair + two same-session settlements."""
+    return fetch_term_structure(product, session_day, api_key)
 
 
 def evaluate(future_bars, vol_bars):
@@ -245,13 +252,24 @@ def render(market, target_day):
             vol_value += f" ({variation:+.2f}%)".replace(".", ",")
     else:
         vol_value = "Non disponibile"
-    # La V2 non possiede una curva a termine per NQ/GC/CL.
-    # Gli indici VXN/GVZ/OVX spot non equivalgono al contango futures.
+    # Same SPX OR rule applied to the user's chosen underlying.
+    # M1/M2 come from Massive PIT contracts and aligned session settlements.
+    # VXN/GVZ/OVX spot are NEVER used as futures term-structure proxies.
+    curve = {"status": "NON DISPONIBILE", "reason": "Daily Futures assente"}
+    if key and latest_future:
+        try:
+            curve = fetch_market_curve(product, latest_future["day"], key)
+        except CurveUnavailable as exc:
+            curve = {"status": "NON DISPONIBILE", "reason": str(exc)}
+        except Exception:
+            curve = {"status": "NON DISPONIBILE", "reason": "Curva Massive non verificabile"}
+    market_term_structure_pct = (
+        curve["term_pct"] if curve.get("status") == "VALIDO" else None
+    )
     daily_pct = (100.0 * (latest_future["hi"] - latest_future["lo"])
                  / latest_future["close"] if latest_future else None)
     candle_red = (True if candle_label == "ROSSA" else
                   False if candle_label in ("VERDE", "DOJI") else None)
-    market_term_structure_pct = None  # Mancante: non inventare backwardation
     regime = same_spx_regime(market_term_structure_pct, daily_pct, candle_red)
     if regime["state"] == "ALTA":
         buffer_value, buffer_color = "N/D (volatilità alta)", "#ff676d"
@@ -261,6 +279,15 @@ def render(market, target_day):
         buffer_value, buffer_color = "N/D (volatilità da determinare)", "#e5b65c"
     buffer_reason = (f"{regime['reason']}; regola SPX applicata al Daily {product}. "
                      f"Buffer numerico non validato per {product}")
+    curve_ok = curve.get("status") == "VALIDO"
+    curve_label = (
+        f"{curve['regime'].capitalize()} ({market_term_structure_pct:+.2f}%)".replace(".", ",")
+        if curve_ok else "Non disponibile"
+    )
+    curve_contracts = (
+        f"{curve['front']} / {curve['second']} · settlement {curve['day']}"
+        if curve_ok else "Scadenze o settlement non verificabili"
+    )
     st.markdown(f"""
 <style>
 .spx-vol-card {{border:1px solid #34363c;border-radius:13px;padding:14px 18px;
@@ -288,14 +315,15 @@ color:#949ba6;font-size:.74rem;line-height:1.4;}}
 <div class="range-direction">{escape(range_detail)}</div>
 <div class="candle-direction">Candela Daily: {escape(candle_label)}</div>
 </div>
-<div class="spx-vol-kpi"><div class="label">Volatilità implicita {escape(vol_symbol)} precedente</div>
-<div class="number">{escape(vol_value)}</div></div>
+<div class="spx-vol-kpi"><div class="label">Regime futures {escape(product)} precedente</div>
+<div class="number">{escape(curve_label)}</div>
+<div class="range-direction">{escape(curve_contracts)}</div></div>
 <div class="spx-vol-kpi"><div class="label">Buffer standard</div>
 <div class="number buffer">{escape(buffer_value)}</div></div>
 </div>
 <div class="spx-vol-foot">Motivo del buffer: {escape(buffer_reason)}.
 Futures Massive {escape(contract or 'N/D')} · {escape(f_day)} ·
-{escape(vol_symbol)} Yahoo {escape(v_day)}.</div>
+curva {escape(curve_contracts)}.</div>
 </div>""", unsafe_allow_html=True)
     with st.expander("Dettaglio fonti e formule", expanded=False):
         if result["previous_close"] is not None and result["future_close"] is not None:
@@ -330,18 +358,33 @@ Futures Massive {escape(contract or 'N/D')} · {escape(f_day)} ·
             "(High-Low)/Close > 1%; 10 (bassa) solo se entrambe le condizioni "
             "sono state verificate ed escluse. Close/Close resta informativo."
         )
-        st.caption(
-            f"Curva a termine per {product}: dato non disponibile nella V2. "
-            "VXN/GVZ/OVX sono indici spot e non permettono di verificare "
-            "la backwardation: senza questa verifica la bassa volatilità "
-            "non può essere affermata."
-        )
+        if curve_ok:
+            st.caption(
+                f"Curva futures {product}, seduta {curve['day']}: "
+                f"F1 {curve['front']} (ultima negoziazione {curve['front_expiry']}) "
+                f"settlement {italian_number(curve['front_settlement'])}; "
+                f"F2 {curve['second']} (ultima negoziazione {curve['second_expiry']}) "
+                f"settlement {italian_number(curve['second_settlement'])}. "
+                f"(F2/F1 − 1) × 100 = {italian_number(market_term_structure_pct)}%. "
+                "Backwardation se F2 < F1. Fonte Massive Contracts PIT + "
+                "1session, stesse date e stesso prodotto."
+            )
+        else:
+            st.caption(
+                f"Curva futures {product} non verificata: "
+                f"{curve.get('reason', 'fonte non disponibile')}. "
+                "Senza confronto F1/F2 valido non si presume il contango."
+            )
         st.caption(
             f"Indice di volatilità implicita: Yahoo Finance {vol_symbol} "
-            f"({v_day}). La regola sul range Daily è la stessa della SPX. "
-            "I numeri del buffer 10/15 non vengono trasferiti automaticamente "
+            f"({v_day}), valore {vol_value}. Indicatore complementare: "
+            "non utilizzato per stabilire la backwardation. "
+            "La regola sul range Daily è la stessa della SPX; "
+            "il buffer numerico 10/15 punti non è trasferito automaticamente "
             "a NQ, GC o CL."
         )
+    result["term_structure"] = curve
+    result["market_volatility_regime"] = regime
     result["daily_bars"] = future_bars
     result["contract"] = contract or None
     result["daily_error"] = future_error
