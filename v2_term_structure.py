@@ -112,8 +112,19 @@ def _json_get(url, params, api_key, requester):
         )
         response.raise_for_status()
         payload = response.json()
+    except requests.HTTPError as exc:
+        status = getattr(getattr(exc, "response", None), "status_code", None)
+        if status == 429:
+            reason = "Massive: limite richieste API raggiunto (HTTP 429)"
+        elif status in (401, 403):
+            reason = "Massive: autorizzazione o piano Futures insufficiente"
+        elif status == 400:
+            reason = "Massive: parametri della richiesta non validi (HTTP 400)"
+        else:
+            reason = "Massive: risposta HTTP non valida"
+        raise CurveUnavailable(reason) from exc
     except (requests.RequestException, ValueError, TypeError, KeyError) as exc:
-        raise CurveUnavailable("API Massive non accessibile o piano Futures insufficiente") from exc
+        raise CurveUnavailable("API Massive non accessibile o risposta non valida") from exc
     if not isinstance(payload, dict):
         raise CurveUnavailable("JSON Massive non valido")
     return payload
@@ -131,7 +142,9 @@ def fetch_term_structure(product, session_day, api_key, requester=None):
         API + "/contracts",
         {"product_code": product, "date": session_day.isoformat(),
          "active": "true", "type": "single",
-         "sort": "last_trade_date.asc", "limit": 1000},
+         # Massive Contracts accepts ticker/date/product_code for sort only.
+         # Sorting by last_trade_date is done locally in select_first_two().
+         "sort": "ticker.asc", "limit": 1000},
         api_key, requester
     )
     if contracts.get("status") not in ("OK", "DELAYED"):

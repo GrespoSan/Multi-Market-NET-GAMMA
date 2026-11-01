@@ -131,11 +131,57 @@ class FirstSecondExpiryTests(unittest.TestCase):
         self.assertEqual(len(client.calls), 3)
         self.assertEqual(client.calls[0][1]["params"]["date"], "2026-10-30")
         self.assertEqual(client.calls[0][1]["params"]["product_code"], "NQ")
+        self.assertEqual(client.calls[0][1]["params"]["sort"], "ticker.asc")
+        self.assertNotEqual(client.calls[0][1]["params"]["sort"], "last_trade_date.asc")
         for url, kwargs in client.calls[1:]:
             self.assertEqual(kwargs["params"]["resolution"], "1session")
             self.assertIn("aggs/", url)
             self.assertEqual(kwargs["headers"]["Authorization"], "Bearer private-key")
         self.assertNotIn("private-key", str(result))
+
+    def test_real_verified_2026_10_30_settlements_nq_gc_cl(self):
+        # Settlement Massive same session; data from checked 2026-10-30 bars.
+        cases = [
+            ("NQ", "NQZ6", "NQH7", "2026-12-18", "2027-03-19",
+             28534.0, 28852.5, "CONTANGO"),
+            ("GC", "GCX6", "GCZ6", "2026-11-25", "2026-12-29",
+             3885.7, 3898.9, "CONTANGO"),
+            ("CL", "CLZ6", "CLF7", "2026-11-20", "2026-12-21",
+             104.12, 102.21, "BACKWARDATION"),
+        ]
+        for product, first, second, exp1, exp2, price1, price2, expected in cases:
+            with self.subTest(product=product):
+                a = contract(first, exp1, product)
+                b = contract(second, exp2, product)
+                curve = compare_settlements(
+                    {"ticker": first, "last_trade_date": date.fromisoformat(exp1)},
+                    {"ticker": second, "last_trade_date": date.fromisoformat(exp2)},
+                    price1, price2, date(2026, 10, 30))
+                self.assertEqual(curve["regime"], expected)
+                self.assertEqual(curve["front"], first)
+                self.assertEqual(curve["second"], second)
+                if product == "CL":
+                    # Despite green Daily candle, backwardation forces HIGH.
+                    self.assertEqual(
+                        same_spx_regime(curve["term_pct"], 2.49, False)["state"], "ALTA")
+                else:
+                    self.assertEqual(
+                        same_spx_regime(curve["term_pct"], 3.32, True)["state"], "ALTA")
+
+    def test_http_400_sort_error_is_identifiable_without_leaking_api_key(self):
+        import requests
+        class BadClient:
+            def get(self, *args, **kwargs):
+                response = requests.Response()
+                response.status_code = 400
+                response.url = "https://api.massive.com/futures/v1/contracts"
+                def fail():
+                    raise requests.HTTPError("bad sort", response=response)
+                response.raise_for_status = fail
+                return response
+        with self.assertRaisesRegex(CurveUnavailable, r"HTTP 400"):
+            fetch_term_structure("NQ", date(2026, 10, 30),
+                                 "secret", requester=BadClient())
 
     def test_missing_api_key_never_issues_a_network_call(self):
         client = Mock()

@@ -286,7 +286,7 @@ def render(market, target_day):
     )
     curve_contracts = (
         f"{curve['front']} / {curve['second']} · settlement {curve['day']}"
-        if curve_ok else "Scadenze o settlement non verificabili"
+        if curve_ok else f"Non verificabile: {curve.get('reason', 'motivo non disponibile')}"
     )
     st.markdown(f"""
 <style>
