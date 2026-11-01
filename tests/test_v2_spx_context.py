@@ -120,7 +120,7 @@ class SPXContextV2Tests(unittest.TestCase):
                      "spx-vol-foot", "Range Daily precedente",
                      "Buffer standard", "Dettaglio fonti e formule"):
             self.assertIn(name, code)
-        self.assertIn("Regola 10/15 punti specifica SPX/ES", code)
+        self.assertIn("Buffer numerico non validato per", code)
         self.assertNotIn("previous_vix_curve(", code)
         self.assertNotIn("buffer_es_points", code)
         self.assertEqual(daily_candle_state({"open": 102, "close": 100}), "ROSSA")
