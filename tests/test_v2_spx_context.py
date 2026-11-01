@@ -155,7 +155,7 @@ class SPXContextV2Tests(unittest.TestCase):
     def test_archive_metrics_do_not_mislabel_artifact_runs_as_snapshots(self):
         src = (ROOT / "v2_context.py").read_text(encoding="utf-8")
         self.assertIn('st.metric("Snapshot distinti", "—")', src)
-        self.assertIn("I registri, se disponibili", src)
+        self.assertIn("Il numero dei registri GitHub non è un numero di snapshot Cboe", src)
         self.assertIn("Supabase", (ROOT / "v2_storage_off.py").read_text())
 
 

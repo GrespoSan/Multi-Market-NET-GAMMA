@@ -96,7 +96,6 @@ def render(market):
     source_day = selected_snapshot_day(market)
     local_today = datetime.now(ROME).date()
     reference_day = source_day or local_today
-    display_day = reference_day.strftime("%d/%m/%Y")
 
     with col_snapshots:
         # An encrypted GitHub artifact can contain 0, 1, 2 or 3 markets;
@@ -115,19 +114,14 @@ def render(market):
                 st.metric("Registri", "—")
         else:
             st.metric("Registri", "—")
-    st.caption("Snapshot distinti: conteggio globale non ancora verificabile "
-               "nell'archivio cifrato V2. I registri, se disponibili, indicano "
-               "esecuzioni GitHub e non garantiscono l'acquisizione di una catena.")
+    # Contatori: '—' finché le singole chain cifrate non sono verificabili.
+    # Il numero dei registri GitHub non è un numero di snapshot Cboe.
     st.markdown("#### News e calendario macroeconomico")
     from macro_calendar import render as render_macro_calendar
     render_macro_calendar()
     st.divider()
-    if source_day is None:
-        st.caption("Nessuna fotografia Cboe selezionata: si utilizza la data odierna "
-                   f"{display_day} come riferimento per le barre Daily precedenti.")
-    else:
-        st.caption(f"Fotografia di riferimento: {display_day} (data Cboe originale, "
-                   "fuso non documentato).")
+    # Il riferimento è lo snapshot selezionato quando disponibile, altrimenti
+    # la data locale corrente. Nessun testo aggiuntivo fra le schede SPX.
     daily_context = render_volatility(market, reference_day)
     st.divider()
     symbol, _, _ = SOURCES[market]
