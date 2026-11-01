@@ -1,14 +1,13 @@
 """Market-neutral Volatilità — seduta precedente, with SPX card styling.
 
 The three-column SPX presentation is preserved. Do not apply the
-SPX-specific VX contango/backwardation buffer rule to other instruments.
+SPX conditions only with verified per-market term structure and Daily candle.
 NQ/GC/CL OHLC 1session and Close/Close from Massive; VXN/GVZ/OVX
 volatility indices remain from Yahoo where available. All dates are strictly PRIOR to the reference day.
 """
 from datetime import date, timedelta
 from html import escape
 from math import isfinite
-from statistics import median
 
 import pandas as pd
 import streamlit as st
@@ -89,8 +88,7 @@ def evaluate(future_bars, vol_bars):
             range_trend = "ESPANSIONE" if current_range_pct > previous_range_pct else "COMPRESSIONE"
     else:
         previous_range_pct, range_trend = None, "N/D"
-    # The user-confirmed Serafini warning is a signed DOWN move
-    # strictly beyond -1%. It is NOT the always-positive High-Low range.
+    # Legacy signed Close/Close remains informational, not the buffer rule.
     bearish_volatility = None if change_pct is None else round(change_pct, 6) < -1.0
     if vol is None:
         vol_text = "Non disponibile"
@@ -148,52 +146,38 @@ def italian_number(value, decimals=2):
     return f"{float(value):,.{decimals}f}".replace(",", "X").replace(".", ",").replace("X", ".")
 
 
-def relative_daily_volatility(bars, reference_day, lookback=20, min_samples=10):
-    """Indicative HIGH/LOW range regime versus past sessions of the same future.
+def same_spx_regime(term_structure_pct=None, daily_range_pct=None, daily_candle_red=None):
+    """Same SPX OR rule: backwardation OR red Daily with High-Low range > 1%.
 
-    Uses closed Massive sessions strictly before reference_day, never VXN/GVZ/
-    OVX spot as a proxy for VX backwardation. Not a trading or buffer rule.
+    10/low only if both conditions can be verified as false.
+    A missing curve never becomes automatic contango.
     """
-    unavailable = {"state": None, "latest_pct": None, "median_pct": None,
-                   "samples": 0}
-    if not isinstance(reference_day, date) or not bars:
-        return unavailable
-    eligible = [bar for bar in bars
-                if isinstance(bar.get("day"), date)
-                and bar["day"] < reference_day]
-    eligible.sort(key=lambda bar: bar["day"])
-    if not eligible:
-        return unavailable
-    latest = eligible[-1]
-    if (reference_day - latest["day"]).days > 7:
-        return unavailable
-
-    def range_pct(bar):
-        try:
-            high, low, close = (float(bar[k]) for k in ("hi", "lo", "close"))
-            if not all(isfinite(x) for x in (high, low, close)):
-                return None
-            if close <= 0 or low <= 0 or high < low or not low <= close <= high:
-                return None
-            return 100.0 * (high - low) / close
-        except (KeyError, TypeError, ValueError, OverflowError):
+    def finite_or_none(value):
+        if value is None:
             return None
+        number = float(value)
+        if not isfinite(number):
+            raise ValueError("Percentuale non finita")
+        return number
 
-    current = range_pct(latest)
-    if current is None:
-        return unavailable
-    # Fix the sample window to the 20 immediately preceding sessions.
-    # Do not silently extend it to older dates when recent data are invalid.
-    prior = eligible[:-1][-lookback:]
-    values = [range_pct(item) for item in prior
-              if item.get("ticker") == latest.get("ticker")]
-    values = [x for x in values if x is not None]
-    if len(values) < min_samples:
-        return {**unavailable, "samples": len(values)}
-    baseline = median(values)
-    return {"state": "ALTA" if current > baseline else "BASSA",
-            "latest_pct": current, "median_pct": baseline,
-            "samples": len(values)}
+    term_pct = finite_or_none(term_structure_pct)
+    day_pct = finite_or_none(daily_range_pct)
+    if day_pct is not None and day_pct < 0:
+        raise ValueError("Range Daily non valido")
+    if daily_candle_red is not None and not isinstance(daily_candle_red, bool):
+        raise TypeError("Colore Daily non verificato")
+    reasons = []
+    if term_pct is not None and term_pct < 0:
+        reasons.append("Backwardation verificata")
+    if day_pct is not None and daily_candle_red is True and day_pct > 1.0:
+        reasons.append("Candela Daily rossa e range High-Low > 1%")
+    if reasons:
+        return {"points": 15, "state": "ALTA", "reason": "; ".join(reasons)}
+    if term_pct is not None and day_pct is not None and daily_candle_red is not None:
+        return {"points": 10, "state": "BASSA",
+                "reason": "Nessuna backwardation né candela rossa con range > 1%"}
+    return {"points": None, "state": None,
+            "reason": "Backwardation o dati della candela non verificabili"}
 
 
 def render(market, target_day):
@@ -261,18 +245,22 @@ def render(market, target_day):
             vol_value += f" ({variation:+.2f}%)".replace(".", ",")
     else:
         vol_value = "Non disponibile"
-    # The ES numeric buffer stays unavailable. Only the descriptive range
-    # regime is classified using actual prior daily sessions of this future.
-    relative = relative_daily_volatility(future_bars, target_day)
-    if relative["state"] == "ALTA":
+    # La V2 non possiede una curva a termine per NQ/GC/CL.
+    # Gli indici VXN/GVZ/OVX spot non equivalgono al contango futures.
+    daily_pct = (100.0 * (latest_future["hi"] - latest_future["lo"])
+                 / latest_future["close"] if latest_future else None)
+    candle_red = (True if candle_label == "ROSSA" else
+                  False if candle_label in ("VERDE", "DOJI") else None)
+    market_term_structure_pct = None  # Mancante: non inventare backwardation
+    regime = same_spx_regime(market_term_structure_pct, daily_pct, candle_red)
+    if regime["state"] == "ALTA":
         buffer_value, buffer_color = "N/D (volatilità alta)", "#ff676d"
-    elif relative["state"] == "BASSA":
+    elif regime["state"] == "BASSA":
         buffer_value, buffer_color = "N/D (volatilità bassa)", "#56d49e"
     else:
         buffer_value, buffer_color = "N/D (volatilità da determinare)", "#e5b65c"
-    buffer_reason = (f"Buffer numerico non validato per {product}; "
-                     "il regime bassa/alta è soltanto una lettura "
-                     "relativa del range Daily, non una regola Serafini")
+    buffer_reason = (f"{regime['reason']}; regola SPX applicata al Daily {product}. "
+                     f"Buffer numerico non validato per {product}")
     st.markdown(f"""
 <style>
 .spx-vol-card {{border:1px solid #34363c;border-radius:13px;padding:14px 18px;
@@ -336,26 +324,23 @@ Futures Massive {escape(contract or 'N/D')} · {escape(f_day)} ·
             "della seduta ancora precedente. "
             "Stessa fonte e serie Massive usata nel Trend Daily."
         )
-        if relative["state"] is not None:
-            st.caption(
-                "Classificazione descrittiva volatilità Daily: "
-                f"range {italian_number(relative['latest_pct'])}% "
-                f"contro mediana {italian_number(relative['median_pct'])}% "
-                f"di {relative['samples']} sessioni precedenti dello stesso contratto "
-                "(massimo 20). Alta se sopra la mediana, bassa altrimenti. "
-                "Non è una soglia Serafini né un buffer numerico validato."
-            )
-        else:
-            st.caption(
-                "Volatilità relativa non determinabile: occorrono almeno 10 "
-                "sedute Daily precedenti dello stesso contratto con range "
-                "verificabile. Nessuna classificazione inventata."
-            )
+        st.caption(
+            "Criterio SPX sul future selezionato: 15 (alta) se backwardation "
+            "verificata oppure candela Daily precedente rossa con "
+            "(High-Low)/Close > 1%; 10 (bassa) solo se entrambe le condizioni "
+            "sono state verificate ed escluse. Close/Close resta informativo."
+        )
+        st.caption(
+            f"Curva a termine per {product}: dato non disponibile nella V2. "
+            "VXN/GVZ/OVX sono indici spot e non permettono di verificare "
+            "la backwardation: senza questa verifica la bassa volatilità "
+            "non può essere affermata."
+        )
         st.caption(
             f"Indice di volatilità implicita: Yahoo Finance {vol_symbol} "
-            f"({v_day}). Non è una curva di futures M1/M2 in contango o "
-            "backwardation. La regola del buffer ES di Serafini da 10/15 punti "
-            "non viene applicata automaticamente a NQ, GC o CL."
+            f"({v_day}). La regola sul range Daily è la stessa della SPX. "
+            "I numeri del buffer 10/15 non vengono trasferiti automaticamente "
+            "a NQ, GC o CL."
         )
     result["daily_bars"] = future_bars
     result["contract"] = contract or None
