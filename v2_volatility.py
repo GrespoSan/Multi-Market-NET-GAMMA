@@ -8,6 +8,7 @@ volatility indices remain from Yahoo where available. All dates are strictly PRI
 from datetime import date, timedelta
 from html import escape
 from math import isfinite
+from statistics import median
 
 import pandas as pd
 import streamlit as st
@@ -147,6 +148,54 @@ def italian_number(value, decimals=2):
     return f"{float(value):,.{decimals}f}".replace(",", "X").replace(".", ",").replace("X", ".")
 
 
+def relative_daily_volatility(bars, reference_day, lookback=20, min_samples=10):
+    """Indicative HIGH/LOW range regime versus past sessions of the same future.
+
+    Uses closed Massive sessions strictly before reference_day, never VXN/GVZ/
+    OVX spot as a proxy for VX backwardation. Not a trading or buffer rule.
+    """
+    unavailable = {"state": None, "latest_pct": None, "median_pct": None,
+                   "samples": 0}
+    if not isinstance(reference_day, date) or not bars:
+        return unavailable
+    eligible = [bar for bar in bars
+                if isinstance(bar.get("day"), date)
+                and bar["day"] < reference_day]
+    eligible.sort(key=lambda bar: bar["day"])
+    if not eligible:
+        return unavailable
+    latest = eligible[-1]
+    if (reference_day - latest["day"]).days > 7:
+        return unavailable
+
+    def range_pct(bar):
+        try:
+            high, low, close = (float(bar[k]) for k in ("hi", "lo", "close"))
+            if not all(isfinite(x) for x in (high, low, close)):
+                return None
+            if close <= 0 or low <= 0 or high < low or not low <= close <= high:
+                return None
+            return 100.0 * (high - low) / close
+        except (KeyError, TypeError, ValueError, OverflowError):
+            return None
+
+    current = range_pct(latest)
+    if current is None:
+        return unavailable
+    # Fix the sample window to the 20 immediately preceding sessions.
+    # Do not silently extend it to older dates when recent data are invalid.
+    prior = eligible[:-1][-lookback:]
+    values = [range_pct(item) for item in prior
+              if item.get("ticker") == latest.get("ticker")]
+    values = [x for x in values if x is not None]
+    if len(values) < min_samples:
+        return {**unavailable, "samples": len(values)}
+    baseline = median(values)
+    return {"state": "ALTA" if current > baseline else "BASSA",
+            "latest_pct": current, "median_pct": baseline,
+            "samples": len(values)}
+
+
 def render(market, target_day):
     if market not in SOURCES:
         raise ValueError("Mercato non configurato per il contesto.")
@@ -212,11 +261,18 @@ def render(market, target_day):
             vol_value += f" ({variation:+.2f}%)".replace(".", ",")
     else:
         vol_value = "Non disponibile"
-    # La regola SPX 10/15 punti dipende dalla struttura a termine VX,
-    # non è trasferibile ai singoli indici spot VXN, GVZ o OVX.
-    buffer_value = "N/D (non validato)"
-    buffer_reason = (f"Regola 10/15 punti specifica SPX/ES, non validata per "
-                     f"{product} dal solo {vol_symbol}")
+    # The ES numeric buffer stays unavailable. Only the descriptive range
+    # regime is classified using actual prior daily sessions of this future.
+    relative = relative_daily_volatility(future_bars, target_day)
+    if relative["state"] == "ALTA":
+        buffer_value, buffer_color = "N/D (volatilità alta)", "#ff676d"
+    elif relative["state"] == "BASSA":
+        buffer_value, buffer_color = "N/D (volatilità bassa)", "#56d49e"
+    else:
+        buffer_value, buffer_color = "N/D (volatilità da determinare)", "#e5b65c"
+    buffer_reason = (f"Buffer numerico non validato per {product}; "
+                     "il regime bassa/alta è soltanto una lettura "
+                     "relativa del range Daily, non una regola Serafini")
     st.markdown(f"""
 <style>
 .spx-vol-card {{border:1px solid #34363c;border-radius:13px;padding:14px 18px;
@@ -228,7 +284,7 @@ background:#090a0c;color:#f4f5f6;font-family:inherit;}}
 .spx-vol-kpi .number {{font-size:1.15rem;font-weight:740;overflow-wrap:anywhere;}}
 .spx-vol-kpi .range-direction {{font-size:.79rem;color:#abb6c4;margin-top:8px;line-height:1.5;}}
 .spx-vol-kpi .candle-direction {{font-size:.84rem;font-weight:700;margin-top:7px;line-height:1.4;color:{candle_color};}}
-.spx-vol-kpi .buffer {{color:#e5b65c;font-size:1.3rem;}}
+.spx-vol-kpi .buffer {{color:{buffer_color};font-size:1.3rem;}}
 .spx-vol-foot {{border-top:1px solid #292b30;padding-top:9px;margin-top:12px;
 color:#949ba6;font-size:.74rem;line-height:1.4;}}
 @media(max-width:700px){{
@@ -280,6 +336,21 @@ Futures Massive {escape(contract or 'N/D')} · {escape(f_day)} ·
             "della seduta ancora precedente. "
             "Stessa fonte e serie Massive usata nel Trend Daily."
         )
+        if relative["state"] is not None:
+            st.caption(
+                "Classificazione descrittiva volatilità Daily: "
+                f"range {italian_number(relative['latest_pct'])}% "
+                f"contro mediana {italian_number(relative['median_pct'])}% "
+                f"di {relative['samples']} sessioni precedenti dello stesso contratto "
+                "(massimo 20). Alta se sopra la mediana, bassa altrimenti. "
+                "Non è una soglia Serafini né un buffer numerico validato."
+            )
+        else:
+            st.caption(
+                "Volatilità relativa non determinabile: occorrono almeno 10 "
+                "sedute Daily precedenti dello stesso contratto con range "
+                "verificabile. Nessuna classificazione inventata."
+            )
         st.caption(
             f"Indice di volatilità implicita: Yahoo Finance {vol_symbol} "
             f"({v_day}). Non è una curva di futures M1/M2 in contango o "

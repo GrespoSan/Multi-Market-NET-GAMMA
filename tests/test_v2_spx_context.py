@@ -9,7 +9,7 @@ from datetime import date
 import pandas as pd
 
 from v2_trend_daily import evaluate, impulse_reference
-from v2_volatility import SOURCES, evaluate as evaluate_vol, daily_candle_state
+from v2_volatility import SOURCES, evaluate as evaluate_vol, daily_candle_state, relative_daily_volatility
 from v2_context import selected_snapshot_day
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -54,7 +54,8 @@ class SPXContextV2Tests(unittest.TestCase):
         self.assertIn("+2.86%", x["vol_text"])
         src = (ROOT / "v2_volatility.py").read_text(encoding="utf-8")
         self.assertIn("Volatilità implicita", src)
-        self.assertIn("N/D (non validato)", src)
+        self.assertIn("N/D (volatilità alta)", src)
+        self.assertIn("N/D (volatilità bassa)", src)
         self.assertIn("Buffer standard", src)
         self.assertIn("Candela Daily: {escape(candle_label)}", src)
         self.assertIn("SPX", src)
@@ -127,6 +128,58 @@ class SPXContextV2Tests(unittest.TestCase):
         self.assertEqual(daily_candle_state({"open": 100, "close": 100}), "DOJI")
         self.assertEqual(daily_candle_state({"open": None, "close": 100}), "N/D")
         self.assertEqual(daily_candle_state({"open": 98, "close": 100}), "VERDE")
+
+    def test_relative_daily_range_classification_is_per_future_without_lookahead(self):
+        from datetime import timedelta
+        start = date(2026, 8, 3)
+        days = [start + timedelta(days=i) for i in range(32)
+                if (start + timedelta(days=i)).weekday() < 5]
+        self.assertGreaterEqual(len(days), 21)
+        for ticker in ("NQZ6", "GCZ6", "CLZ6"):
+            # 20 past sessions have exactly 1% range, last one is wider.
+            preceding = [
+                {"day": d, "ticker": ticker, "hi": 100.5, "lo": 99.5, "close": 100.0}
+                for d in days[:20]
+            ]
+            high_day = {"day": days[20], "ticker": ticker,
+                        "hi": 101.5, "lo": 99.5, "close": 100.0}
+            high = relative_daily_volatility(
+                preceding + [high_day], days[20] + timedelta(days=1))
+            self.assertEqual(high["state"], "ALTA")
+            self.assertEqual(high["samples"], 20)
+            self.assertAlmostEqual(high["median_pct"], 1.0)
+            self.assertAlmostEqual(high["latest_pct"], 2.0)
+            # Previous sessions are unchanged, current below prior median.
+            low_day = {**high_day, "hi": 100.2, "lo": 99.8}
+            low = relative_daily_volatility(
+                preceding + [low_day], days[20] + timedelta(days=1))
+            self.assertEqual(low["state"], "BASSA")
+            # An additional future observation on reference_day is ignored.
+            future = {"day": days[20] + timedelta(days=1), "ticker": ticker,
+                      "hi": 120, "lo": 90, "close": 100}
+            self.assertEqual(
+                relative_daily_volatility(preceding + [low_day, future],
+                                          days[20] + timedelta(days=1))["state"],
+                "BASSA")
+
+    def test_relative_daily_range_insufficient_or_mixed_contract_is_not_assumed_low(self):
+        from datetime import timedelta
+        start = date(2026, 9, 1)
+        prior = [
+            {"day": start + timedelta(days=i), "ticker": "GCZ6",
+             "hi": 101, "lo": 99, "close": 100}
+            for i in range(9)
+        ]
+        current = {"day": start + timedelta(days=9), "ticker": "GCZ6",
+                   "hi": 102, "lo": 99, "close": 100}
+        self.assertIsNone(
+            relative_daily_volatility(prior + [current],
+                                      start + timedelta(days=10))["state"])
+        other = [{**p, "ticker": "CLZ6"} for p in prior]
+        self.assertIsNone(
+            relative_daily_volatility(other + [current],
+                                      start + timedelta(days=10))["state"])
+        self.assertIsNone(relative_daily_volatility([], start)["state"])
 
     def test_daily_trend_rule_unchanged_but_ticker_dynamic(self):
         dates = pd.date_range("2026-10-20", periods=5, freq="B")
