@@ -123,10 +123,28 @@ def signed_daily_heading(change_pct):
                  "#ff676d" if change_pct < 0 else "#b6bcc5")
     return (
         f'<h4 style="font-size:1.4rem;font-weight:700">{base}</h4>'
-        '<div style="font-size:1rem;padding:0 0 10px;color:#c3cbd5">'
-        'Variazione chiusura della seduta (Close/Close): '
-        f'<span style="color:{color};font-weight:750">{value}</span></div>'
+        '<div style="font-size:1.12rem;line-height:1.5;padding:0 0 12px;'
+        'color:#dbe2eb;font-weight:600">'
+        'Variazione chiusura della seduta: '
+        f'<span style="color:{color};font-size:1.2rem;font-weight:800">{value}</span></div>'
     )
+
+
+def daily_candle_state(future):
+    """Open/Close della candela Massive; Close/Close non determina il colore."""
+    if not future or future.get("open") is None or future.get("close") is None:
+        return "N/D"
+    try:
+        opening, closing = float(future["open"]), float(future["close"])
+        if not (isfinite(opening) and isfinite(closing)):
+            return "N/D"
+    except (ValueError, TypeError, OverflowError):
+        return "N/D"
+    return "ROSSA" if closing < opening else ("VERDE" if closing > opening else "DOJI")
+
+
+def italian_number(value, decimals=2):
+    return f"{float(value):,.{decimals}f}".replace(",", "X").replace(".", ",").replace("X", ".")
 
 
 def render(market, target_day):
@@ -170,6 +188,35 @@ def render(market, target_day):
         range_detail = "Confronto non disponibile"
     if future_error:
         st.warning(future_error)
+    latest_future = future_bars[-1] if future_bars else None
+    candle_label = daily_candle_state(latest_future)
+    candle_color = {"ROSSA":"#ff676d", "VERDE":"#56d49e",
+                    "DOJI":"#b6bcc5", "N/D":"#b6bcc5"}[candle_label]
+    if latest_future:
+        raw_range = latest_future["hi"] - latest_future["lo"]
+        range_points = (str(int(round(raw_range)))
+                        if abs(raw_range - round(raw_range)) < 0.005
+                        else italian_number(raw_range))
+        range_value = f"{range_points} pt · {italian_number(raw_range / latest_future['close'] * 100)}%"
+        range_detail = (f"{result['range_trend']} · prima "
+                        f"{italian_number(result['previous_range_pct'])}%"
+                        if result["previous_range_pct"] is not None else
+                        "Confronto non disponibile")
+    else:
+        range_value = "Non disponibile"
+    vol_symbol = vol_ticker.removeprefix("^")
+    if vol_bars:
+        vol_value = italian_number(vol_bars[-1]["close"])
+        if len(vol_bars) >= 2 and vol_bars[-2]["close"]:
+            variation = 100 * (vol_bars[-1]["close"] / vol_bars[-2]["close"] - 1)
+            vol_value += f" ({variation:+.2f}%)".replace(".", ",")
+    else:
+        vol_value = "Non disponibile"
+    # La regola SPX 10/15 punti dipende dalla struttura a termine VX,
+    # non è trasferibile ai singoli indici spot VXN, GVZ o OVX.
+    buffer_value = "N/D (non validato)"
+    buffer_reason = (f"Regola 10/15 punti specifica SPX/ES, non validata per "
+                     f"{product} dal solo {vol_symbol}")
     st.markdown(f"""
 <style>
 .spx-vol-card {{border:1px solid #34363c;border-radius:13px;padding:14px 18px;
@@ -180,7 +227,8 @@ background:#090a0c;color:#f4f5f6;font-family:inherit;}}
 .spx-vol-kpi .label {{font-size:.82rem;color:#b6bcc5;margin-bottom:5px;}}
 .spx-vol-kpi .number {{font-size:1.15rem;font-weight:740;overflow-wrap:anywhere;}}
 .spx-vol-kpi .range-direction {{font-size:.79rem;color:#abb6c4;margin-top:8px;line-height:1.5;}}
-.spx-vol-kpi .risk-text {{font-size:1.0rem;font-weight:750;}}
+.spx-vol-kpi .candle-direction {{font-size:.84rem;font-weight:700;margin-top:7px;line-height:1.4;color:{candle_color};}}
+.spx-vol-kpi .buffer {{color:#e5b65c;font-size:1.3rem;}}
 .spx-vol-foot {{border-top:1px solid #292b30;padding-top:9px;margin-top:12px;
 color:#949ba6;font-size:.74rem;line-height:1.4;}}
 @media(max-width:700px){{
@@ -192,18 +240,18 @@ color:#949ba6;font-size:.74rem;line-height:1.4;}}
 <div class="spx-vol-card">
 <div class="spx-vol-grid">
 <div class="spx-vol-kpi"><div class="label">Range Daily precedente</div>
-<div class="number">{escape(result['range_text'])}</div>
+<div class="number">{escape(range_value)}</div>
 <div class="range-direction">{escape(range_detail)}</div>
+<div class="candle-direction">Candela Daily: {escape(candle_label)}</div>
 </div>
-<div class="spx-vol-kpi"><div class="label">{escape(vol_name)} precedente</div>
-<div class="number">{escape(result['vol_text'])}</div></div>
-<div class="spx-vol-kpi"><div class="label">Regime da ribasso Close/Close</div>
-<div class="number risk-text" style="color:{'#ff676d' if result['bearish_volatility'] else '#c4ccd5'}">{'ALTA VOLATILITÀ' if result['bearish_volatility'] else 'N/D' if result['bearish_volatility'] is None else 'Soglia −1% non superata'}</div></div>
+<div class="spx-vol-kpi"><div class="label">Volatilità implicita {escape(vol_symbol)} precedente</div>
+<div class="number">{escape(vol_value)}</div></div>
+<div class="spx-vol-kpi"><div class="label">Buffer standard</div>
+<div class="number buffer">{escape(buffer_value)}</div></div>
 </div>
-<div class="spx-vol-foot">Futures Massive {escape(contract or 'N/D')} · seduta {escape(f_day)}
-· indice {escape(vol_ticker)} da Yahoo {escape(v_day)}.
-Range Daily confrontato con la seduta ancora precedente; regime da ribasso
-quando Close/Close &lt; −1%. Il buffer ES non viene applicato a questo mercato.</div>
+<div class="spx-vol-foot">Motivo del buffer: {escape(buffer_reason)}.
+Futures Massive {escape(contract or 'N/D')} · {escape(f_day)} ·
+{escape(vol_symbol)} Yahoo {escape(v_day)}.</div>
 </div>""", unsafe_allow_html=True)
     with st.expander("Dettaglio fonti e formule", expanded=False):
         if result["previous_close"] is not None and result["future_close"] is not None:
@@ -215,11 +263,28 @@ quando Close/Close &lt; −1%. Il buffer ES non viene applicato a questo mercato
                 "Variazione = (Close / Close precedente − 1) × 100. "
                 "Range = (High − Low) / Close × 100. Non si usano i settlement."
             )
+        if latest_future:
+            if candle_label != "N/D":
+                st.caption(
+                    f"Candela Daily {product} precedente: Open "
+                    f"{italian_number(latest_future['open'])}; Close "
+                    f"{italian_number(latest_future['close'])}; {candle_label}; "
+                    f"range High-Low "
+                    f"{italian_number(100 * (latest_future['hi'] - latest_future['lo']) / latest_future['close'])}%."
+                )
+            else:
+                st.caption("Open/Close non disponibili: colore candela non verificabile.")
         st.caption(
-            f"Indice di volatilità implicita: Yahoo Finance {vol_ticker} "
-            f"({v_day}); fonte distinta dai future Massive. "
-            "Il regime da ribasso non esclude altre cause di alta volatilità. "
-            "Il buffer ES da 10/15 punti non viene applicato agli altri mercati."
+            "Range Daily (%) = (High − Low) / Close × 100. "
+            "Espansione/compressione: confronto con il range percentuale "
+            "della seduta ancora precedente. "
+            "Stessa fonte e serie Massive usata nel Trend Daily."
+        )
+        st.caption(
+            f"Indice di volatilità implicita: Yahoo Finance {vol_symbol} "
+            f"({v_day}). Non è una curva di futures M1/M2 in contango o "
+            "backwardation. La regola del buffer ES di Serafini da 10/15 punti "
+            "non viene applicata automaticamente a NQ, GC o CL."
         )
     result["daily_bars"] = future_bars
     result["contract"] = contract or None

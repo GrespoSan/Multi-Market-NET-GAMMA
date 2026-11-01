@@ -9,7 +9,7 @@ from datetime import date
 import pandas as pd
 
 from v2_trend_daily import evaluate, impulse_reference
-from v2_volatility import SOURCES, evaluate as evaluate_vol
+from v2_volatility import SOURCES, evaluate as evaluate_vol, daily_candle_state
 from v2_context import selected_snapshot_day
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -53,8 +53,10 @@ class SPXContextV2Tests(unittest.TestCase):
         self.assertIn("36.00", x["vol_text"])
         self.assertIn("+2.86%", x["vol_text"])
         src = (ROOT / "v2_volatility.py").read_text(encoding="utf-8")
-        self.assertIn("Regime da ribasso Close/Close", src)
-        self.assertIn("Soglia −1% non superata", src)
+        self.assertIn("Volatilità implicita", src)
+        self.assertIn("N/D (non validato)", src)
+        self.assertIn("Buffer standard", src)
+        self.assertIn("Candela Daily: {escape(candle_label)}", src)
         self.assertIn("SPX", src)
         self.assertIn("spx-vol-card", src)
         self.assertNotIn("previous_vix_curve", src)
@@ -101,7 +103,8 @@ class SPXContextV2Tests(unittest.TestCase):
         self.assertIn('color:#ff676d', signed_daily_heading(-0.76))
         self.assertIn('−0,76%'.replace('−', '-').replace('.', ','), signed_daily_heading(-0.76))
         self.assertIn('N/D', signed_daily_heading(None))
-        self.assertIn('Variazione chiusura della seduta (Close/Close)', signed_daily_heading(.9))
+        self.assertIn('Variazione chiusura della seduta:', signed_daily_heading(.9))
+        self.assertNotIn('Variazione chiusura della seduta (Close/Close)', signed_daily_heading(.9))
         self.assertIn('Andamento e volatilità — seduta precedente', signed_daily_heading(.9))
         self.assertIn("Massive Futures", src)
         self.assertIn('escape(result[\'range_text\'])', src)
@@ -109,6 +112,21 @@ class SPXContextV2Tests(unittest.TestCase):
         self.assertNotIn("Variazione ieri (Close/Close):", src)
         context = (ROOT / "v2_context.py").read_text(encoding="utf-8")
         self.assertNotIn('st.markdown("#### Volatilità — seduta precedente")', context)
+
+    def test_same_spx_card_and_unmodified_market_specific_data(self):
+        code = (ROOT / "v2_volatility.py").read_text(encoding="utf-8")
+        for name in ("spx-vol-grid", "spx-vol-card", "spx-vol-kpi",
+                     "spx-vol-foot", "Range Daily precedente",
+                     "Buffer standard", "Dettaglio fonti e formule"):
+            self.assertIn(name, code)
+        self.assertIn("Regola 10/15 punti specifica SPX/ES", code)
+        self.assertNotIn("previous_vix_curve(", code)
+        self.assertNotIn("buffer_es_points", code)
+        self.assertEqual(daily_candle_state({"open": 102, "close": 100}), "ROSSA")
+        self.assertEqual(daily_candle_state({"open": 98, "close": 100}), "VERDE")
+        self.assertEqual(daily_candle_state({"open": 100, "close": 100}), "DOJI")
+        self.assertEqual(daily_candle_state({"open": None, "close": 100}), "N/D")
+        self.assertEqual(daily_candle_state({"open": 98, "close": 100}), "VERDE")
 
     def test_daily_trend_rule_unchanged_but_ticker_dynamic(self):
         dates = pd.date_range("2026-10-20", periods=5, freq="B")
