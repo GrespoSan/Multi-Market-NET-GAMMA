@@ -53,7 +53,7 @@ class SPXContextV2Tests(unittest.TestCase):
         self.assertIn("36.00", x["vol_text"])
         self.assertIn("+2.86%", x["vol_text"])
         src = (ROOT / "v2_volatility.py").read_text(encoding="utf-8")
-        self.assertIn("Volatilità implicita", src)
+        self.assertIn("Regime futures", src)
         self.assertIn("N/D (volatilità alta)", src)
         self.assertIn("N/D (volatilità bassa)", src)
         self.assertIn("Buffer standard", src)
