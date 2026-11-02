@@ -57,6 +57,7 @@ def render_selected_market(market_key):
                 prefer_manual_source('NDX')
                 st.session_state['ndx_blob']=raw
                 st.session_state['ndx_name']='NDX_CBOE_online.json'
+                st.session_state['ndx_source']='Acquisizione diretta su richiesta'
                 st.session_state['ndx_download_rome']=datetime.now(ROME).strftime('%d/%m/%Y %H:%M:%S Roma')
                 st.success('Fotografia NDX ricevuta e verificata nella struttura.')
             except Exception as exc:
@@ -69,6 +70,7 @@ def render_selected_market(market_key):
                     prefer_manual_source('NDX')
                     st.session_state['ndx_blob']=content
                     st.session_state['ndx_name']=uploaded.name
+                    st.session_state['ndx_source']='Importazione manuale'
                     st.session_state['ndx_download_rome']=None
                     st.session_state['ndx_upload_tag']=(uploaded.name,len(content),hash(content))
                     st.success('JSON originale NDX importato e validato.')
@@ -82,6 +84,7 @@ def render_selected_market(market_key):
                 unpack_snapshot(scheduled_raw)
                 st.session_state['ndx_blob']=scheduled_raw
                 st.session_state['ndx_name']=scheduled_name
+                st.session_state['ndx_source']='Archivio privato · rilevamento programmato'
                 st.session_state['ndx_download_rome']=(
                     st.session_state.get('v2_archive_capture_rome_NDX')
                     or 'Archivio privato · ora acquisizione non verificabile')
@@ -273,7 +276,7 @@ def render_selected_market(market_key):
             title, source_details = panel_heading(
                 kind, group['expiry'], source_timestamp=doc.get('timestamp'),
                 downloaded_rome=st.session_state.get('ndx_download_rome'),
-                source=st.session_state.get('ndx_name', ''))
+                source=st.session_state.get('ndx_source', st.session_state.get('ndx_name', '')))
             st.subheader(title)
             st.caption(source_details)
             st.caption(f'{group["contract_count"]} contratti · '
@@ -282,7 +285,7 @@ def render_selected_market(market_key):
                        f'{visual_notes[kind].get("extra", 0)} aggiuntivi solo grafica/Pine')
             _, capture_label = capture_display(
                 doc.get('timestamp'), st.session_state.get('ndx_download_rome'),
-                st.session_state.get('ndx_name', ''))
+                st.session_state.get('ndx_source', st.session_state.get('ndx_name', '')))
             fg = profile_chart(
                 visual_profiles[kind]['rows'], 'NDX', reference,
                 (spx_shared_gamma_bounds([visual_profiles[kind]], field='net_gamma')

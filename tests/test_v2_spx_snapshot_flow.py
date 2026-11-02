@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from v2_storage_off import _archive_label, SLOTS, AVAILABLE_MARKETS
+from gamma_chart_style import capture_display
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -64,6 +65,19 @@ class SPXSnapshotParityTests(unittest.TestCase):
         self.assertIn('st.header("NET GAMMA · formula Serafini")',header)
         self.assertIn("60%/23%",header)
         self.assertNotIn("from storage import",header)
+
+    def test_ndx_archive_provenance_preserved_in_both_plot_titles(self):
+        source=(ROOT/"v2_market_engine.py").read_text(encoding="utf-8")
+        self.assertIn("st.session_state['ndx_source']='Archivio privato · rilevamento programmato'", source)
+        self.assertIn("st.session_state['ndx_source']='Acquisizione diretta su richiesta'", source)
+        self.assertIn("st.session_state['ndx_source']='Importazione manuale'", source)
+        self.assertEqual(source.count("st.session_state.get('ndx_source', st.session_state.get('ndx_name', ''))"), 2)
+        date_text, descriptor = capture_display(
+            "2026-11-02 06:27:15", "2026-11-02T07:31:08+01:00",
+            "Archivio privato · rilevamento programmato")
+        self.assertEqual(date_text, "02/11/2026")
+        self.assertIn("Archivio · download ore 07:31 Roma", descriptor)
+        self.assertNotIn("manuale", descriptor.lower())
 
     def test_scheduler_retains_chicago_dst_and_authorized_source_gate(self):
         from v2_schedule import SLOTS as clock
