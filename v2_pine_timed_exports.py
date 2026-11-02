@@ -8,6 +8,7 @@ No missing 13:30 slot is forged: unlike SPX, V2 only schedules 3 slots.
 No external futures/ETF quote downloads here: mapping is supplied and frozen.
 """
 from datetime import date
+from time import monotonic
 
 import streamlit as st
 
@@ -150,12 +151,18 @@ def render_timed_pine_exports(symbol, day, reference, band, basis_or_mapping,
     key = f"v2_pine_times_{symbol}_{day.isoformat()}"
     state = st.session_state.get(key)
     refresh = st.button("Aggiorna Pine per orari", key=f"refresh_{key}")
-    if state is None or refresh:
+    # When later scheduled captures arrive, a normal rerun can discover
+    # them without a manual refresh. Only archive APIs, never Massive.
+    loaded_at = st.session_state.get(key + "_loaded_at", 0.0)
+    incomplete = state is None or len(state) < len(SLOTS)
+    stale = incomplete and monotonic() - loaded_at >= 180
+    if state is None or refresh or stale:
         try:
             with st.spinner("Lettura rilevamenti cifrati 07:30 / 15:50 / 20:30..."):
                 captures = load_pine_slot_captures(symbol, day)
             state = {slot: {**capture} for slot, capture in captures.items()}
             st.session_state[key] = state
+            st.session_state[key + "_loaded_at"] = monotonic()
         except Exception as exc:
             st.warning("Archivio temporaneamente non disponibile: "
                        + str(exc)[:180])
