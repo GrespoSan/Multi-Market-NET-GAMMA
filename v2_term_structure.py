@@ -11,6 +11,7 @@ import re
 from datetime import date, timedelta
 
 import requests
+from v2_massive_day_cache import fetch_json as fetch_massive_json
 
 API = "https://api.massive.com/futures/v1"
 PRODUCTS = frozenset(("NQ", "GC", "CL"))
@@ -105,13 +106,9 @@ def compare_settlements(front, second, front_price, second_price, session_day):
 
 def _json_get(url, params, api_key, requester):
     try:
-        response = requester.get(
-            url, params=params, timeout=(6, 18),
-            headers={"Authorization": "Bearer " + api_key,
-                     "Accept": "application/json"}
-        )
-        response.raise_for_status()
-        payload = response.json()
+        payload = fetch_massive_json(
+            url, params, api_key,
+            get=None if requester is requests else requester.get)
     except requests.HTTPError as exc:
         status = getattr(getattr(exc, "response", None), "status_code", None)
         if status == 429:
