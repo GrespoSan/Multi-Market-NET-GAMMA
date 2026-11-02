@@ -16,6 +16,7 @@ from threading import Lock
 from time import monotonic, time as epoch_time
 
 import pandas as pd
+from v2_massive_day_cache import fetch_json as fetch_massive_json
 
 NY = ZoneInfo("America/New_York")
 INTRADAY_MINUTES = 5
@@ -138,18 +139,14 @@ def _gold_massive_bars(ticker: str, target: date, api_key: str, get=None):
         raise ValueError("MASSIVE_API_KEY mancante in Streamlit: GC non verificabile.")
     if not re.fullmatch(r"GC[FGHJKMNQUVXZ][0-9]", ticker):
         raise ValueError("Simbolo Massive GC non valido.")
-    getter = get or requests.get
     try:
-        response = getter(
+        payload = fetch_massive_json(
             "https://api.massive.com/futures/v1/aggs/" + ticker,
-            params={"resolution": "5min",
-                    "window_start.gte": target.isoformat(),
-                    "window_start.lt": (target + timedelta(days=1)).isoformat(),
-                    "sort": "window_start.asc", "limit": 1000},
-            headers={"Authorization": "Bearer " + api_key,
-                     "Accept": "application/json"}, timeout=(6, 20))
-        response.raise_for_status()
-        payload = response.json()
+            {"resolution": "5min",
+             "window_start.gte": target.isoformat(),
+             "window_start.lt": (target + timedelta(days=1)).isoformat(),
+             "sort": "window_start.asc", "limit": 1000},
+            api_key, get=get)
     except requests.HTTPError as exc:
         status = getattr(getattr(exc, "response", None), "status_code", None)
         raise ValueError(f"Massive GC: errore HTTP {status or 'non identificato'}") from exc
@@ -269,9 +266,13 @@ def _cl_cache_window(params):
         session_day = date.fromisoformat(stamp) if stamp else None
     except (ValueError, TypeError):
         session_day = None
-    # Never freeze potentially unfinished same-session bars for a full day.
-    seconds = 86400 if session_day and session_day < datetime.now(NY).date() else 60
-    return int(epoch_time() // seconds)
+    # Invalidate the in-memory lru at ROME midnight, not UTC midnight.
+    # Current-session observations refresh at a bounded 60-second cadence.
+    from zoneinfo import ZoneInfo
+    rome_day = int(datetime.now(ZoneInfo("Europe/Rome")).strftime("%Y%m%d"))
+    if session_day and session_day < datetime.now(NY).date():
+        return rome_day
+    return rome_day * 100000 + int(epoch_time() // 60) % 100000
 
 
 def _cl_get_json_uncached(url, params, api_key, getter, *, enforce_cooldown=False):
@@ -284,13 +285,16 @@ def _cl_get_json_uncached(url, params, api_key, getter, *, enforce_cooldown=Fals
                 f"Massive CL: limite API HTTP 429; attendi almeno "
                 f"{int(remaining) + 1} secondi prima di riprovare.")
     try:
-        response = getter(
-            url, params=params,
-            headers={"Authorization": "Bearer " + api_key,
-                     "Accept": "application/json"},
-            timeout=(6, 20))
-        response.raise_for_status()
-        payload = response.json()
+        if enforce_cooldown:
+            payload = fetch_massive_json(url, params, api_key)
+        else:
+            response = getter(
+                url, params=params,
+                headers={"Authorization": "Bearer " + api_key,
+                         "Accept": "application/json"},
+                timeout=(6, 20))
+            response.raise_for_status()
+            payload = response.json()
     except requests.HTTPError as exc:
         status = getattr(getattr(exc, "response", None), "status_code", None)
         if status == 429:
