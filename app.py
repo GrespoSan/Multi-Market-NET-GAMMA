@@ -15,7 +15,7 @@ import streamlit as st
 
 from markets import MARKETS
 from market_ui import PAGE_STYLE
-from v2_market_engine import render_selected_market
+from v2_market_engine import render_selected_market, render_manual_acquisition
 
 st.set_page_config(page_title="Serafini · Multi-Market NET GAMMA V2",
                    page_icon="📊", layout="wide")
@@ -104,6 +104,14 @@ with col_info:
                f"Metodo: {market.basis}")
 st.divider()
 
+# Identico posizionamento SPX: acquisizione opzionale sopra il contesto,
+# eseguita unicamente su click/upload, senza toccare gli snapshot automatici.
+with st.expander("ACQUISIZIONE MANUALE / IMPORTA JSON CBOE", expanded=False):
+    st.caption("Mercato selezionato: " + ("NDX" if market_key == "NASDAQ"
+                                           else "GLD" if market_key == "GOLD" else "USO")
+               + ". I rilevamenti GitHub rimangono la fonte automatica predefinita.")
+    render_manual_acquisition(market_key)
+
 context_initial = datetime.now(ZoneInfo("Europe/Rome")).hour < 13
 with st.expander("ANALISI DEL CONTESTO — News · Volatilità · Trend Daily",
                  expanded=context_initial):
@@ -128,6 +136,6 @@ with st.expander("ANALISI NET GAMMA", expanded=False):
                    "automaticamente valide per NDX, GLD e USO.")
     render_selected_market(market_key)
 
-# No GEX EDGE, REPLAY E CONFRONTO, or REPORT GIORNALIERO AI.
-# Cboe snapshot management stays inside the market-specific gamma analysis
-# via v2_storage_off.archive_panel, not via Supabase.
+# Non viene creato un secondo comando manuale dentro NET GAMMA:
+# qui resta solo il selettore delle fotografie archiviate su GitHub.
+# Nessun GEX EDGE, REPLAY E CONFRONTO o REPORT GIORNALIERO AI.
