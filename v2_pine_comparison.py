@@ -12,6 +12,7 @@ from etf_future_pine import make_etf_future_pine
 from pine_export import make_pine, _pine_array, _initial_manual_scale
 from v2_pine_capture import pine_capture_clock
 from v2_pine_session import compare_capture_pair, LABELS
+from v2_pine_strike_budget import prepare_comparison_profiles
 
 
 def _safe_label(info):
@@ -29,7 +30,8 @@ def _same_expiry(previous, current):
 def make_pine_comparison_v2(symbol, previous, current, weekly,
                             reference_or_mapping, target, previous_info,
                             current_info, previous_slot, current_slot,
-                            *, etf_previous_close=None):
+                            *, etf_previous_close=None,
+                            export_details=None):
     """Make one 3-column comparison for a real earlier/later Cboe capture."""
     if symbol not in ("NDX", "GLD", "USO"):
         raise ValueError("Mercato non valido.")
@@ -44,9 +46,6 @@ def make_pine_comparison_v2(symbol, previous, current, weekly,
     if (symbol != "NDX" and
             not all(p.get("usable") for p in (previous, current, weekly))):
         raise ValueError("Gamma opzioni ETF non completo.")
-    if len(previous["rows"]) + len(current["rows"]) + len(weekly["rows"]) > 480:
-        raise ValueError("Tre profili oltre limite di 480 strike Pine.")
-
     strike_key, gamma_key = (
         ("strike_index", "net_gamma") if symbol == "NDX" else ("strike", "net"))
     for p in (previous, current, weekly):
@@ -57,6 +56,37 @@ def make_pine_comparison_v2(symbol, previous, current, weekly,
                 any(not isfinite(x) or x <= 0 for x in levels) or
                 any(not isfinite(x) for x in gamma)):
             raise ValueError("Profilo Cboe: strike duplicati o dati non finiti.")
+
+    # TradingView max_lines_count=500: three complete NDX profiles may
+    # exceed it. Keep every Cboe value intact; select only authentic rows
+    # for the Pine drawing and report exactly what was omitted.
+    original_profiles = (previous, current, weekly)
+    previous, current, weekly = original_profiles
+    (previous, current, weekly), display_info = prepare_comparison_profiles(
+        symbol, previous, current, weekly)
+    if export_details is not None:
+        export_details.clear()
+        if display_info is not None:
+            old, shown = display_info["original"], display_info["rendered"]
+            export_details["note"] = (
+                "Limite TradingView: 0DTE " + LABELS[previous_slot] +
+                f" {shown[0]}/{old[0]} strike; 0DTE " +
+                LABELS[current_slot] + f" {shown[1]}/{old[1]} strike; " +
+                "Weekly " + LABELS[current_slot] +
+                f" {shown[2]}/{old[2]} strike. " +
+                "Selezione per sola grafica fra strike Cboe reali, "
+                "con priorità a Gamma estremi e livelli vicini al prezzo; "
+                "nessun NET GAMMA ricalcolato.")
+    display_comment = ""
+    if display_info is not None:
+        old, shown = display_info["original"], display_info["rendered"]
+        display_comment = (
+            "// ATTENZIONE - selezione grafica per limite 500 linee TradingView: "
+            f"precedente {shown[0]}/{old[0]} strike reali; "
+            f"corrente {shown[1]}/{old[1]}; Weekly {shown[2]}/{old[2]}. "
+            "I restanti strike sono esclusi SOLO dal disegno Pine, "
+            "non dai dati Gamma originali.\\n"
+        )
 
     main_title = f"0DTE {LABELS[previous_slot]} · Acq {_safe_label(previous_info)}"
     cur_title = f"0DTE {LABELS[current_slot]} · Acq {_safe_label(current_info)}"
@@ -86,7 +116,7 @@ def make_pine_comparison_v2(symbol, previous, current, weekly,
         f"// Prezzi allineati su UNICO riferimento del Pine corrente; "
         f"Gamma originale di ogni fotografia invariato.\n"
     )
-    code = code.replace("//@version=6\n", "//@version=6\n" + insertion, 1)
+    code = code.replace("//@version=6\n", "//@version=6\n" + insertion + display_comment, 1)
     setting = 'showTitles = input.bool(true, "Mostra intestazioni")'
     if code.count(setting) != 1:
         raise ValueError("Template Pine SPX non compatibile con confronto.")
