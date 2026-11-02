@@ -157,6 +157,7 @@ class TimePineTests(unittest.TestCase):
         self.assertIn("Selezione per sola grafica",exported["note"])
         self.assertIn("140/200",exported["note"])
         self.assertIn("precedente 140/200",code)
+        self.assertTrue(code.splitlines()[1].startswith("indicator("))
         self.assertIn("0DTE 07:30",code)
         self.assertIn("0DTE 15:50",code)
         self.assertIn("Weekly 15:50",code)
@@ -180,6 +181,7 @@ class TimePineTests(unittest.TestCase):
                 "0730","1550",etf_previous_close=base,
                 export_details=details)
             self.assertIn("140/180",details["note"])
+            self.assertTrue(code.splitlines()[1].startswith("indicator("))
             self.assertIn("mapETF(prevStrikesETF, ratioToDraw)",code)
             self.assertIn("Weekly 15:50",code)
 
