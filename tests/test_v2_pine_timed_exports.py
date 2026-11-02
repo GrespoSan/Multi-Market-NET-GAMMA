@@ -85,8 +85,8 @@ class TimePineTests(unittest.TestCase):
                 self.assertIn("0DTE 02/11 · Acq 07:31 CET",code["0730"])
                 self.assertNotIn("showPrevious = input.bool",code["0730"])
                 if symbol=="NDX":
-                    self.assertIn("25500",code["1550"])
-                    self.assertIn("25640",code["2030"])  # previous close-basis pricing
+                    self.assertIn("25640",code["1550"])  # 25500 NDX + 140 basis
+                    self.assertIn("25640",code["2030"])
                 else:
                     self.assertIn("mapETF(prevStrikesETF, ratioToDraw)",code["1550"])
                     self.assertIn("prevGamma",code["1550"])
