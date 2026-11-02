@@ -84,13 +84,14 @@ class SPXSnapshotParityTests(unittest.TestCase):
         self.assertIn("with st.expander('Dettaglio news macro opzionali nei Pine', expanded=False):", source)
         self.assertNotIn("st.warning('Calendario macro USA temporaneamente non disponibile:", source)
         self.assertIn("macro_news=events_for_pine(day)", source)
-        self.assertIn("if macro_news:", source)
-        self.assertIn("code=append_news(code,macro_news)", source)
-        # Pine now also carries the verified acquisition time in its title
-        # and in both Gamma headings; optional news cannot block export.
-        self.assertIn("code=make_pine(data,basis,day,day.strftime('%d/%m'),", source)
-        self.assertIn("acquisition_time=acquisition", source)
-        self.assertIn("st.download_button(f'Scarica Pine", source)
+        self.assertIn("macro_news=events_for_pine(day)", source)
+        self.assertIn("render_timed_pine_exports(", source)
+        self.assertIn("extension=show_extension, macro_news=macro_news", source)
+        timed = (ROOT/"v2_pine_timed_exports.py").read_text(encoding="utf-8")
+        self.assertIn("if macro_news and symbol == \"NDX\":", timed)
+        self.assertIn("script = append_news(script, macro_news)", timed)
+        self.assertIn("st.download_button(", timed)
+        self.assertIn("07:30 0DTE → 15:50 0DTE + Weekly", timed)
 
     def test_scheduler_retains_chicago_dst_and_authorized_source_gate(self):
         from v2_schedule import SLOTS as clock
