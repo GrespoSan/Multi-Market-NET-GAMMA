@@ -86,7 +86,10 @@ class SPXSnapshotParityTests(unittest.TestCase):
         self.assertIn("macro_news=events_for_pine(day)", source)
         self.assertIn("if macro_news:", source)
         self.assertIn("code=append_news(code,macro_news)", source)
-        self.assertIn("code=make_pine(data,basis,day,day.strftime('%d/%m'))", source)
+        # Pine now also carries the verified acquisition time in its title
+        # and in both Gamma headings; optional news cannot block export.
+        self.assertIn("code=make_pine(data,basis,day,day.strftime('%d/%m'),", source)
+        self.assertIn("acquisition_time=acquisition", source)
         self.assertIn("st.download_button(f'Scarica Pine", source)
 
     def test_scheduler_retains_chicago_dst_and_authorized_source_gate(self):
