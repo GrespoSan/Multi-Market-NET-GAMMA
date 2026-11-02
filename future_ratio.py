@@ -10,6 +10,10 @@ from zoneinfo import ZoneInfo
 from v2_term_structure import select_first_two, CurveUnavailable
 import re
 import requests
+from copy import deepcopy
+from functools import lru_cache
+from threading import Lock
+from time import monotonic, time as epoch_time
 
 import pandas as pd
 
@@ -243,36 +247,115 @@ def _dated_massive_cl_contract(yahoo_ticker: str) -> str:
     return f"CL{match.group(1)}{int(match.group(2)) % 10}"
 
 
+# Shared, in-process cache: saves completed Massive CL requests across Streamlit
+# reruns, different Cboe photographs and the rollover + chart/Pine paths.
+# A 429 at the final 5m step must NOT discard the three successful earlier calls.
+# Never cache failures, incomplete pages, or results from a test-injected getter.
+_CL_CACHE_LOCK = Lock()
+_CL_COOLDOWN_UNTIL = 0.0
+_CL_429_FALLBACK_SECONDS = 65
+
+
+def _cl_cache_window(params):
+    """Historical sessions: day cache. Current session: short-lived cache."""
+    stamp = params.get("date") or params.get("window_start.lte")
+    if not stamp and params.get("window_start.lt"):
+        try:
+            stamp = (date.fromisoformat(params["window_start.lt"]) -
+                     timedelta(days=1)).isoformat()
+        except (ValueError, TypeError):
+            stamp = None
+    try:
+        session_day = date.fromisoformat(stamp) if stamp else None
+    except (ValueError, TypeError):
+        session_day = None
+    # Never freeze potentially unfinished same-session bars for a full day.
+    seconds = 86400 if session_day and session_day < datetime.now(NY).date() else 60
+    return int(epoch_time() // seconds)
+
+
+def _cl_get_json_uncached(url, params, api_key, getter, *, enforce_cooldown=False):
+    global _CL_COOLDOWN_UNTIL
+    if enforce_cooldown:
+        with _CL_CACHE_LOCK:
+            remaining = _CL_COOLDOWN_UNTIL - monotonic()
+        if remaining > 0:
+            raise ValueError(
+                f"Massive CL: limite API HTTP 429; attendi almeno "
+                f"{int(remaining) + 1} secondi prima di riprovare.")
+    try:
+        response = getter(
+            url, params=params,
+            headers={"Authorization": "Bearer " + api_key,
+                     "Accept": "application/json"},
+            timeout=(6, 20))
+        response.raise_for_status()
+        payload = response.json()
+    except requests.HTTPError as exc:
+        status = getattr(getattr(exc, "response", None), "status_code", None)
+        if status == 429:
+            if enforce_cooldown:
+                # This prevents repeated retries from worsening the rate limit.
+                # A valid bounded Retry-After header takes precedence.
+                delay = _CL_429_FALLBACK_SECONDS
+                try:
+                    value = int(exc.response.headers.get("Retry-After", ""))
+                    if 1 <= value <= 300:
+                        delay = value
+                except (AttributeError, TypeError, ValueError):
+                    pass
+                with _CL_CACHE_LOCK:
+                    _CL_COOLDOWN_UNTIL = max(
+                        _CL_COOLDOWN_UNTIL, monotonic() + delay)
+            raise ValueError(
+                "Massive CL: limite API HTTP 429. "
+                "Le chiamate già riuscite sono conservate; "
+                "riprovare dopo il periodo di attesa.") from exc
+        raise ValueError(
+            f"Massive CL: errore HTTP {status or 'non identificato'}") from exc
+    except (requests.RequestException, ValueError, TypeError) as exc:
+        raise ValueError("Massive CL: dati non accessibili.") from exc
+    if (not isinstance(payload, dict)
+            or payload.get("status") not in ("OK", "DELAYED")
+            or not isinstance(payload.get("results"), list)
+            or payload.get("next_url")):
+        raise ValueError("Massive CL: risposta JSON o paginazione incompleta.")
+    return payload["results"]
+
+
+@lru_cache(maxsize=384)
+def _cl_cached_json(url, params_tuple, api_key, bucket):
+    # Store only successfully validated results; failures do not enter cache.
+    return _cl_get_json_uncached(
+        url, dict(params_tuple), api_key, requests.get,
+        enforce_cooldown=True)
+
+
+def _cl_api_rows(url, params, api_key, get=None):
+    """Reuse a successful CL response without rereading the Massive endpoint."""
+    if get is not None:
+        # Deterministic fake API reads in unit tests, without cache pollution.
+        return _cl_get_json_uncached(url, params, api_key, get)
+    key = tuple(sorted(params.items()))
+    data = _cl_cached_json(url, key, api_key, _cl_cache_window(params))
+    return deepcopy(data)
+
+
 def _oil_massive_bars(ticker: str, target: date, api_key: str, get=None):
     """Closed CL 5m bars from a named Massive contract on the ETF session day."""
     if not str(api_key or "").strip():
         raise ValueError("MASSIVE_API_KEY mancante in Streamlit: CL non verificabile.")
     if not re.fullmatch(r"CL[FGHJKMNQUVXZ][0-9]", ticker):
         raise ValueError("Simbolo Massive CL non valido.")
-    getter = get or requests.get
-    try:
-        response = getter(
-            "https://api.massive.com/futures/v1/aggs/" + ticker,
-            params={"resolution": "5min",
-                    "window_start.gte": target.isoformat(),
-                    "window_start.lt": (target + timedelta(days=1)).isoformat(),
-                    "sort": "window_start.asc", "limit": 1000},
-            headers={"Authorization": "Bearer " + api_key,
-                     "Accept": "application/json"}, timeout=(6, 20))
-        response.raise_for_status()
-        payload = response.json()
-    except requests.HTTPError as exc:
-        status = getattr(getattr(exc, "response", None), "status_code", None)
-        raise ValueError(f"Massive CL: errore HTTP {status or 'non identificato'}") from exc
-    except (requests.RequestException, ValueError, TypeError) as exc:
-        raise ValueError("Massive CL: dati intraday non accessibili.") from exc
-    if (not isinstance(payload, dict)
-            or payload.get("status") not in ("OK", "DELAYED")
-            or not isinstance(payload.get("results"), list)
-            or payload.get("next_url")):
-        raise ValueError("Massive CL: barre 5 minuti assenti o incomplete.")
+    rows = _cl_api_rows(
+        "https://api.massive.com/futures/v1/aggs/" + ticker,
+        {"resolution": "5min",
+         "window_start.gte": target.isoformat(),
+         "window_start.lt": (target + timedelta(days=1)).isoformat(),
+         "sort": "window_start.asc", "limit": 1000},
+        api_key, get=get)
     records = []
-    for r in payload["results"]:
+    for r in rows:
         if (not isinstance(r, dict) or r.get("ticker") != ticker
                 or r.get("session_end_date") != target.isoformat()):
             continue
@@ -299,25 +382,8 @@ def _auto_oil_contract(reference_day: date, api_key: str, get=None):
     """
     if not str(api_key or "").strip():
         raise ValueError("MASSIVE_API_KEY mancante per il rollover automatico CL.")
-    getter = get or requests.get
-    headers = {"Authorization": "Bearer " + api_key,
-               "Accept": "application/json"}
     def read_json(url, params):
-        try:
-            resp = getter(url, params=params, headers=headers, timeout=(6, 20))
-            resp.raise_for_status()
-            data = resp.json()
-        except requests.HTTPError as exc:
-            status = getattr(getattr(exc, "response", None), "status_code", None)
-            raise ValueError(f"Massive CL: rollover non verificabile (HTTP {status or 'errore'}).") from exc
-        except (requests.RequestException, ValueError, TypeError) as exc:
-            raise ValueError("Massive CL: dati per il rollover non accessibili.") from exc
-        if (not isinstance(data, dict)
-                or data.get("status") not in ("OK", "DELAYED")
-                or not isinstance(data.get("results"), list)
-                or data.get("next_url")):
-            raise ValueError("Massive CL: dati di rollover incompleti.")
-        return data["results"]
+        return _cl_api_rows(url, params, api_key, get=get)
     contracts = read_json(
         "https://api.massive.com/futures/v1/contracts",
         {"product_code": "CL", "date": reference_day.isoformat(),
