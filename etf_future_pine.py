@@ -7,6 +7,7 @@ from datetime import date
 from math import isfinite
 from pine_export import _pine_array, _initial_manual_scale
 from pine_spx_visual import spx_inputs, SPX_RENDER_FUNCTIONS, spx_last_bar
+from v2_pine_capture import pine_capture_clock
 
 ASSETS = {
     "GLD": {"roots": ("GC", "MGC"), "label": "Gold GC/MGC"},
@@ -15,7 +16,8 @@ ASSETS = {
 
 
 def make_etf_future_pine(symbol: str, profiles: dict, etf_previous_close: float,
-                         target: date, label: str, mapping: dict) -> str:
+                         target: date, label: str, mapping: dict,
+                         acquisition_time=None) -> str:
     if symbol not in ASSETS:
         raise ValueError("Sottostante Pine ETF non riconosciuto.")
     if not isinstance(target, date):
@@ -77,11 +79,14 @@ def make_etf_future_pine(symbol: str, profiles: dict, etf_previous_close: float,
 
     roots = ASSETS[symbol]["roots"]
     market = ASSETS[symbol]["label"]
+    capture = pine_capture_clock(acquisition_time)
+    capture_suffix = ("Acq " + capture["clock"] if capture["verified"]
+                      else capture["clock"])
     valid = " or ".join(f'syminfo.root == "{root}"' for root in roots)
-    main_label = (f'{main_name} {date.fromisoformat(main["expiry"]):%d/%m}'
-                  if main_rows else "")
-    weekly_label = (f'Weekly {date.fromisoformat(weekly["expiry"]):%d/%m}'
-                    if weekly_rows else "")
+    main_label = (f'{main_name} {date.fromisoformat(main["expiry"]):%d/%m} · '
+                  f'{capture_suffix}' if main_rows else "")
+    weekly_label = (f'Weekly {date.fromisoformat(weekly["expiry"]):%d/%m} · '
+                    f'{capture_suffix}' if weekly_rows else "")
     # All three Multi-Market exports use the same Serafini SPX graphical code.
     # Ratio calculations are isolated here, before the SPX-style renderer.
     visual_inputs = spx_inputs(
@@ -98,7 +103,8 @@ def make_etf_future_pine(symbol: str, profiles: dict, etf_previous_close: float,
     visual_draw = spx_last_bar(main_call, weekly_call,
                                "mainGammaETF", "weeklyGammaETF", prepare)
     template = """//@version=6
-indicator("Multi-Market NET GAMMA · @SYMBOL@ → @MARKET@ · @DATE@ · @LABEL@", overlay=true, max_lines_count=500, max_labels_count=50)
+indicator("Multi-Market NET GAMMA · @SYMBOL@ → @MARKET@ · @DATE@ · @CLOCK@ · @LABEL@", overlay=true, max_lines_count=500, max_labels_count=50)
+// Ora acquisizione fotografia Cboe (Europe/Rome; CET/CEST): @ACQUISITION@. Non e' il timestamp Cboe originale.
 // Fonte: opzioni ETF @SYMBOL@ Cboe, Gamma originale. NON opzioni native del future @MARKET@.
 // ATTENZIONE: la mappatura percentuale ETF → future e' una STIMA grafica, NON un livello opzioni @MARKET@.
 // Formula ETF invariata: Call [(OI+Volume)*Gamma] - Put [(OI+Volume)*Gamma].
@@ -151,6 +157,8 @@ mapETF(array<float> etfLevels, float ratio) =>
         "@SYMBOL@": symbol,
         "@MARKET@": market,
         "@DATE@": target.isoformat(),
+        "@CLOCK@": capture_suffix,
+        "@ACQUISITION@": capture["stamp"],
         "@LABEL@": label.replace('"', "").replace("\n", " ")[:60],
         "@VALID_ROOTS@": valid,
         "@ETF_REFERENCE@": n(etf_reference),
