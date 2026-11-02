@@ -7,6 +7,7 @@ native options-on-futures strikes or CME Greeks.
 from datetime import date, datetime, timedelta, timezone, time
 from math import isfinite
 from zoneinfo import ZoneInfo
+from v2_term_structure import select_first_two, CurveUnavailable
 import re
 import requests
 
@@ -15,6 +16,7 @@ import pandas as pd
 NY = ZoneInfo("America/New_York")
 INTRADAY_MINUTES = 5
 MAX_QUOTE_AGE_MINUTES = 60
+AUTO_OIL_CONTRACT = "Automatico · contratto CL più scambiato"
 CONTRACTS = {
     "GLD": {
         "etf_yahoo": "GLD",
@@ -289,6 +291,83 @@ def _oil_massive_bars(ticker: str, target: date, api_key: str, get=None):
     )
 
 
+def _auto_oil_contract(reference_day: date, api_key: str, get=None):
+    """Pick chart contract from the first two CL maturities by verified volume.
+
+    PIT contracts + same-session 1session volumes strictly before capture.
+    Not a reconstruction of USO's multi-day holdings rollover.
+    """
+    if not str(api_key or "").strip():
+        raise ValueError("MASSIVE_API_KEY mancante per il rollover automatico CL.")
+    getter = get or requests.get
+    headers = {"Authorization": "Bearer " + api_key,
+               "Accept": "application/json"}
+    def read_json(url, params):
+        try:
+            resp = getter(url, params=params, headers=headers, timeout=(6, 20))
+            resp.raise_for_status()
+            data = resp.json()
+        except requests.HTTPError as exc:
+            status = getattr(getattr(exc, "response", None), "status_code", None)
+            raise ValueError(f"Massive CL: rollover non verificabile (HTTP {status or 'errore'}).") from exc
+        except (requests.RequestException, ValueError, TypeError) as exc:
+            raise ValueError("Massive CL: dati per il rollover non accessibili.") from exc
+        if (not isinstance(data, dict)
+                or data.get("status") not in ("OK", "DELAYED")
+                or not isinstance(data.get("results"), list)
+                or data.get("next_url")):
+            raise ValueError("Massive CL: dati di rollover incompleti.")
+        return data["results"]
+    contracts = read_json(
+        "https://api.massive.com/futures/v1/contracts",
+        {"product_code": "CL", "date": reference_day.isoformat(),
+         "active": "true", "type": "single", "sort": "ticker.asc", "limit": 1000}
+    )
+    try:
+        front, second = select_first_two(contracts, "CL", reference_day)
+    except CurveUnavailable as exc:
+        raise ValueError("Rollover CL: due scadenze attive non verificabili.") from exc
+    volumes = []
+    for future in (front, second):
+        rows = read_json(
+            "https://api.massive.com/futures/v1/aggs/" + future["ticker"],
+            {"resolution": "1session",
+             "window_start.gte": (reference_day-timedelta(days=5)).isoformat(),
+             "window_start.lte": reference_day.isoformat(),
+             "sort": "window_start.desc", "limit": 9}
+        )
+        today = [row for row in rows if isinstance(row, dict)
+                 and row.get("ticker") == future["ticker"]
+                 and row.get("session_end_date") == reference_day.isoformat()]
+        if len(today) != 1:
+            raise ValueError("Rollover CL: volumi della stessa seduta non disponibili.")
+        try:
+            vol = int(today[0]["volume"])
+        except (KeyError, TypeError, ValueError, OverflowError) as exc:
+            raise ValueError("Rollover CL: volume non verificabile.") from exc
+        if vol <= 0:
+            raise ValueError("Rollover CL: volume nullo/non valido.")
+        volumes.append(vol)
+    selected = second if volumes[1] > volumes[0] else front
+    match = re.fullmatch(r"CL([FGHJKMNQUVXZ])(\d)", selected["ticker"])
+    if not match:
+        raise ValueError("Rollover CL: formato contratto inatteso.")
+    month, digit = match.groups()
+    years = [y for y in range(reference_day.year, reference_day.year + 4)
+             if y % 10 == int(digit)]
+    if len(years) != 1:
+        raise ValueError("Rollover CL: anno contratto non verificabile.")
+    year = years[0]
+    return {
+        "ticker": selected["ticker"],
+        "future_yahoo_ticker": f"CL{month}{year%100:02d}.NYM",
+        "future_tv_symbol": f"NYMEX:CL{month}{year}",
+        "reference_date": reference_day.isoformat(),
+        "front_ticker": front["ticker"], "second_ticker": second["ticker"],
+        "front_volume": volumes[0], "second_volume": volumes[1],
+    }
+
+
 def fetch_oil_pair(selection, captured_at, api_key, yf_module=None, get=None):
     """Frozen Oil ETF/future mapping using last common bar BEFORE the capture.
 
@@ -297,8 +376,10 @@ def fetch_oil_pair(selection, captured_at, api_key, yf_module=None, get=None):
     last synchronized ETF cash data can legitimately be from Fri Oct 30.
     The selected 5m bar is never allowed to occur after the Cboe capture.
     """
-    future_yahoo, future_tv = choose_contract("USO", selection)
-    future_massive = _dated_massive_cl_contract(future_yahoo)
+    automatic = selection == AUTO_OIL_CONTRACT
+    if not automatic:
+        future_yahoo, future_tv = choose_contract("USO", selection)
+        future_massive = _dated_massive_cl_contract(future_yahoo)
     if isinstance(captured_at, str):
         try:
             captured_at = datetime.fromisoformat(captured_at)
@@ -336,12 +417,19 @@ def fetch_oil_pair(selection, captured_at, api_key, yf_module=None, get=None):
     reference_day = max(latest_dates)
     if (ny_day-reference_day).days > 7:
         raise ValueError("Ultima seduta USO troppo lontana dalla fotografia.")
+    auto_contract = None
+    if automatic:
+        auto_contract = _auto_oil_contract(reference_day, api_key, get=get)
+        future_yahoo = auto_contract["future_yahoo_ticker"]
+        future_tv = auto_contract["future_tv_symbol"]
+        future_massive = auto_contract["ticker"]
     future_bars = _oil_massive_bars(future_massive, reference_day, api_key, get=get)
     pair = synchronized_pair(
         etf, future_bars, "USO", future_yahoo, future_tv,
         reference_day, now=cutoff)
     pair["future_massive_ticker"] = future_massive
     pair["capture_cutoff_utc"] = cutoff.isoformat(timespec="seconds")
+    pair["auto_contract"] = auto_contract
     pair["source"] = (
         f"Yahoo USO + Massive {future_massive} · stessa barra 5m "
         f"chiusa prima dell'acquisizione Cboe")
