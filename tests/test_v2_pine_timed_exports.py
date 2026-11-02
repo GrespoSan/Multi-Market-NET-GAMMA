@@ -92,6 +92,37 @@ class TimePineTests(unittest.TestCase):
                     self.assertIn("prevGamma",code["1550"])
                     self.assertIn("float lockedRatio =",code["0730"])
 
+    def test_every_comparison_pine_has_indicator_on_line_two(self):
+        """Regression for TradingView CE10243 after pasting 15:50 Pine."""
+        from v2_pine_comparison import _normalize_pine_header
+        import re
+        for symbol in ("NDX", "GLD", "USO"):
+            with self.subTest(symbol=symbol):
+                p=profiles(symbol)
+                mapping_or_basis=(140.0 if symbol=="NDX" else mapping(symbol))
+                with patch("v2_pine_timed_exports.build_slot_profiles",
+                           return_value=(p,{})):
+                    scripts,issues,_=produce_timed_scripts(
+                        symbol,DAY,{slot:x["capture"] for slot,x in p.items()},
+                        p["0730"]["close"],3.,mapping_or_basis)
+                self.assertEqual(set(scripts),{"0730","1550","2030"},issues)
+                for slot,script in scripts.items():
+                    with self.subTest(slot=slot):
+                        lines=script.splitlines()
+                        self.assertEqual(lines[0],"//@version=6")
+                        self.assertTrue(
+                            lines[1].startswith('indicator("Multi-Market NET GAMMA'),
+                            lines[:8])
+                        self.assertEqual(
+                            len(re.findall(r"(?m)^indicator\\(",script)),1)
+                self.assertIn("07:30",scripts["1550"].splitlines()[1])
+                self.assertIn("15:50",scripts["1550"].splitlines()[1])
+                self.assertIn("15:50",scripts["2030"].splitlines()[1])
+                self.assertIn("20:30",scripts["2030"].splitlines()[1])
+        with self.assertRaisesRegex(ValueError,"indicator"):
+            _normalize_pine_header(
+                "//@version=6\\n// Gamma originali ma senza dichiarazione\\n")
+
     def test_ndx_15_50_pine_available_with_more_than_480_real_strikes(self):
         """Regression: 15:50 snapshot exists, export was blocked at >480."""
         from v2_pine_comparison import make_pine_comparison_v2
