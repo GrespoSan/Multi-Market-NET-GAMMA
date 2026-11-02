@@ -24,10 +24,10 @@ st.set_page_config(page_title="Serafini · Multi-Market NET GAMMA V2",
 # On the first UI event after Rome midnight, delete yesterday's temporary
 # disk cache and session-frozen ratios. NEVER touch Cboe GitHub artifacts.
 try:
-    purge_expired()
+    cache_day_changed = purge_expired()
 except OSError:
-    pass  # Read-through still works if the host temporary disk is unavailable.
-if invalidate_ratio_sessions(st.session_state):
+    cache_day_changed = False  # Read-through if host temp disk unavailable.
+if invalidate_ratio_sessions(st.session_state) or cache_day_changed:
     # Streamlit's separate 1h Daily/NQ caches must not outlive Rome midnight.
     st.cache_data.clear()
     from future_ratio import _cl_cached_json
