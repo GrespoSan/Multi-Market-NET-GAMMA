@@ -96,8 +96,9 @@ def render_etf_pine_exports(symbol, calculated, reference, day,
         st.session_state.pop(state_key, None)
         result = None
 
-    do_retry = st.button("Ricalcola e BLOCCA rapporto sincronizzato",
-                         key=f"{symbol.lower()}_ratio_retry")
+    retry_label = ("Riprova calcolo rapporto GLD → GC" if symbol == "GLD"
+                   else "Ricalcola e BLOCCA rapporto sincronizzato")
+    do_retry = st.button(retry_label, key=f"{symbol.lower()}_ratio_retry")
     # One automatic attempt per unique snapshot + dated futures contract,
     # never on every Streamlit rerun. A failure does not invent a ratio.
     if st.session_state.get(tried_key) != snapshot_token or do_retry:
