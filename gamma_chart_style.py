@@ -99,7 +99,8 @@ def panel_heading(kind, expiry, source_timestamp=None, downloaded_rome=None, sou
 
 def profile_chart(rows, symbol, reference, common_x, shared_y, *,
                   level_field="strike", gamma_field="net",
-                  price_shift=0.0, ndx=False, show_close=True,
+                  price_shift=0.0, price_scale=1.0, axis_symbol=None,
+                  ndx=False, show_close=True, close_label="Close prec.",
                   title="0DTE", snapshot_label="", tick_levels=None):
     """Exact SPX color/axes/title/guides, with thin bars on sparse ETF strikes.
 
@@ -109,7 +110,10 @@ def profile_chart(rows, symbol, reference, common_x, shared_y, *,
     """
     if not rows:
         raise ValueError("Profilo senza strike.")
-    levels = [float(r[level_field]) + price_shift for r in rows]
+    if not (math.isfinite(float(price_scale)) and float(price_scale) > 0
+            and math.isfinite(float(price_shift))):
+        raise ValueError("Conversione di prezzo futuro non valida.")
+    levels = [float(r[level_field]) * price_scale + price_shift for r in rows]
     values = [float(r[gamma_field]) for r in rows]
     if not all(math.isfinite(x) for x in levels + values):
         raise ValueError("Gamma/strike non finito.")
@@ -143,6 +147,10 @@ def profile_chart(rows, symbol, reference, common_x, shared_y, *,
         "<br>Volume Call: %{customdata[7]:,.0f} · Put: %{customdata[8]:,.0f}"
         "<extra></extra>"
     )
+    if axis_symbol:
+        template = (f"Livello {axis_symbol}: %{{y:,.2f}}<br>"
+                    f"Strike {symbol} originale: %{{customdata[0]:,.2f}}<br>"
+                    + template.split("<br>", 1)[1])
     fig = go.Figure()
     fig.add_bar(
         x=values, y=levels, orientation="h", name="NET GAMMA",
@@ -170,8 +178,9 @@ def profile_chart(rows, symbol, reference, common_x, shared_y, *,
             fixedrange=True,
         ),
         yaxis=dict(
-            title="Strike NQ" if ndx and price_shift else
-                  "Strike NDX" if ndx else f"Strike {symbol}",
+            title=f"Strike {axis_symbol}" if axis_symbol else (
+                  "Strike NQ" if ndx and price_shift else
+                  "Strike NDX" if ndx else f"Strike {symbol}"),
             range=shared_y, autorange=False, type="linear",
             tickmode="array",
             tickvals=(tick_levels if tick_levels else sorted(set(levels))),
@@ -187,7 +196,7 @@ def profile_chart(rows, symbol, reference, common_x, shared_y, *,
     )
     fig.add_vline(x=0, line_width=1, line_color=SPX_ZERO)
     if show_close and math.isfinite(float(reference)):
-        close = float(reference) + price_shift
+        close = float(reference) * price_scale + price_shift
         fig.add_hline(y=close, line_dash="dash", line_width=1.5,
                       line_color=SPX_CLOSE)
         for pct in (-1.5, -1.0, -0.5, 0.5, 1.0, 1.5):
@@ -211,7 +220,7 @@ def profile_chart(rows, symbol, reference, common_x, shared_y, *,
             )
         fig.add_annotation(
             x=0.995, xref="paper", y=close, yref="y",
-            text="Close prec.", showarrow=False,
+            text=close_label, showarrow=False,
             xanchor="right", yanchor="bottom",
             font=dict(color=SPX_CLOSE, size=11),
             bgcolor="rgba(13,17,23,0.85)", borderpad=2,
