@@ -40,6 +40,8 @@ class DateSpecificNasdaqBasisTests(unittest.TestCase):
             self.assertTrue(url.endswith("/NQZ6"))
             self.assertEqual(params["resolution"],"15min")
             self.assertEqual(params["window_start.gte"],"2026-10-30")
+            self.assertEqual(params["window_start.lt"],"2026-10-31")
+            self.assertNotIn("window_start.lte",params)
             self.assertEqual(headers["Authorization"],"Bearer test-key")
             return FakeResponse({"status":"OK","results":rows})
         nq=_dated_nq_bars("NQZ6",reference,"test-key",get=getter)
@@ -48,6 +50,26 @@ class DateSpecificNasdaqBasisTests(unittest.TestCase):
         self.assertEqual(result["bar_count"],26)
         self.assertAlmostEqual(result["basis"],135,places=8)
         self.assertEqual(result["reference_date"],reference)
+
+    def test_massive_end_day_filter_is_exclusive_next_date(self):
+        """Replicate Massive's date filter behavior: end=day excludes cash."""
+        reference=date(2026,10,30)
+        midnight=pd.Timestamp("2026-10-30T00:00:00Z")
+        cash=pd.date_range("2026-10-30 13:30:00+00:00",periods=26,freq="15min")
+        all_bars=[midnight]+list(cash)
+        def getter(url,params=None,headers=None,timeout=None):
+            self.assertEqual(params["window_start.lt"],"2026-10-31")
+            lower=pd.Timestamp(params["window_start.gte"],tz="UTC")
+            upper=pd.Timestamp(params["window_start.lt"],tz="UTC")
+            included=[ts for ts in all_bars if lower<=ts<upper]
+            return FakeResponse({"status":"OK","results":[{
+                "ticker":"NQZ6","session_end_date":reference.isoformat(),
+                "window_start":int(ts.value),"close":10000+i+135
+            } for i,ts in enumerate(included)]})
+        bars=_dated_nq_bars("NQZ6",reference,"test-key",get=getter)
+        self.assertEqual(len(bars),27)
+        self.assertIn(cash[0],bars.index)
+        self.assertIn(cash[-1],bars.index)
 
     def test_missing_key_never_fetches_or_falls_back_to_continuous(self):
         def unexpected(*args,**kwargs):

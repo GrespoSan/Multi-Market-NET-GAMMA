@@ -56,7 +56,9 @@ def _dated_nq_bars(contract: str, reference_day: date, api_key: str,
                      "Accept":"application/json"},
             params={"resolution":"15min",
                     "window_start.gte":reference_day.isoformat(),
-                    "window_start.lte":reference_day.isoformat(),
+                    # Upper date bound is midnight UTC; use exclusive NEXT
+                    # day so the whole cash session is retrieved.
+                    "window_start.lt":(reference_day+timedelta(days=1)).isoformat(),
                     "sort":"window_start.asc","limit":300},
             timeout=(6,20))
         response.raise_for_status()

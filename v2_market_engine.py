@@ -170,6 +170,14 @@ def render_selected_market(market_key):
             st.session_state.pop('ndx_basis_result',None)
             st.session_state['ndx_basis_error']=str(exc)[:240]
     
+    # Re-try once after the Massive date-bound correction, including sessions
+    # that previously failed and kept the old ndx_basis_attempted flag.
+    if st.session_state.get('ndx_basis_revision') != 'massive_15m_full_day_v2':
+        st.session_state['ndx_basis_revision']='massive_15m_full_day_v2'
+        st.session_state.pop('ndx_basis_attempted',None)
+        st.session_state.pop('ndx_basis_error',None)
+        if not st.session_state.get('ndx_basis_result'):
+            st.session_state['ndx_basis_value']=''
     # Prima acquisizione del giorno: differenziale automatico; nessun clic richiesto.
     # Successivi rerun (download Pine, cambio widget) non sovrascrivono il manuale.
     if not st.session_state.get('ndx_basis_attempted'):
