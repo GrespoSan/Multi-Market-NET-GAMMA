@@ -28,27 +28,30 @@ class SPXContextV2Tests(unittest.TestCase):
             with self.subTest(name=name):
                 self.assertIn(name, context)
 
-    def test_context_calls_massive_only_after_explicit_opt_in(self):
-        """Collapsed Streamlit expanders are NOT lazy: protect the 5/min quota."""
+    def test_context_automatic_with_gamma_api_priority_and_daily_cache(self):
+        """Display CONTEXTO first; run its Massive calls after NET GAMMA."""
         import ast
         app = (ROOT / "app.py").read_text(encoding="utf-8")
         tree = ast.parse(app)
-        gates = [
-            node for node in ast.walk(tree)
-            if isinstance(node, ast.If) and isinstance(node.test, ast.Name)
-            and node.test.id == "context_enabled"
-        ]
-        self.assertEqual(len(gates), 1)
         calls = [
             node for node in ast.walk(tree)
             if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
             and node.func.id == "render_market_context"
         ]
         self.assertEqual(len(calls), 1)
-        self.assertIn(calls[0], list(ast.walk(gates[0])))
-        # No context download when the checkbox is untouched.
-        self.assertIn('value=False, key="v2_context_enabled"', app)
-        self.assertIn("NET GAMMA resta operativo.", app)
+        self.assertNotIn("v2_context_enabled", app)
+        self.assertNotIn("if context_enabled:", app)
+        self.assertIn("context_slot = st.empty()", app)
+        self.assertIn("with context_slot.container():", app)
+        # Gamma fetches before the more expensive Daily+curve context,
+        # while the user still sees CONTEXTO above the NET GAMMA panel.
+        self.assertLess(app.index("context_slot = st.empty()"),
+                        app.index('with st.expander("ANALISI NET GAMMA"'))
+        self.assertLess(app.index("render_selected_market(market_key)"),
+                        app.index("render_market_context(market_key)"))
+        cache = (ROOT / "v2_massive_day_cache.py").read_text(encoding="utf-8")
+        self.assertIn('def purge_expired(', cache)
+        self.assertIn('ZoneInfo("Europe/Rome")', cache)
 
     def test_original_macro_and_m7_live_modules_are_present(self):
         macro = (ROOT / "macro_calendar.py").read_text(encoding="utf-8")
