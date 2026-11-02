@@ -35,8 +35,12 @@ def render_etf_pine_exports(symbol, calculated, reference, day,
     st.subheader(f"Esportazione Pine Script v6 · {market}")
     st.caption("Fonte dei Gamma: opzioni ETF Cboe, NON opzioni sui futures. "
                "Trasposizione del SOLO PREZZO degli strike, senza alterare NET GAMMA.")
-    st.caption("I livelli trasferiti sono una proiezione indicativa degli strike "
-               "ETF, non livelli ricavati dalle opzioni native CME/NYMEX.")
+    if symbol == "GLD":
+        st.caption("I livelli trasferiti sono una proiezione indicativa degli strike "
+                   "ETF, non livelli ricavati dalle opzioni native COMEX.")
+    else:
+        st.warning("La proiezione ETF → future è indicativa, non una resistenza o un "
+                   "supporto certificato dalle opzioni native CME/NYMEX.")
 
     usable = {k: v for k, v in calculated.items()
               if k in ("0DTE", "Principale", "Weekly") and v.get("usable") and v.get("rows")}
