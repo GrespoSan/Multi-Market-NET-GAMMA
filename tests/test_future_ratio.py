@@ -117,8 +117,8 @@ class RatioTests(unittest.TestCase):
                 return bars((future_time,375.0))
         class FakeYahoo:
             def Ticker(self,ticker):
-                self_marker=ticker
-                self.assertEqual(ticker,"GLD")
+                if ticker != "GLD":
+                    raise AssertionError("Gold futures must not be read from Yahoo")
                 return OnlyFuture()
         with self.assertRaisesRegex(ValueError,"Nessuna seduta GLD"):
             fetch_gold_pair("GCZ26 · dicembre 2026",capture,"sample",
