@@ -158,13 +158,18 @@ def _rome_time(event):
 
 
 @st.cache_data(ttl=1800, show_spinner=False, max_entries=10)
-def _fetch(first_day, last_day):
+def _fetch(first_day, last_day, api_key):
+    # Credenziale privata Streamlit: mai inserita nella URL o stampata nei log.
+    if not api_key:
+        raise ValueError("Chiave FinanceCalendar mancante")
     params = urlencode({
         "from": first_day, "to": last_day, "country": "US",
         "tz": "Europe/Rome", "limit": 500,
     })
     request = Request(API + "?" + params, headers={
-        "Accept": "application/json", "User-Agent": "SerafiniSPXDashboard/1.0",
+        "Accept": "application/json",
+        "User-Agent": "SerafiniSPXDashboard/1.0",
+        "X-API-Key": api_key,
     })
     with urlopen(request, timeout=12) as response:
         data = json.loads(response.read(3_000_001))
@@ -239,7 +244,9 @@ def _prepare(raw, today):
 
 def events_for_pine(day):
     """Seleziona esclusivamente le news del giorno con un orario Roma verificabile."""
-    raw = _fetch((day - timedelta(days=1)).isoformat(), day.isoformat())
+    api_key = str(st.secrets.get("FINANCE_CALENDAR_API_KEY", "")).strip()
+    raw = _fetch((day - timedelta(days=1)).isoformat(), day.isoformat(),
+                 api_key)
     news = _prepare(raw, day)
     return [event for event in news if event["day"] == day
             and re.fullmatch("[0-9]{2}:[0-9]{2}", event["clock"])
