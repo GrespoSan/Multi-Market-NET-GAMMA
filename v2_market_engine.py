@@ -91,35 +91,6 @@ def render_selected_market(market_key):
     
     
     st.subheader("Fotografia opzioni Cboe · NDX")
-    with st.expander("Acquisizione manuale / importazione JSON", expanded=False):
-        fetch_pressed,uploaded=render_acquisition_controls('NDX',NDX_URL, show_header=False)
-        if fetch_pressed:
-            try:
-                with st.spinner('Lettura fotografia NDX da Cboe...'):
-                    raw=download_ndx()
-                    unpack_snapshot(raw)
-                prefer_manual_source('NDX')
-                st.session_state['ndx_blob']=raw
-                st.session_state['ndx_name']='NDX_CBOE_online.json'
-                st.session_state['ndx_source']='Acquisizione diretta su richiesta'
-                st.session_state['ndx_download_rome']=datetime.now(ROME).strftime('%d/%m/%Y %H:%M:%S Roma')
-                st.success('Fotografia NDX ricevuta e verificata nella struttura.')
-            except Exception as exc:
-                st.error(f'Fonte live non disponibile: {str(exc)[:260]}')
-        if uploaded is not None:
-            content=uploaded.getvalue()
-            if st.session_state.get('ndx_upload_tag') != (uploaded.name, len(content),hash(content)):
-                try:
-                    unpack_snapshot(content)
-                    prefer_manual_source('NDX')
-                    st.session_state['ndx_blob']=content
-                    st.session_state['ndx_name']=uploaded.name
-                    st.session_state['ndx_source']='Importazione manuale'
-                    st.session_state['ndx_download_rome']=None
-                    st.session_state['ndx_upload_tag']=(uploaded.name,len(content),hash(content))
-                    st.success('JSON originale NDX importato e validato.')
-                except Exception as exc:
-                    st.error(f'File NDX non riconosciuto: {exc}')
     archive_selected=archive_panel('NDX')
     if archive_selected is not None:
         scheduled_raw, scheduled_name=archive_selected
