@@ -117,24 +117,11 @@ with col_info:
                f"Metodo: {market.basis}")
 st.divider()
 
-# Streamlit expanders execute their body even while collapsed. Context's
-# Massive daily/term-structure calls can exhaust the Futures Basic 5/minute
-# budget BEFORE the 0DTE price-ratio fetch. Require explicit opt-in per session.
+# Preserve CONTEXTO above NET GAMMA visually, but execute its optional
+# Massive requests AFTER Gamma's reference mapping. A collapsed expander still
+# runs all its code in Streamlit; this ordering prioritizes the trading panel.
+context_slot = st.empty()
 context_initial = datetime.now(ZoneInfo("Europe/Rome")).hour < 13
-with st.expander("ANALISI DEL CONTESTO — News · Volatilità · Trend Daily",
-                 expanded=context_initial):
-    context_enabled = st.checkbox(
-        "Carica analisi del contesto (usa chiamate API Massive)",
-        value=False, key="v2_context_enabled",
-        help="Disattivata: nessuna chiamata Massive dal contesto, "
-             "così NET GAMMA ha priorità. Attivala quando vuoi consultare "
-             "range, struttura a termine e trend Daily.")
-    if context_enabled:
-        from v2_context import render as render_market_context
-        render_market_context(market_key)
-    else:
-        st.caption("Contesto non caricato per risparmiare le richieste Massive "
-                   "(limite piano gratuito 5/min). NET GAMMA resta operativo.")
 
 with st.expander("ANALISI NET GAMMA", expanded=False):
     st.header("NET GAMMA · formula Serafini")
@@ -153,6 +140,14 @@ with st.expander("ANALISI NET GAMMA", expanded=False):
                    "Le proporzioni 60%/23% citate per SPX non sono "
                    "automaticamente valide per NDX, GLD e USO.")
     render_selected_market(market_key)
+
+# Context is now automatic, as in Serafini SPX. Daily Massive responses are
+# shared by v2_massive_day_cache and expire on the next Rome calendar day.
+with context_slot.container():
+    with st.expander("ANALISI DEL CONTESTO — News · Volatilità · Trend Daily",
+                     expanded=context_initial):
+        from v2_context import render as render_market_context
+        render_market_context(market_key)
 
 # No GEX EDGE, REPLAY E CONFRONTO, or REPORT GIORNALIERO AI.
 # Cboe snapshot management stays inside the market-specific gamma analysis
