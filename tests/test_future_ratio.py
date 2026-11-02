@@ -125,6 +125,85 @@ class RatioTests(unittest.TestCase):
                             yf_module=FakeYahoo(),
                             get=lambda *a,**k:self.fail("Massive must not be read"))
 
+
+    def test_oil_early_morning_archive_uses_previous_cash_session_and_exact_contract(self):
+        from future_ratio import fetch_oil_pair
+        capture=datetime(2026,11,2,7,31,tzinfo=ZoneInfo("Europe/Rome"))
+        cash=pd.date_range("2026-10-30T13:30:00Z",periods=78,freq="5min")
+        future_after=pd.Timestamp("2026-11-02T14:35:00Z")
+        class FakeTicker:
+            def history(self,**kwargs):
+                return bars(*[(ts.to_pydatetime(),168+i*.01)
+                              for i,ts in enumerate(cash)],
+                            (future_after.to_pydatetime(),181))
+        class FakeYahoo:
+            def Ticker(self,name):
+                if name!="USO":
+                    raise AssertionError("No continuous or dated Yahoo CL")
+                return FakeTicker()
+        def getter(url,params=None,headers=None,timeout=None):
+            self.assertTrue(url.endswith("/CLZ6"))
+            self.assertEqual(params["resolution"],"5min")
+            self.assertEqual(params["window_start.gte"],"2026-10-30")
+            self.assertEqual(params["window_start.lt"],"2026-10-31")
+            self.assertEqual(headers["Authorization"],"Bearer test-token")
+            rows=[{"ticker":"CLZ6","session_end_date":"2026-10-30",
+                   "window_start":int(ts.value),"close":103+i*.002}
+                  for i,ts in enumerate(cash)]
+            return type("Reply",(),{"raise_for_status":lambda self:None,
+                                    "json":lambda self:{"status":"OK","results":rows}})()
+        result=fetch_oil_pair("CLZ26 · dicembre 2026",capture,"test-token",
+                              yf_module=FakeYahoo(),get=getter)
+        self.assertEqual(result["target_date"],"2026-10-30")
+        self.assertEqual(result["future_massive_ticker"],"CLZ6")
+        self.assertEqual(result["bar_ny"][:10],"2026-10-30")
+        self.assertEqual(result["bar_ny"][11:16],"15:55")
+        self.assertAlmostEqual(result["ratio"],(103+77*.002)/(168+77*.01))
+        self.assertIn("Massive CLZ6",result["source"])
+        self.assertEqual(result["future_tv_symbol"],"NYMEX:CLZ2026")
+
+    def test_oil_selected_next_month_really_changes_massive_contract(self):
+        from future_ratio import fetch_oil_pair
+        capture=datetime(2026,11,2,7,31,tzinfo=ZoneInfo("Europe/Rome"))
+        cash=pd.date_range("2026-10-30T19:45:00Z",periods=3,freq="5min")
+        class FakeYahoo:
+            def Ticker(self,name):
+                if name!="USO": raise AssertionError("Wrong ticker")
+                return type("Quotes",(),{"history":lambda self,**k:bars(
+                    *[(d.to_pydatetime(),168.) for d in cash])})()
+        def getter(url,**kwargs):
+            self.assertTrue(url.endswith("/CLF7"))
+            self.assertEqual(kwargs["params"]["window_start.lt"],"2026-10-31")
+            rows=[{"ticker":"CLF7","session_end_date":"2026-10-30",
+                   "window_start":int(d.value),"close":101.}
+                  for d in cash]
+            return type("Reply",(),{"raise_for_status":lambda self:None,
+                                    "json":lambda self:{"status":"OK","results":rows}})()
+        result=fetch_oil_pair("CLF27 · gennaio 2027",capture,"test-token",
+                              yf_module=FakeYahoo(),get=getter)
+        self.assertEqual(result["future_massive_ticker"],"CLF7")
+        self.assertEqual(result["future_tv_symbol"],"NYMEX:CLF2027")
+
+    def test_oil_rejects_post_capture_data_and_missing_key(self):
+        from future_ratio import fetch_oil_pair
+        capture=datetime(2026,11,2,7,31,tzinfo=ZoneInfo("Europe/Rome"))
+        stamp=datetime(2026,11,2,14,35,tzinfo=timezone.utc)
+        class OnlyFuture:
+            def history(self,**kw):
+                return bars((stamp,170.))
+        class FakeYahoo:
+            def Ticker(self,name):
+                if name!="USO": raise AssertionError("Wrong ticker")
+                return OnlyFuture()
+        with self.assertRaisesRegex(ValueError,"Nessuna seduta USO"):
+            fetch_oil_pair("CLZ26 · dicembre 2026",capture,"test-token",
+                           yf_module=FakeYahoo(),
+                           get=lambda *a,**k:self.fail("Must not call Massive"))
+        with self.assertRaisesRegex(ValueError,"MASSIVE_API_KEY"):
+            fetch_oil_pair("CLZ26 · dicembre 2026",capture,"",
+                           yf_module=type("Yahoo",(),{"Ticker":lambda self,*a:OnlyFuture()})(),
+                           get=lambda *a,**k:self.fail("Must not call Massive"))
+
     def test_manual_pair_is_explicitly_unverified(self):
         pair = manual_pair(167.46, 101.14, "USO",
                            "CLZ26 · dicembre 2026", DAY, "14:45")

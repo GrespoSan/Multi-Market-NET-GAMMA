@@ -9,7 +9,7 @@ from zoneinfo import ZoneInfo
 import streamlit as st
 
 from etf_future_pine import ASSETS, make_etf_future_pine
-from future_ratio import CONTRACTS, choose_contract, fetch_pair, fetch_gold_pair, manual_pair
+from future_ratio import CONTRACTS, choose_contract, fetch_pair, fetch_gold_pair, fetch_oil_pair, manual_pair
 
 
 def _source_day(stamp, fallback):
@@ -51,7 +51,7 @@ def render_etf_pine_exports(symbol, calculated, reference, day,
     today_ny = datetime.now(ZoneInfo("America/New_York")).date()
     snapshot_day, date_from_source = _source_day(cboe_stamp, today_ny)
     capture_time = st.session_state.get(prefix + "import_rome")
-    if symbol == "GLD":
+    if symbol in ("GLD", "USO"):
         # Original Cboe timestamp lacks timezone; use verified acquisition time.
         try:
             capture_dt = datetime.fromisoformat(str(capture_time))
@@ -61,11 +61,12 @@ def render_etf_pine_exports(symbol, calculated, reference, day,
         except (ValueError, TypeError):
             capture_dt = None
         if capture_dt is None:
-            st.warning("GLD: ora di acquisizione con fuso non verificabile. "
+            st.warning(f"{symbol}: ora di acquisizione con fuso non verificabile. "
                        "Nessun rapporto automatico può essere bloccato.")
-        st.caption("GLD→GC: prezzi della stessa barra da 5 minuti completata "
-                   "prima della fotografia Cboe, anche se appartiene alla "
-                   "precedente seduta ETF USA. Nessuna anticipazione dei prezzi.")
+        product = "GC" if symbol == "GLD" else "CL"
+        st.caption(f"{symbol}→{product}: prezzi della stessa barra da 5 minuti "
+                   "completata prima della fotografia Cboe, anche se appartiene "
+                   "alla precedente seduta ETF USA. Nessuna anticipazione dei prezzi.")
     else:
         capture_dt = None
         if not date_from_source:
@@ -79,25 +80,27 @@ def render_etf_pine_exports(symbol, calculated, reference, day,
     selected = st.selectbox("Contratto future da usare come riferimento",
                             selections, key=f"{symbol.lower()}_ratio_contract")
     yahoo_symbol, tv_symbol = choose_contract(symbol, selected)
-    if symbol == "GLD":
-        st.caption(f"Contratto GC di riferimento: {tv_symbol}; "
-                   "prezzi future Massive e GLD Yahoo, barra 5m sincronizzata.")
-    else:
-        st.caption(f"Future: {tv_symbol} · dati prezzi: {yahoo_symbol} su Yahoo Finance. "
-                   "Per CL1! verifica il mese effettivo durante il rollover.")
+    product = "GC" if symbol == "GLD" else "CL"
+    st.caption(f"Contratto {product} di riferimento: {tv_symbol}; "
+               f"prezzi future Massive e {symbol} Yahoo, barra 5m sincronizzata. "
+               "Il rapporto resta specifico del contratto selezionato.")
 
     state_key = f"{symbol.lower()}_ratio_locked"
     tried_key = f"{symbol.lower()}_ratio_tried"
     error_key = f"{symbol.lower()}_ratio_error"
     capture_id = capture_dt.isoformat() if capture_dt is not None else ""
-    snapshot_token = f"gold_capture_v2|{source_sha}|{snapshot_day.isoformat()}|{capture_id}|{tv_symbol}" if symbol == "GLD" else f"{source_sha}|{snapshot_day.isoformat()}|{tv_symbol}"
+    snapshot_token = (
+        f"gold_capture_v2|{source_sha}|{snapshot_day.isoformat()}|{capture_id}|{tv_symbol}"
+        if symbol == "GLD" else
+        f"oil_capture_v2|{source_sha}|{snapshot_day.isoformat()}|{capture_id}|{tv_symbol}"
+    )
     result = st.session_state.get(state_key)
     if result and result.get("_token") != snapshot_token:
         st.session_state.pop(state_key, None)
         result = None
 
     retry_label = ("Riprova calcolo rapporto GLD → GC" if symbol == "GLD"
-                   else "Ricalcola e BLOCCA rapporto sincronizzato")
+                   else "Riprova calcolo rapporto USO → CL")
     do_retry = st.button(retry_label, key=f"{symbol.lower()}_ratio_retry")
     # One automatic attempt per unique snapshot + dated futures contract,
     # never on every Streamlit rerun. A failure does not invent a ratio.
@@ -114,7 +117,13 @@ def render_etf_pine_exports(symbol, calculated, reference, day,
                         api_key = ""
                     pair = fetch_gold_pair(selected, capture_dt, api_key)
                 else:
-                    pair = fetch_pair(symbol, selected, snapshot_day)
+                    if capture_dt is None:
+                        raise ValueError("Ora di acquisizione USO non verificabile.")
+                    try:
+                        api_key = str(st.secrets.get("MASSIVE_API_KEY", "")).strip()
+                    except Exception:
+                        api_key = ""
+                    pair = fetch_oil_pair(selected, capture_dt, api_key)
             pair["_token"] = snapshot_token
             st.session_state[state_key] = pair
             st.session_state.pop(error_key, None)
