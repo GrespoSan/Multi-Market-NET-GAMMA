@@ -9,6 +9,7 @@ from zoneinfo import ZoneInfo
 import streamlit as st
 
 from etf_future_pine import ASSETS, make_etf_future_pine
+from v2_pine_timed_exports import render_timed_pine_exports
 from future_ratio import CONTRACTS, AUTO_OIL_CONTRACT, choose_contract, fetch_pair, fetch_gold_pair, fetch_oil_pair, manual_pair
 
 
@@ -268,45 +269,14 @@ def render_etf_pine_exports(symbol, calculated, reference, day,
                "nelle impostazioni TradingView: aggiorna soltanto con barre 5m chiuse "
                "e timestamp coincidenti, poi conserva l'ultimo rapporto valido.")
 
-    main_key = "0DTE" if "0DTE" in usable else "Principale"
-    choices = []
-    if main_key in usable:
-        choices.append((f"Solo {main_key}", {main_key: usable[main_key]}))
-    if "Weekly" in usable:
-        choices.append(("Solo Weekly", {"Weekly": usable["Weekly"]}))
-    if main_key in usable and "Weekly" in usable:
-        choices.append((f"{main_key} + Weekly", usable))
-
-    exports = {}
-    for title, selected_profiles in choices:
-        try:
-            # Manual file import has an import clock, NOT a verified
-            # original Cboe acquisition instant. Never label it as such.
-            acquisition = (capture_dt if st.session_state.get(
-                prefix + "source") != "Importazione manuale" else None)
-            exports[title] = make_etf_future_pine(
-                symbol, selected_profiles, reference, day, title, result,
-                acquisition_time=acquisition)
-        except Exception as exc:
-            st.warning(f"Esportazione {title} non disponibile: {str(exc)[:250]}")
-    if not exports:
-        return
-
-    cols = st.columns(len(exports))
-    for col, (title, script) in zip(cols, exports.items()):
-        with col:
-            file_part = title.replace(" ", "_").replace("+", "e")
-            st.download_button(
-                f"Scarica Pine · {title}",
-                data=script.encode("utf-8"),
-                file_name=f"{symbol}_{actual_contract.split(':')[-1]}_{day:%Y%m%d}_{file_part}.pine",
-                mime="text/plain", on_click="ignore",
-                use_container_width=True,
-                key=f"{symbol.lower()}_pine_{file_part}",
-            )
-    with st.expander("Mostra codice Pine da copiare e incollare"):
-        choice = st.selectbox("Pine da copiare", list(exports),
-                              key=f"{symbol.lower()}_pine_choice")
-        st.code(exports[choice], language="javascript")
-    st.caption("Ogni Pine conserva i Gamma originali e il rapporto della fotografia. "
-               "Verifica ticker e contratto futuro prima dell'utilizzo.")
+    # Generate chronological SPX-style captures. The fixed synchronized
+    # ETF/future ratio is shared across all same-day snapshots and changes
+    # only the strike PRICE, never ETF Net Gamma values.
+    band = float(st.session_state.get(f"{symbol.lower()}_cboe_band", 3.0))
+    extension = bool(st.session_state.get(
+        f"v2_{symbol.lower()}_visual_extension", True))
+    render_timed_pine_exports(
+        symbol, day, reference, band, result, extension=extension)
+    st.caption("I Pine cronologici conservano Gamma originali ETF e "
+               "lo stesso rapporto ETF/future bloccato. Verifica sempre "
+               "ticker e contratto future prima dell'utilizzo.")
