@@ -24,6 +24,7 @@ import requests
 ROME = ZoneInfo("Europe/Rome")
 NY = ZoneInfo("America/New_York")
 _LOCK = RLock()
+_LAST_ROMA_DAY = None
 ROOT = Path(tempfile.gettempdir()) / "v2_mm_massive_daily"
 NAME = "massive-"
 MAX_JSON_BYTES = 10 * 1024 * 1024
@@ -42,10 +43,13 @@ def _dir():
 
 
 def purge_expired(now=None):
-    """Delete prior day data on every app entry/access; never delete Cboe."""
+    """Delete prior day data on access and report process-wide day rollover."""
+    global _LAST_ROMA_DAY
     today = _rome_day(now).strftime("%Y%m%d")
     folder = _dir()
     with _LOCK:
+        switched = _LAST_ROMA_DAY is not None and _LAST_ROMA_DAY != today
+        _LAST_ROMA_DAY = today
         folder.mkdir(mode=0o700, parents=True, exist_ok=True)
         for old in folder.glob(NAME + "*.sqlite3"):
             if old.name != f"{NAME}{today}.sqlite3":
@@ -56,6 +60,7 @@ def purge_expired(now=None):
                         item.unlink(missing_ok=True)
                     except OSError:
                         pass
+        return switched
 
 
 def _db(now=None):
