@@ -69,6 +69,62 @@ class RatioTests(unittest.TestCase):
             synchronized_pair(a,b,"GLD","GCZ26.CMX","COMEX:GCZ2026",
                               DAY,now=t(18, 20))
 
+
+    def test_gold_early_morning_capture_uses_prior_common_completed_session(self):
+        # Nov 2 at 07:31 Rome = Nov 2 01:31 NY, before GLD trading.
+        from future_ratio import fetch_gold_pair
+        capture=datetime(2026,11,2,7,31,tzinfo=ZoneInfo("Europe/Rome"))
+        cash=pd.date_range("2026-10-30T13:30:00Z",periods=78,freq="5min")
+        future_after=pd.Timestamp("2026-11-02T14:35:00Z")
+        class FakeTicker:
+            def history(self, **kwargs):
+                self_kwargs=kwargs
+                return bars(*[(ts.to_pydatetime(),355.0+i*.01)
+                              for i,ts in enumerate(cash)],
+                            (future_after.to_pydatetime(),380))
+        class FakeYahoo:
+            def Ticker(self, name):
+                if name != "GLD":
+                    raise AssertionError("Gold futures must come from Massive")
+                return FakeTicker()
+        def getter(url, params=None, headers=None, timeout=None):
+            self.assertTrue(url.endswith("/GCZ6"))
+            self.assertEqual(params["resolution"],"5min")
+            self.assertEqual(params["window_start.gte"],"2026-10-30")
+            self.assertEqual(params["window_start.lt"],"2026-10-31")
+            self.assertEqual(headers["Authorization"],"Bearer sample")
+            rows=[{
+                "ticker":"GCZ6","session_end_date":"2026-10-30",
+                "window_start":int(ts.value),"close":3890.0+i*.03
+            } for i,ts in enumerate(cash)]
+            return type("Reply",(),{"raise_for_status":lambda self:None,
+                                    "json":lambda self:{"status":"OK","results":rows}})()
+        result=fetch_gold_pair("GCZ26 · dicembre 2026",capture,"sample",
+                               yf_module=FakeYahoo(),get=getter)
+        self.assertEqual(result["target_date"],"2026-10-30")
+        self.assertEqual(result["future_massive_ticker"],"GCZ6")
+        self.assertEqual(result["bar_ny"][:10],"2026-10-30")
+        self.assertEqual(result["bar_ny"][11:16],"15:55")
+        self.assertAlmostEqual(result["ratio"],(3890+77*.03)/(355+77*.01))
+        self.assertIn("Massive GCZ6",result["source"])
+
+    def test_gold_never_uses_post_capture_prices_or_fake_continuous(self):
+        from future_ratio import fetch_gold_pair
+        capture=datetime(2026,11,2,7,31,tzinfo=ZoneInfo("Europe/Rome"))
+        future_time=datetime(2026,11,2,14,35,tzinfo=timezone.utc)
+        class OnlyFuture:
+            def history(self,**kwargs):
+                return bars((future_time,375.0))
+        class FakeYahoo:
+            def Ticker(self,ticker):
+                self_marker=ticker
+                self.assertEqual(ticker,"GLD")
+                return OnlyFuture()
+        with self.assertRaisesRegex(ValueError,"Nessuna seduta GLD"):
+            fetch_gold_pair("GCZ26 · dicembre 2026",capture,"sample",
+                            yf_module=FakeYahoo(),
+                            get=lambda *a,**k:self.fail("Massive must not be read"))
+
     def test_manual_pair_is_explicitly_unverified(self):
         pair = manual_pair(167.46, 101.14, "USO",
                            "CLZ26 · dicembre 2026", DAY, "14:45")

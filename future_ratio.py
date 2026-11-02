@@ -7,6 +7,8 @@ native options-on-futures strikes or CME Greeks.
 from datetime import date, datetime, timedelta, timezone, time
 from math import isfinite
 from zoneinfo import ZoneInfo
+import re
+import requests
 
 import pandas as pd
 
@@ -114,6 +116,121 @@ def fetch_pair(symbol, selection, target: date, now=None, yf_module=None):
     future = yf_module.Ticker(ticker).history(
         period="5d", interval="5m", prepost=False, auto_adjust=False)
     return synchronized_pair(etf, future, symbol, ticker, tv, target, now=now)
+
+
+def _dated_massive_gc_contract(yahoo_ticker: str) -> str:
+    """Translate fixed Yahoo contract labels to the same dated Massive GC."""
+    match = re.fullmatch(r"GC([FGHJKMNQUVXZ])(\d\d)[.]CMX", yahoo_ticker)
+    if not match:
+        raise ValueError("Solo contratti GLD/GC con scadenza esplicita.")
+    return f"GC{match.group(1)}{int(match.group(2)) % 10}"
+
+
+def _gold_massive_bars(ticker: str, target: date, api_key: str, get=None):
+    """Closed GC 5m bars from a named Massive contract on the ETF session day."""
+    if not str(api_key or "").strip():
+        raise ValueError("MASSIVE_API_KEY mancante in Streamlit: GC non verificabile.")
+    if not re.fullmatch(r"GC[FGHJKMNQUVXZ][0-9]", ticker):
+        raise ValueError("Simbolo Massive GC non valido.")
+    getter = get or requests.get
+    try:
+        response = getter(
+            "https://api.massive.com/futures/v1/aggs/" + ticker,
+            params={"resolution": "5min",
+                    "window_start.gte": target.isoformat(),
+                    "window_start.lt": (target + timedelta(days=1)).isoformat(),
+                    "sort": "window_start.asc", "limit": 1000},
+            headers={"Authorization": "Bearer " + api_key,
+                     "Accept": "application/json"}, timeout=(6, 20))
+        response.raise_for_status()
+        payload = response.json()
+    except requests.HTTPError as exc:
+        status = getattr(getattr(exc, "response", None), "status_code", None)
+        raise ValueError(f"Massive GC: errore HTTP {status or 'non identificato'}") from exc
+    except (requests.RequestException, ValueError, TypeError) as exc:
+        raise ValueError("Massive GC: dati intraday non accessibili.") from exc
+    if (not isinstance(payload, dict)
+            or payload.get("status") not in ("OK", "DELAYED")
+            or not isinstance(payload.get("results"), list)
+            or payload.get("next_url")):
+        raise ValueError("Massive GC: barre 5 minuti assenti o incomplete.")
+    records = []
+    for r in payload["results"]:
+        if (not isinstance(r, dict) or r.get("ticker") != ticker
+                or r.get("session_end_date") != target.isoformat()):
+            continue
+        try:
+            ts = pd.to_datetime(int(r["window_start"]), unit="ns", utc=True)
+            c = float(r["close"])
+            if isfinite(c) and c > 0:
+                records.append((ts, c))
+        except (KeyError, ValueError, TypeError, OverflowError):
+            continue
+    if not records:
+        raise ValueError(f"Massive GC: nessuna barra valida per {ticker} il {target}.")
+    return pd.DataFrame(
+        {"Close": [v for _, v in records]},
+        index=pd.DatetimeIndex([t for t, _ in records])
+    )
+
+
+def fetch_gold_pair(selection, captured_at, api_key, yf_module=None, get=None):
+    """Frozen Gold ETF/future mapping using last common bar BEFORE the capture.
+
+    The acquisition timestamp is timezone-aware and more reliable than the
+    raw Cboe timestamp with unspecified timezone. On 07:31 Rome Nov 2,
+    last synchronized ETF cash data can legitimately be from Fri Oct 30.
+    The selected 5m bar is never allowed to occur after the Cboe capture.
+    """
+    future_yahoo, future_tv = choose_contract("GLD", selection)
+    future_massive = _dated_massive_gc_contract(future_yahoo)
+    if isinstance(captured_at, str):
+        try:
+            captured_at = datetime.fromisoformat(captured_at)
+        except ValueError as exc:
+            raise ValueError("Ora di acquisizione GLD non interpretabile.") from exc
+    if not isinstance(captured_at, datetime) or captured_at.tzinfo is None:
+        raise ValueError("Serve l'ora di acquisizione GLD con fuso orario.")
+    cutoff = captured_at.astimezone(timezone.utc)
+    if cutoff > datetime.now(timezone.utc) + timedelta(minutes=5):
+        raise ValueError("Acquisizione GLD nel futuro: controllo non possibile.")
+    ny_day = cutoff.astimezone(NY).date()
+    if (datetime.now(timezone.utc) - cutoff).days > 58:
+        raise ValueError("Fotografia troppo vecchia per le barre ETF Yahoo 5m.")
+    if yf_module is None:
+        import yfinance as yf
+        yf_module = yf
+    try:
+        etf = yf_module.Ticker("GLD").history(
+            start=(ny_day-timedelta(days=10)).isoformat(),
+            end=(ny_day+timedelta(days=1)).isoformat(),
+            interval="5m", prepost=False, auto_adjust=False)
+        etf_prices = normalize_bars(etf)
+    except Exception as exc:
+        raise ValueError("GLD Yahoo: storico 5 minuti non disponibile.") from exc
+    # Find the most recent ETF cash session with completed bars BEFORE capture.
+    latest_dates = set()
+    for stamp in etf_prices.index:
+        dt = stamp.to_pydatetime().astimezone(timezone.utc)
+        ny = dt.astimezone(NY)
+        if (ny.date() <= ny_day and time(9, 30) <= ny.time() < time(16)
+                and dt + timedelta(minutes=5) <= cutoff):
+            latest_dates.add(ny.date())
+    if not latest_dates:
+        raise ValueError("Nessuna seduta GLD completata prima della fotografia.")
+    reference_day = max(latest_dates)
+    if (ny_day-reference_day).days > 7:
+        raise ValueError("Ultima seduta GLD troppo lontana dalla fotografia.")
+    future_bars = _gold_massive_bars(future_massive, reference_day, api_key, get=get)
+    pair = synchronized_pair(
+        etf, future_bars, "GLD", future_yahoo, future_tv,
+        reference_day, now=cutoff)
+    pair["future_massive_ticker"] = future_massive
+    pair["capture_cutoff_utc"] = cutoff.isoformat(timespec="seconds")
+    pair["source"] = (
+        f"Yahoo GLD + Massive {future_massive} · stessa barra 5m "
+        f"chiusa prima dell'acquisizione Cboe")
+    return pair
 
 
 def manual_pair(etf_price, future_price, symbol, selection, target, clock_ny):

@@ -9,7 +9,7 @@ from zoneinfo import ZoneInfo
 import streamlit as st
 
 from etf_future_pine import ASSETS, make_etf_future_pine
-from future_ratio import CONTRACTS, choose_contract, fetch_pair, manual_pair
+from future_ratio import CONTRACTS, choose_contract, fetch_pair, fetch_gold_pair, manual_pair
 
 
 def _source_day(stamp, fallback):
@@ -35,8 +35,8 @@ def render_etf_pine_exports(symbol, calculated, reference, day,
     st.subheader(f"Esportazione Pine Script v6 · {market}")
     st.caption("Fonte dei Gamma: opzioni ETF Cboe, NON opzioni sui futures. "
                "Trasposizione del SOLO PREZZO degli strike, senza alterare NET GAMMA.")
-    st.warning("La proiezione ETF → future è indicativa, non una resistenza o un "
-               "supporto certificato dalle opzioni native CME/NYMEX.")
+    st.caption("I livelli trasferiti sono una proiezione indicativa degli strike "
+               "ETF, non livelli ricavati dalle opzioni native CME/NYMEX.")
 
     usable = {k: v for k, v in calculated.items()
               if k in ("0DTE", "Principale", "Weekly") and v.get("usable") and v.get("rows")}
@@ -46,25 +46,47 @@ def render_etf_pine_exports(symbol, calculated, reference, day,
 
     today_ny = datetime.now(ZoneInfo("America/New_York")).date()
     snapshot_day, date_from_source = _source_day(cboe_stamp, today_ny)
-    if not date_from_source:
-        st.warning("Timestamp Cboe non interpretabile: per l'allineamento si usa la data "
-                   "odierna di New York, NON un istante Cboe accertato.")
-    st.caption(f"Data della fotografia Cboe: {snapshot_day:%d/%m/%Y} "
-               "(la timezone del timestamp originale non è dichiarata). "
-               "I prezzi di riferimento ETF e future devono avere lo STESSO timestamp, "
-               "ma non si presume che coincidano esattamente con quello Cboe.")
+    capture_time = st.session_state.get(prefix + "import_rome")
+    if symbol == "GLD":
+        # Original Cboe timestamp lacks timezone; use verified acquisition time.
+        try:
+            capture_dt = datetime.fromisoformat(str(capture_time))
+            if capture_dt.tzinfo is None:
+                raise ValueError()
+            snapshot_day = capture_dt.astimezone(ZoneInfo("America/New_York")).date()
+        except (ValueError, TypeError):
+            capture_dt = None
+        if capture_dt is None:
+            st.warning("GLD: ora di acquisizione con fuso non verificabile. "
+                       "Nessun rapporto automatico può essere bloccato.")
+        st.caption("GLD→GC: prezzi della stessa barra da 5 minuti completata "
+                   "prima della fotografia Cboe, anche se appartiene alla "
+                   "precedente seduta ETF USA. Nessuna anticipazione dei prezzi.")
+    else:
+        capture_dt = None
+        if not date_from_source:
+            st.warning("Timestamp Cboe non interpretabile: per l'allineamento si usa "
+                       "la data odierna di New York, NON un istante Cboe accertato.")
+        st.caption(f"Data della fotografia Cboe: {snapshot_day:%d/%m/%Y} "
+                   "(la timezone del timestamp originale non è dichiarata). "
+                   "I prezzi ETF e future devono avere lo STESSO timestamp.")
 
     selections = list(CONTRACTS[symbol]["contracts"])
     selected = st.selectbox("Contratto future da usare come riferimento",
                             selections, key=f"{symbol.lower()}_ratio_contract")
     yahoo_symbol, tv_symbol = choose_contract(symbol, selected)
-    st.caption(f"Future: {tv_symbol} · dati prezzi: {yahoo_symbol} su Yahoo Finance. "
-               "Per GC1!/CL1! verifica il mese effettivo durante il rollover.")
+    if symbol == "GLD":
+        st.caption(f"Contratto GC di riferimento: {tv_symbol}; "
+                   "prezzi future Massive e GLD Yahoo, barra 5m sincronizzata.")
+    else:
+        st.caption(f"Future: {tv_symbol} · dati prezzi: {yahoo_symbol} su Yahoo Finance. "
+                   "Per CL1! verifica il mese effettivo durante il rollover.")
 
     state_key = f"{symbol.lower()}_ratio_locked"
     tried_key = f"{symbol.lower()}_ratio_tried"
     error_key = f"{symbol.lower()}_ratio_error"
-    snapshot_token = f"{source_sha}|{snapshot_day.isoformat()}|{tv_symbol}"
+    capture_id = capture_dt.isoformat() if capture_dt is not None else ""
+    snapshot_token = f"gold_capture_v2|{source_sha}|{snapshot_day.isoformat()}|{capture_id}|{tv_symbol}" if symbol == "GLD" else f"{source_sha}|{snapshot_day.isoformat()}|{tv_symbol}"
     result = st.session_state.get(state_key)
     if result and result.get("_token") != snapshot_token:
         st.session_state.pop(state_key, None)
@@ -78,7 +100,16 @@ def render_etf_pine_exports(symbol, calculated, reference, day,
         st.session_state[tried_key] = snapshot_token
         try:
             with st.spinner(f"Confronto barre chiuse ETF {symbol} e {tv_symbol} a 5 minuti..."):
-                pair = fetch_pair(symbol, selected, snapshot_day)
+                if symbol == "GLD":
+                    if capture_dt is None:
+                        raise ValueError("Ora di acquisizione GLD non verificabile.")
+                    try:
+                        api_key = str(st.secrets.get("MASSIVE_API_KEY", "")).strip()
+                    except Exception:
+                        api_key = ""
+                    pair = fetch_gold_pair(selected, capture_dt, api_key)
+                else:
+                    pair = fetch_pair(symbol, selected, snapshot_day)
             pair["_token"] = snapshot_token
             st.session_state[state_key] = pair
             st.session_state.pop(error_key, None)
