@@ -144,13 +144,15 @@ def render_timed_pine_exports(symbol, day, reference, band, basis_or_mapping,
                "15:50→20:30; ogni confronto usa soltanto fotografie reali "
                "della stessa seduta di New York. Gli orari effettivi sono "
                "indicati in CET/CEST. Nessun Gamma inventato.")
-    # ZIP reads are cached by v2_storage_off. The button keeps avoidable
-    # GitHub calls off every Streamlit rerun and does not affect Massive quota.
+    # First view loads same-day GitHub archives automatically just like SPX.
+    # Subsequent Streamlit reruns reuse the session and underlying 20min cache;
+    # refresh requires an explicit click and never touches Massive quota.
     key = f"v2_pine_times_{symbol}_{day.isoformat()}"
     state = st.session_state.get(key)
-    if st.button("Carica Pine per orari e confronti", key=f"load_{key}"):
+    refresh = st.button("Aggiorna Pine per orari", key=f"refresh_{key}")
+    if state is None or refresh:
         try:
-            with st.spinner("Ricerca fotografie cifrate 07:30 / 15:50 / 20:30..."):
+            with st.spinner("Lettura rilevamenti cifrati 07:30 / 15:50 / 20:30..."):
                 captures = load_pine_slot_captures(symbol, day)
             state = {slot: {**capture} for slot, capture in captures.items()}
             st.session_state[key] = state
@@ -159,9 +161,8 @@ def render_timed_pine_exports(symbol, day, reference, band, basis_or_mapping,
                        + str(exc)[:180])
             state = None
     if state is None:
-        st.info("Carica le fotografie orarie dall'archivio GitHub per ottenere "
-                "gli stessi tre Pine cronologici della Serafini SPX. "
-                "Non vengono effettuate nuove richieste Massive.")
+        st.info("Non riesco a leggere le fotografie orarie dall'archivio "
+                "GitHub. Nessun profilo o confronto viene simulato.")
         return
 
     scripts, issues, profiles = produce_timed_scripts(
