@@ -104,11 +104,24 @@ with col_info:
                f"Metodo: {market.basis}")
 st.divider()
 
+# Streamlit expanders execute their body even while collapsed. Context's
+# Massive daily/term-structure calls can exhaust the Futures Basic 5/minute
+# budget BEFORE the 0DTE price-ratio fetch. Require explicit opt-in per session.
 context_initial = datetime.now(ZoneInfo("Europe/Rome")).hour < 13
 with st.expander("ANALISI DEL CONTESTO — News · Volatilità · Trend Daily",
                  expanded=context_initial):
-    from v2_context import render as render_market_context
-    render_market_context(market_key)
+    context_enabled = st.checkbox(
+        "Carica analisi del contesto (usa chiamate API Massive)",
+        value=False, key="v2_context_enabled",
+        help="Disattivata: nessuna chiamata Massive dal contesto, "
+             "così NET GAMMA ha priorità. Attivala quando vuoi consultare "
+             "range, struttura a termine e trend Daily.")
+    if context_enabled:
+        from v2_context import render as render_market_context
+        render_market_context(market_key)
+    else:
+        st.caption("Contesto non caricato per risparmiare le richieste Massive "
+                   "(limite piano gratuito 5/min). NET GAMMA resta operativo.")
 
 with st.expander("ANALISI NET GAMMA", expanded=False):
     st.header("NET GAMMA · formula Serafini")
