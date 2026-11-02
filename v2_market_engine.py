@@ -154,7 +154,11 @@ def render_selected_market(market_key):
     @st.cache_data(ttl=3600, show_spinner=False, max_entries=16)
     def _cached_basis(target_day):
         """Calcola il basis una volta per data e lo riusa nei rerun Streamlit."""
-        return fetch_basis(target_day)
+        try:
+            massive_key=str(st.secrets.get("MASSIVE_API_KEY","")).strip()
+        except Exception:
+            massive_key=""
+        return fetch_basis(target_day,massive_key)
     
     def _calculate_and_store_basis():
         try:
@@ -184,7 +188,8 @@ def render_selected_market(market_key):
     
     basis_text=st.text_input('Differenziale NQ − NDX (modificabile)',key='ndx_basis_value',
                             help='Esporta livelli NQ soltanto con differenziale verificato. '
-                                 'NQ=F può non coincidere con il contratto NQ di TradingView.')
+                                 'Contratto NQ trimestrale selezionato in automatico secondo il rollover CME. '
+                                 'Calcolo della seduta cash precedente con Massive NQ e Yahoo NDX.')
     try:
         basis=float(basis_text.replace(',','.').strip()) if basis_text.strip() else None
         if basis is not None and not math.isfinite(basis):raise ValueError()
@@ -193,9 +198,11 @@ def render_selected_market(market_key):
         st.stop()
     if st.session_state.get('ndx_basis_result'):
         res=st.session_state['ndx_basis_result']
-        st.caption(f"Proposta automatica {res['basis']:+.2f} pt · seduta {res['reference_date']} · "
-                   f"{res['bar_count']} barre comuni · min {res['minimum']:+.2f} / max {res['maximum']:+.2f}. "
-                   'Verificare il contratto NQ utilizzato.')
+        st.caption(f"Proposta automatica {res['basis']:+.2f} pt · "
+                   f"**Contratto {res['tv_contract']}** ({res['ticker']}, fonte Massive) · "
+                   f"seduta {res['reference_date']} · {res['bar_count']} barre comuni · "
+                   f"min {res['minimum']:+.2f} / max {res['maximum']:+.2f} · "
+                   f"rollover CME successivo {res['roll_day']:%d/%m/%Y}.")
     
     # Fascia comune 0DTE/Weekly: percentuale libera, centrata sul close NDX precedente.
     # Modificare la fascia cambia solo gli strike selezionati, mai la formula Gamma.

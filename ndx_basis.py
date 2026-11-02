@@ -1,12 +1,90 @@
-"""NQ-NDX previous *cash-session* basis; not valid for contract-specific NQ futures.
-Uses the same aligned 15-minute-session principle as the SPX project,
-without claiming equivalence to a specific broker's future contract.
+"""NQ–NDX previous cash-session basis on a dated CME Nasdaq future.
+
+Uses a dated NQ quarterly contract chosen automatically by the official
+CME equity-index roll convention (Monday before the expiration Friday).
+The historical reference comes from the 15-minute aligned cash session,
+never an unlabelled Yahoo NQ=F continuous contract.
+No interpolation and no fabricated fallback on missing market data.
 """
 from datetime import date, datetime, timedelta, time
 from zoneinfo import ZoneInfo
 import pandas as pd
+import requests
 
 NY=ZoneInfo('America/New_York')
+MASSIVE_FUTURES_API="https://api.massive.com/futures/v1/aggs"
+
+
+def _third_friday(year: int, month: int) -> date:
+    first=date(year,month,1)
+    return first+timedelta(days=((4-first.weekday())%7)+14)
+
+
+def nq_contract_for_date(trading_day: date) -> dict:
+    """TradingView symbol + Massive symbol, rolled by CME Monday convention.
+
+    The contract is selected by the date the levels will be used, not by
+    the prior cash-session date, so Monday roll calculations use the new
+    contract's Friday bars for comparison.
+    """
+    if not isinstance(trading_day,date):
+        raise ValueError("Giornata di analisi NQ non valida")
+    for yr in (trading_day.year,trading_day.year+1):
+        for month,month_code in ((3,"H"),(6,"M"),(9,"U"),(12,"Z")):
+            expiration=_third_friday(yr,month)
+            roll_day=expiration-timedelta(days=4)
+            if trading_day < roll_day:
+                return {
+                    "ticker":f"NQ{month_code}{yr%10}",
+                    "tv_symbol":f"NQ{month_code}{yr}",
+                    "roll_day":roll_day,
+                    "expiry":expiration,
+                }
+    raise ValueError("Impossibile identificare il contratto NQ trimestrale")
+
+
+def _dated_nq_bars(contract: str, reference_day: date, api_key: str,
+                   get=None) -> pd.Series:
+    """15m Massive bars at real UTC start timestamps for a single dated NQ."""
+    if not str(api_key or "").strip():
+        raise ValueError("MASSIVE_API_KEY assente: differenziale NQ non verificabile")
+    getter=get or requests.get
+    try:
+        response=getter(
+            f"{MASSIVE_FUTURES_API}/{contract}",
+            headers={"Authorization":f"Bearer {api_key}",
+                     "Accept":"application/json"},
+            params={"resolution":"15min",
+                    "window_start.gte":reference_day.isoformat(),
+                    "window_start.lte":reference_day.isoformat(),
+                    "sort":"window_start.asc","limit":300},
+            timeout=(6,20))
+        response.raise_for_status()
+        obj=response.json()
+    except (requests.RequestException,ValueError,TypeError) as exc:
+        raise ValueError("Massive: intraday NQ non disponibile per il contratto scelto") from exc
+    if (not isinstance(obj,dict) or obj.get("status") not in ("OK","DELAYED")
+            or not isinstance(obj.get("results"),list) or obj.get("next_url")):
+        raise ValueError("Massive: risposta intraday NQ incompleta o non verificabile")
+
+    records=[]
+    for row in obj["results"]:
+        if (not isinstance(row,dict) or row.get("ticker")!=contract
+                or row.get("session_end_date")!=reference_day.isoformat()):
+            continue
+        try:
+            stamp=pd.to_datetime(int(row["window_start"]),unit="ns",utc=True)
+            close=float(row["close"])
+            if pd.notna(close):
+                records.append((stamp,close))
+        except (KeyError,TypeError,ValueError,OverflowError):
+            continue
+    if not records:
+        raise ValueError(f"Massive: nessuna barra intraday valida per {contract} alla data {reference_day}")
+    result=pd.Series(
+        [v for _,v in records],
+        index=pd.DatetimeIndex([t for t,_ in records]))
+    return result[~result.index.duplicated(keep="last")].sort_index()
 
 
 def aligned_basis(nq: pd.Series, ndx: pd.Series, day:date):
@@ -45,16 +123,43 @@ def _close(frame, ticker):
     return frame['Close'].dropna()
 
 
-def fetch_basis(day:date):
+def fetch_basis(day:date, massive_api_key: str=""):
+    """Prior cash-session 15m average: dated CME NQ on Massive minus Yahoo NDX.
+
+    The same mean/min/max/count formula of aligned_basis is unchanged.
+    Only the previously ambiguous NQ=F price source is replaced.
+    """
     import yfinance as yf
     today=datetime.now(NY).date()
     if day > today + timedelta(days=1) or day < today - timedelta(days=50):
-        raise ValueError('Data fuori dalla finestra Yahoo a 15 minuti (circa 50 giorni)')
+        raise ValueError("Data fuori dalla finestra Yahoo a 15 minuti (circa 50 giorni)")
+
+    # The leading contract is determined by the *analysis* session day.
+    contract=nq_contract_for_date(day)
     start=str(day-timedelta(days=10))
     end=str(min(today+timedelta(days=1),day+timedelta(days=1)))
-    series={}
-    for ticker in ('NQ=F','^NDX'):
-        data=yf.download(ticker,start=start,end=end,interval='15m',auto_adjust=False,
-                         prepost=False,progress=False,threads=False)
-        series[ticker]=_close(data,ticker)
-    return aligned_basis(series['NQ=F'],series['^NDX'],day)
+    ndx_data=yf.download("^NDX",start=start,end=end,interval="15m",
+                         auto_adjust=False,prepost=False,progress=False,threads=False)
+    ndx=_close(ndx_data,"^NDX")
+    if ndx.empty or ndx.index.tz is None:
+        raise ValueError("Indice NDX: chiusure intraday non disponibili")
+    ndx_ny=ndx.copy()
+    ndx_ny.index=ndx_ny.index.tz_convert(NY)
+    eligible=ndx_ny[(ndx_ny.index.time>=time(9,30)) &
+                    (ndx_ny.index.time<time(16,0)) &
+                    (ndx_ny.index.date<day)]
+    dates=sorted(set(eligible.index.date))
+    if not dates:
+        raise ValueError("Indice NDX: nessuna seduta cash precedente")
+    prior_day=dates[-1]
+    future=_dated_nq_bars(contract["ticker"],prior_day,massive_api_key)
+    result=aligned_basis(future,ndx,day)
+    if result["reference_date"]!=prior_day:
+        raise ValueError("Sedute NQ e NDX non coincidenti")
+    result.update({
+        "ticker":contract["ticker"],
+        "tv_contract":contract["tv_symbol"],
+        "roll_day":contract["roll_day"],
+        "source":f"Massive Futures {contract['ticker']} + Yahoo Finance ^NDX · 15m sincronizzati",
+    })
+    return result
