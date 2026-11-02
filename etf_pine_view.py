@@ -20,6 +20,66 @@ def _source_day(stamp, fallback):
         return fallback, False
 
 
+def prepare_locked_chart_mapping(symbol):
+    """Reuse the snapshot-locked ratio from Pine for on-screen future plots.
+
+    Called before charts; zero widgets and at most one acquisition per
+    snapshot+contract. No assumed prices or silent fallback to ETF strikes.
+    """
+    if symbol not in ("GLD", "USO"):
+        return None
+    prefix = symbol.lower() + "_cboe_"
+    if symbol == "USO" and not st.session_state.get("uso_auto_roll_initialized"):
+        st.session_state["uso_ratio_contract"] = AUTO_OIL_CONTRACT
+        st.session_state["uso_auto_roll_initialized"] = True
+    selections = ([AUTO_OIL_CONTRACT] + list(CONTRACTS[symbol]["contracts"])
+                  if symbol == "USO" else list(CONTRACTS[symbol]["contracts"]))
+    selected = st.session_state.get(f"{symbol.lower()}_ratio_contract", selections[0])
+    if selected not in selections:
+        st.session_state[f"{symbol.lower()}_ratio_contract"] = selections[0]
+        selected = selections[0]
+    is_auto = symbol == "USO" and selected == AUTO_OIL_CONTRACT
+    tv_symbol = "CL automatico" if is_auto else choose_contract(symbol, selected)[1]
+    try:
+        captured = datetime.fromisoformat(str(st.session_state.get(prefix + "import_rome")))
+        if captured.tzinfo is None:
+            raise ValueError("Timezone assente")
+        snapshot_day = captured.astimezone(ZoneInfo("America/New_York")).date()
+    except (ValueError, TypeError):
+        st.session_state[f"{symbol.lower()}_ratio_error"] = (
+            "Ora della fotografia Cboe senza fuso verificabile")
+        return None
+    source_sha = st.session_state.get(prefix + "sha256", "")
+    version = "gold_capture_v2" if symbol == "GLD" else "oil_capture_v2"
+    token = f"{version}|{source_sha}|{snapshot_day.isoformat()}|{captured.isoformat()}|{tv_symbol}"
+    state_key, tried_key, error_key = (
+        f"{symbol.lower()}_ratio_locked",
+        f"{symbol.lower()}_ratio_tried",
+        f"{symbol.lower()}_ratio_error")
+    locked = st.session_state.get(state_key)
+    if locked and locked.get("_token") == token:
+        return locked
+    if locked:
+        st.session_state.pop(state_key, None)
+    if st.session_state.get(tried_key) == token:
+        return None
+    st.session_state[tried_key] = token
+    try:
+        try:
+            api_key = str(st.secrets.get("MASSIVE_API_KEY", "")).strip()
+        except Exception:
+            api_key = ""
+        pair = (fetch_gold_pair(selected, captured, api_key)
+                if symbol == "GLD" else fetch_oil_pair(selected, captured, api_key))
+        pair["_token"] = token
+        st.session_state[state_key] = pair
+        st.session_state.pop(error_key, None)
+        return pair
+    except Exception as exc:
+        st.session_state[error_key] = str(exc)[:320]
+        return None
+
+
 def render_etf_pine_exports(symbol, calculated, reference, day,
                             source_sha=None, cboe_stamp=None):
     if symbol not in ASSETS:
@@ -142,6 +202,8 @@ def render_etf_pine_exports(symbol, calculated, reference, day,
             st.session_state[state_key] = pair
             st.session_state.pop(error_key, None)
             result = pair
+            if do_retry:
+                st.rerun()
         except Exception as exc:
             st.session_state[error_key] = str(exc)[:320]
             if do_retry:
@@ -180,6 +242,7 @@ def render_etf_pine_exports(symbol, calculated, reference, day,
                 st.session_state[state_key] = pair
                 st.session_state.pop(error_key, None)
                 result = pair
+                st.rerun()
             except Exception as exc:
                 st.error(f"Coppia manuale non valida: {str(exc)[:250]}")
 
