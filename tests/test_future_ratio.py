@@ -298,6 +298,108 @@ class RatioTests(unittest.TestCase):
         self.assertIn("pair = fetch_oil_pair(selected, capture_dt, api_key)",content)
         self.assertIn("actual_contract = result",content)
 
+
+    def test_cached_oil_rollover_survives_429_on_last_request(self):
+        """A 429 on the fourth Massive call must not redownload prior three."""
+        import future_ratio as fr
+        from unittest.mock import patch
+        import requests
+
+        capture=datetime(2026,11,2,7,31,tzinfo=ZoneInfo("Europe/Rome"))
+        cash=pd.date_range("2026-10-30T19:50:00Z",periods=2,freq="5min")
+
+        class FakeYahoo:
+            def Ticker(self,name):
+                self.assert_us_oil(name)
+                return type("Frame",(),{"history":lambda self,**kwargs:bars(
+                    *[(d.to_pydatetime(),168.7) for d in cash])})()
+            @staticmethod
+            def assert_us_oil(name):
+                if name!="USO":
+                    raise AssertionError("No fallback to Yahoo CL")
+
+        class Reply:
+            def __init__(self,payload=None,status=200):
+                self.payload=payload
+                self.status_code=status
+                self.headers={"Retry-After":"60"} if status==429 else {}
+            def raise_for_status(self):
+                if self.status_code>=400:
+                    raise requests.HTTPError(
+                        f"{self.status_code}",response=self)
+            def json(self):
+                return self.payload
+
+        contracts=[
+            {"ticker":t,"product_code":"CL","active":True,"type":"single",
+             "first_trade_date":"2025-01-01","last_trade_date":d}
+            for t,d in (("CLZ6","2026-11-20"),("CLF7","2026-12-21"))
+        ]
+        calls=[]
+        def getter(url,params=None,headers=None,timeout=None):
+            calls.append((url,params["resolution"] if "resolution" in params else "contracts"))
+            if url.endswith("/contracts"):
+                return Reply({"status":"OK","results":contracts})
+            ticker=url.rsplit("/",1)[-1]
+            if params["resolution"]=="1session":
+                vol=199541 if ticker=="CLZ6" else 43594
+                return Reply({"status":"OK","results":[{
+                    "ticker":ticker,"volume":vol,"session_end_date":"2026-10-30"}]})
+            self.assertEqual(ticker,"CLZ6")
+            if sum(1 for _,res in calls if res=="5min")==1:
+                return Reply(status=429)
+            return Reply({"status":"OK","results":[{
+                "ticker":ticker,"session_end_date":"2026-10-30",
+                "window_start":int(d.value),"close":103.14}
+                for d in cash]})
+
+        fr._cl_cached_json.cache_clear()
+        clock=[1000.]
+        try:
+            with patch.object(fr.requests,"get",side_effect=getter), \\
+                 patch.object(fr,"monotonic",side_effect=lambda:clock[0]), \\
+                 patch.object(fr,"_CL_COOLDOWN_UNTIL",0.):
+                with self.assertRaisesRegex(ValueError,"HTTP 429"):
+                    fr.fetch_oil_pair(fr.AUTO_OIL_CONTRACT,capture,
+                                      "test-cache-429-key",yf_module=FakeYahoo())
+                self.assertEqual(len(calls),4)
+                with self.assertRaisesRegex(ValueError,"attendi almeno"):
+                    fr.fetch_oil_pair(fr.AUTO_OIL_CONTRACT,capture,
+                                      "test-cache-429-key",yf_module=FakeYahoo())
+                self.assertEqual(len(calls),4)
+                clock[0]+=61
+                result=fr.fetch_oil_pair(fr.AUTO_OIL_CONTRACT,capture,
+                                         "test-cache-429-key",yf_module=FakeYahoo())
+                self.assertEqual(len(calls),5)
+                self.assertEqual(result["future_massive_ticker"],"CLZ6")
+                self.assertAlmostEqual(result["ratio"],103.14/168.7)
+                self.assertEqual(result["bar_ny"][11:16],"15:55")
+                # Another snapshot using the same completed ETF cash session:
+                # zero additional Massive calls, and a frozen valid mapping.
+                later=datetime(2026,11,2,9,5,tzinfo=ZoneInfo("Europe/Rome"))
+                again=fr.fetch_oil_pair(fr.AUTO_OIL_CONTRACT,later,
+                                        "test-cache-429-key",yf_module=FakeYahoo())
+                self.assertEqual(len(calls),5)
+                self.assertAlmostEqual(again["ratio"],result["ratio"])
+        finally:
+            fr._cl_cached_json.cache_clear()
+
+    def test_cached_cl_responses_are_not_shared_with_injected_test_getters(self):
+        import future_ratio as fr
+        target=date(2026,10,30)
+        calls=[]
+        def getter(url,params=None,headers=None,timeout=None):
+            calls.append(url)
+            return type("Reply",(),{"raise_for_status":lambda self:None,
+                   "json":lambda self:{"status":"OK","results":[{
+                       "ticker":"CLZ6","session_end_date":target.isoformat(),
+                       "window_start":int(pd.Timestamp("2026-10-30T19:55Z").value),
+                       "close":103.14}]}})()
+        first=fr._oil_massive_bars("CLZ6",target,"test-123",get=getter)
+        second=fr._oil_massive_bars("CLZ6",target,"test-123",get=getter)
+        self.assertEqual(len(calls),2)
+        self.assertTrue(first.equals(second))
+
     def test_manual_pair_is_explicitly_unverified(self):
         pair = manual_pair(167.46, 101.14, "USO",
                            "CLZ26 · dicembre 2026", DAY, "14:45")
