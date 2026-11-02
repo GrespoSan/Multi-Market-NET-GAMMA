@@ -124,11 +124,15 @@ def produce_timed_scripts(symbol, day, captures, reference, band,
                 if prev_slot not in profiles:
                     raise ValueError(f"Manca 0DTE precedente {LABELS[prev_slot]}.")
                 prev = profiles[prev_slot]
+                details = {}
                 script = make_pine_comparison_v2(
                     symbol, prev["0DTE"], now["0DTE"], now["Weekly"],
                     basis_or_mapping, day, prev["capture"], now["capture"],
                     prev_slot, slot,
-                    etf_previous_close=reference if symbol != "NDX" else None)
+                    etf_previous_close=reference if symbol != "NDX" else None,
+                    export_details=details)
+                if details.get("note"):
+                    now["pine_display_note"] = details["note"]
             if macro_news and symbol == "NDX":
                 from pine_news_overlay import append_news
                 script = append_news(script, macro_news)
@@ -190,6 +194,8 @@ def render_timed_pine_exports(symbol, day, reference, band, basis_or_mapping,
                     use_container_width=True)
                 clock = pine_capture_clock(profiles[slot]["capture"]["rome"])
                 st.caption(f"Acquisizione reale: {clock['stamp']}")
+                if profiles[slot].get("pine_display_note"):
+                    st.warning(profiles[slot]["pine_display_note"])
             else:
                 st.button("Pine " + EXPLANATIONS[slot] + " · non disponibile",
                           disabled=True, key=f"{symbol}_missing_{day}_{slot}",
