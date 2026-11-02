@@ -147,15 +147,18 @@ def make_pine_comparison_v2(symbol, previous, current, weekly,
         if symbol == "NDX" else
         "    array<float> prevMapped = mapETF(prevStrikesETF, ratioToDraw)\n"
     )
-    current_levels="odteLevels" if symbol=="NDX" else "odteLevels"
+    current_levels="odteLevels"
     weekly_levels="weeklyLevels"
+    mapped_init = ("" if symbol == "NDX" else
+                   "    array<float> odteLevels = mapETF(mainStrikesETF, ratioToDraw)\\n"
+                   "    array<float> weeklyLevels = mapETF(weeklyStrikesETF, ratioToDraw)\\n")
     code=code[:start]+f'''{marker}    for ln in drawnLines
         line.delete(ln)
     array.clear(drawnLines)
     for lb in drawnLabels
         label.delete(lb)
     array.clear(drawnLabels)
-{("    array<float> odteLevels = mapETF(mainStrikesETF, ratioToDraw)\n    array<float> weeklyLevels = mapETF(weeklyStrikesETF, ratioToDraw)\n") if symbol != "NDX" else ""}{make_levels}    float actualScale = gammaPerCandle
+{mapped_init}{make_levels}    float actualScale = gammaPerCandle
     int prevCenter = offsetOdte
     int currentCenter = offsetOdte + (showPrevious ? offsetCompare : 0)
     int weeklyCenter = currentCenter + offsetWeekly
