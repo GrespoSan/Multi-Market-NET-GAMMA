@@ -79,6 +79,16 @@ class SPXSnapshotParityTests(unittest.TestCase):
         self.assertIn("Archivio · download ore 07:31 Roma", descriptor)
         self.assertNotIn("manuale", descriptor.lower())
 
+    def test_pine_macro_diagnostic_is_collapsed_and_never_blocks_export(self):
+        source=(ROOT/"v2_market_engine.py").read_text(encoding="utf-8")
+        self.assertIn("with st.expander('Dettaglio news macro opzionali nei Pine', expanded=False):", source)
+        self.assertNotIn("st.warning('Calendario macro USA temporaneamente non disponibile:", source)
+        self.assertIn("macro_news=events_for_pine(day)", source)
+        self.assertIn("if macro_news:", source)
+        self.assertIn("code=append_news(code,macro_news)", source)
+        self.assertIn("code=make_pine(data,basis,day,day.strftime('%d/%m'))", source)
+        self.assertIn("st.download_button(f'Scarica Pine", source)
+
     def test_scheduler_retains_chicago_dst_and_authorized_source_gate(self):
         from v2_schedule import SLOTS as clock
         import v2_cron

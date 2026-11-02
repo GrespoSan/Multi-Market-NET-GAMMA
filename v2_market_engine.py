@@ -334,18 +334,20 @@ def render_selected_market(market_key):
     if '0DTE' in visual_profiles: choices.append(('Solo 0DTE',{'0DTE':visual_profiles['0DTE']}))
     if 'Weekly' in visual_profiles: choices.append(('Solo Weekly',{'Weekly':visual_profiles['Weekly']}))
     if len(visual_profiles)==2: choices.append(('0DTE + Weekly',visual_profiles))
-    # Le linee macro usano gli eventi già pubblicati dal calendario Finance Calendar,
-    # con conversione in Europe/Rome; nessun orario inventato per news senza timestamp.
-    try:
-        with st.spinner('Verifica calendario macro USA...'):
-            macro_news=events_for_pine(day)
-        st.caption(f"News macro nel Pine: {len(macro_news)} orari distinti/registrazioni "
-                   f"per il {day:%d/%m/%Y} · Fonte: [Finance Calendar]({MACRO_CREDITS}). "
-                   "Le linee rosse/arancioni possono essere disattivate nei parametri Pine.")
-    except Exception:
-        macro_news=[]
-        st.warning('Calendario macro USA temporaneamente non disponibile: '
-                   'i Pine saranno esportati SENZA linee news, non con orari presunti.')
+    # Linee news opzionali: il calendario è indipendente dai NET GAMMA.
+    # Nascondiamo i dettagli nella sezione espandibile, senza cambiare il
+    # codice Pine esportato o inventare timestamp se la fonte è assente.
+    macro_news=[]
+    with st.expander('Dettaglio news macro opzionali nei Pine', expanded=False):
+        try:
+            with st.spinner('Verifica calendario macro USA...'):
+                macro_news=events_for_pine(day)
+            st.caption(f"Eventi macro con orario verificato: {len(macro_news)} "
+                       f"per il {day:%d/%m/%Y} · Fonte: [Finance Calendar]({MACRO_CREDITS}). "
+                       "Le linee possono essere disattivate nei parametri Pine.")
+        except Exception:
+            st.caption('Calendario macro non disponibile: eventuali linee news '
+                       'vengono omesse dai Pine. I livelli NET GAMMA non cambiano.')
     exports=[]
     for title,data in choices:
         try:
