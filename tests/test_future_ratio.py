@@ -356,9 +356,9 @@ class RatioTests(unittest.TestCase):
         fr._cl_cached_json.cache_clear()
         clock=[1000.]
         try:
-            with patch.object(fr.requests,"get",side_effect=getter), \\
-                 patch.object(fr,"monotonic",side_effect=lambda:clock[0]), \\
-                 patch.object(fr,"_CL_COOLDOWN_UNTIL",0.):
+            with (patch.object(fr.requests,"get",side_effect=getter),
+                  patch.object(fr,"monotonic",side_effect=lambda:clock[0]),
+                  patch.object(fr,"_CL_COOLDOWN_UNTIL",0.)):
                 with self.assertRaisesRegex(ValueError,"HTTP 429"):
                     fr.fetch_oil_pair(fr.AUTO_OIL_CONTRACT,capture,
                                       "test-cache-429-key",yf_module=FakeYahoo())
