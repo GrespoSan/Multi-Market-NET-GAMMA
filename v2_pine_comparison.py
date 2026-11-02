@@ -150,8 +150,8 @@ def make_pine_comparison_v2(symbol, previous, current, weekly,
     current_levels="odteLevels"
     weekly_levels="weeklyLevels"
     mapped_init = ("" if symbol == "NDX" else
-                   "    array<float> odteLevels = mapETF(mainStrikesETF, ratioToDraw)\\n"
-                   "    array<float> weeklyLevels = mapETF(weeklyStrikesETF, ratioToDraw)\\n")
+                   "    array<float> odteLevels = mapETF(mainStrikesETF, ratioToDraw)\n"
+                   "    array<float> weeklyLevels = mapETF(weeklyStrikesETF, ratioToDraw)\n")
     code=code[:start]+f'''{marker}    for ln in drawnLines
         line.delete(ln)
     array.clear(drawnLines)
