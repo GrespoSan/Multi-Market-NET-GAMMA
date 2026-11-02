@@ -58,7 +58,11 @@ def render_selected_market(market_key):
                 st.session_state['ndx_blob']=raw
                 st.session_state['ndx_name']='NDX_CBOE_online.json'
                 st.session_state['ndx_source']='Acquisizione diretta su richiesta'
-                st.session_state['ndx_download_rome']=datetime.now(ROME).strftime('%d/%m/%Y %H:%M:%S Roma')
+                # Keep a real timezone-aware instant for DST-safe Pine output,
+                # separately from the old user-facing Rome display string.
+                captured_now = datetime.now(ROME)
+                st.session_state['ndx_download_rome']=captured_now.strftime('%d/%m/%Y %H:%M:%S Roma')
+                st.session_state['ndx_capture_rome_iso']=captured_now.isoformat(timespec='seconds')
                 st.success('Fotografia NDX ricevuta e verificata nella struttura.')
             except Exception as exc:
                 st.error(f'Fonte live non disponibile: {str(exc)[:260]}')
@@ -72,6 +76,7 @@ def render_selected_market(market_key):
                     st.session_state['ndx_name']=uploaded.name
                     st.session_state['ndx_source']='Importazione manuale'
                     st.session_state['ndx_download_rome']=None
+                    st.session_state['ndx_capture_rome_iso']=None
                     st.session_state['ndx_upload_tag']=(uploaded.name,len(content),hash(content))
                     st.success('JSON originale NDX importato e validato.')
                 except Exception as exc:
@@ -85,8 +90,10 @@ def render_selected_market(market_key):
                 st.session_state['ndx_blob']=scheduled_raw
                 st.session_state['ndx_name']=scheduled_name
                 st.session_state['ndx_source']='Archivio privato · rilevamento programmato'
+                st.session_state['ndx_capture_rome_iso']=st.session_state.get(
+                    'v2_archive_capture_rome_NDX')
                 st.session_state['ndx_download_rome']=(
-                    st.session_state.get('v2_archive_capture_rome_NDX')
+                    st.session_state['ndx_capture_rome_iso']
                     or 'Archivio privato · ora acquisizione non verificabile')
                 st.success('Fotografia programmata NDX validata e caricata.')
             except Exception as exc:
@@ -370,7 +377,16 @@ def render_selected_market(market_key):
     exports=[]
     for title,data in choices:
         try:
-            code=make_pine(data,basis,day,day.strftime('%d/%m'))
+            # The original Cboe JSON timestamp has no certified timezone.
+            # Archive filenames carry actual UTC acquisition; direct capture
+            # records an aware Rome instant. An imported file has neither.
+            acquisition = (
+                st.session_state.get('ndx_capture_rome_iso')
+                or st.session_state.get('ndx_download_rome')
+                if st.session_state.get('ndx_source') != 'Importazione manuale'
+                else None)
+            code=make_pine(data,basis,day,day.strftime('%d/%m'),
+                           acquisition_time=acquisition)
             if macro_news:
                 code=append_news(code,macro_news)
             exports.append((title,code))
