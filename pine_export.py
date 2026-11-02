@@ -4,6 +4,7 @@ Solo disegno dei NET GAMMA gia' calcolati. Ticker consentiti: NQ e MNQ.
 from math import ceil, floor, isfinite, log10
 from datetime import date
 from pine_spx_visual import spx_inputs, SPX_RENDER_FUNCTIONS, spx_last_bar
+from v2_pine_capture import pine_capture_clock
 
 
 def _pine_array(rows, field, offset=0.0):
@@ -59,7 +60,8 @@ def _initial_manual_scale(profiles):
 
 
 
-def make_pine(profiles: dict, basis: float, target: date, label: str) -> str:
+def make_pine(profiles: dict, basis: float, target: date, label: str,
+              acquisition_time=None) -> str:
     if not profiles or not isfinite(float(basis)):
         raise ValueError("NET GAMMA o differenziale NQ-NDX non valido.")
     if any(name not in ("0DTE","Weekly") for name in profiles):
@@ -83,17 +85,21 @@ def make_pine(profiles: dict, basis: float, target: date, label: str) -> str:
     first=date.fromisoformat(odte["expiry"]).strftime("%d/%m") if odte["rows"] else ""
     second=date.fromisoformat(weekly["expiry"]).strftime("%d/%m") if weekly["rows"] else ""
     band=next(iter(profiles.values())).get("band_pct",3.0)
+    capture = pine_capture_clock(acquisition_time)
+    capture_suffix = ("Acq " + capture["clock"] if capture["verified"]
+                      else capture["clock"])
     inputs = spx_inputs(scale_text, scale_step_text, "0DTE",
         "Valore iniziale scelto dalla fotografia NDX per rendere visibili i profili. "
         "Scala sempre MANUALE; NET GAMMA invariato.")
     graphics = SPX_RENDER_FUNCTIONS
     main_call = (f'renderProfile(odteLevels, odteValues, bar_index + offsetOdte, '
-                 f'"0DTE {first}", actualScale)' if odte["rows"] else "")
+                 f'"0DTE {first} · {capture_suffix}", actualScale)' if odte["rows"] else "")
     weekly_call = (f'renderProfile(weeklyLevels, weeklyValues, bar_index + weeklyCenter, '
-                   f'"Weekly {second}", actualScale)' if weekly["rows"] else "")
+                   f'"Weekly {second} · {capture_suffix}", actualScale)' if weekly["rows"] else "")
     draw = spx_last_bar(main_call, weekly_call, "odteValues", "weeklyValues")
     return f'''//@version=6
-indicator("Multi-Market NET GAMMA · NDX/NQ · {target.isoformat()} · {label}", overlay=true, max_lines_count=500, max_labels_count=35)
+indicator("Multi-Market NET GAMMA · NDX/NQ · {target.isoformat()} · {capture_suffix} · {label}", overlay=true, max_lines_count=500, max_labels_count=35)
+// Ora acquisizione fotografia Cboe (Europe/Rome, CET/CEST): {capture["stamp"]}. Non e' l'ora Cboe originale.
 // Visualizzazione statica dei NET GAMMA calcolati dall'app, mai in Pine.
 // Valido esclusivamente per i futures NQ / MNQ; altri strumenti: nessun disegno.
 // Fascia di selezione: +/-{band:g}% dal close NDX precedente.
