@@ -199,9 +199,19 @@ class RatioTests(unittest.TestCase):
             fetch_oil_pair("CLZ26 · dicembre 2026",capture,"test-token",
                            yf_module=FakeYahoo(),
                            get=lambda *a,**k:self.fail("Must not call Massive"))
+        # With an eligible past ETF bar, the missing Massive key must
+        # fail closed before issuing any request or inventing a CL price.
+        previous=datetime(2026,10,30,19,55,tzinfo=timezone.utc)
+        class PriorOnly:
+            def history(self,**kw):
+                return bars((previous,168.8))
+        class PriorYahoo:
+            def Ticker(self,name):
+                if name!="USO": raise AssertionError("Unexpected futures fallback")
+                return PriorOnly()
         with self.assertRaisesRegex(ValueError,"MASSIVE_API_KEY"):
             fetch_oil_pair("CLZ26 · dicembre 2026",capture,"",
-                           yf_module=type("Yahoo",(),{"Ticker":lambda self,*a:OnlyFuture()})(),
+                           yf_module=PriorYahoo(),
                            get=lambda *a,**k:self.fail("Must not call Massive"))
 
     def test_manual_pair_is_explicitly_unverified(self):
