@@ -9,7 +9,7 @@ from zoneinfo import ZoneInfo
 import streamlit as st
 
 from etf_future_pine import ASSETS, make_etf_future_pine
-from future_ratio import CONTRACTS, choose_contract, fetch_pair, fetch_gold_pair, fetch_oil_pair, manual_pair
+from future_ratio import CONTRACTS, AUTO_OIL_CONTRACT, choose_contract, fetch_pair, fetch_gold_pair, fetch_oil_pair, manual_pair
 
 
 def _source_day(stamp, fallback):
@@ -76,14 +76,28 @@ def render_etf_pine_exports(symbol, calculated, reference, day,
                    "(la timezone del timestamp originale non è dichiarata). "
                    "I prezzi ETF e future devono avere lo STESSO timestamp.")
 
-    selections = list(CONTRACTS[symbol]["contracts"])
+    selections = ([AUTO_OIL_CONTRACT] + list(CONTRACTS[symbol]["contracts"])
+                  if symbol == "USO" else list(CONTRACTS[symbol]["contracts"]))
+    # One-time migration of the pre-automatic V2 session, preserving any
+    # manual override that the user makes after this version is loaded.
+    if symbol == "USO" and not st.session_state.get("uso_auto_roll_initialized"):
+        st.session_state["uso_ratio_contract"] = AUTO_OIL_CONTRACT
+        st.session_state["uso_auto_roll_initialized"] = True
     selected = st.selectbox("Contratto future da usare come riferimento",
                             selections, key=f"{symbol.lower()}_ratio_contract")
-    yahoo_symbol, tv_symbol = choose_contract(symbol, selected)
+    is_auto = symbol == "USO" and selected == AUTO_OIL_CONTRACT
+    yahoo_symbol, tv_symbol = (("Massive CL", "CL automatico")
+                               if is_auto else choose_contract(symbol, selected))
     product = "GC" if symbol == "GLD" else "CL"
-    st.caption(f"Contratto {product} di riferimento: {tv_symbol}; "
-               f"prezzi future Massive e {symbol} Yahoo, barra 5m sincronizzata. "
-               "Il rapporto resta specifico del contratto selezionato.")
+    if is_auto:
+        st.caption("CL: selezione automatica fra le prime due scadenze tramite "
+                   "il volume della seduta precedente alla fotografia Cboe. "
+                   "Il contratto scelto verrà mostrato con il rapporto. "
+                   "Puoi disattivare l'automatismo dal menu.")
+    else:
+        st.caption(f"Contratto {product} di riferimento: {tv_symbol}; "
+                   f"prezzi future Massive e {symbol} Yahoo, barra 5m sincronizzata. "
+                   "Il rapporto resta specifico del contratto selezionato.")
 
     state_key = f"{symbol.lower()}_ratio_locked"
     tried_key = f"{symbol.lower()}_ratio_tried"
@@ -157,6 +171,9 @@ def render_etf_pine_exports(symbol, calculated, reference, day,
         if st.button("Conferma e blocca coppia manuale",
                      key=f"{symbol.lower()}_ratio_manual"):
             try:
+                if is_auto:
+                    raise ValueError("Per inserire prezzi manuali, seleziona prima "
+                                     "un contratto CL specifico nel menu.")
                 pair = manual_pair(etf_manual, future_manual, symbol,
                                    selected, snapshot_day, time_manual)
                 pair["_token"] = snapshot_token
@@ -172,7 +189,15 @@ def render_etf_pine_exports(symbol, calculated, reference, day,
         return
 
     ratio = float(result["ratio"])
-    st.markdown(f"**Rapporto BLOCCATO {symbol} → {tv_symbol}: {ratio:.8f}**")
+    actual_contract = result["future_tv_symbol"]
+    if symbol == "USO" and result.get("auto_contract"):
+        a = result["auto_contract"]
+        st.caption(f"Rollover automatico · seduta {a['reference_date']} · "
+                   f"{a['front_ticker']}: {a['front_volume']:,} contratti; "
+                   f"{a['second_ticker']}: {a['second_volume']:,} contratti. "
+                   f"Selezionato **{actual_contract}**. "
+                   "Riferimento per il grafico, non replica del portafoglio USO.")
+    st.markdown(f"**Rapporto BLOCCATO {symbol} → {actual_contract}: {ratio:.8f}**")
     st.caption(f"ETF {result['etf_price']:,.4f} · Future {result['future_price']:,.4f} "
                f"· Barra {result['bar_ny']} (New York) · {result['source']}.")
     st.caption("Il rapporto resterà IDENTICO fino alla successiva acquisizione esplicita. "
@@ -206,7 +231,7 @@ def render_etf_pine_exports(symbol, calculated, reference, day,
             st.download_button(
                 f"Scarica Pine · {title}",
                 data=script.encode("utf-8"),
-                file_name=f"{symbol}_{tv_symbol.split(':')[-1]}_{day:%Y%m%d}_{file_part}.pine",
+                file_name=f"{symbol}_{actual_contract.split(':')[-1]}_{day:%Y%m%d}_{file_part}.pine",
                 mime="text/plain", on_click="ignore",
                 use_container_width=True,
                 key=f"{symbol.lower()}_pine_{file_part}",
