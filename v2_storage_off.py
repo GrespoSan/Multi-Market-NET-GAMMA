@@ -15,6 +15,8 @@ from v2_github_archive import (
     list_v2_artifacts, fetch_artifact_snapshot, decrypt_encrypted,
 )
 
+from v2_pine_session import parse_archived_capture, artifact_in_session_window, SLOTS
+
 ROME = ZoneInfo("Europe/Rome")
 AVAILABLE_MARKETS = ("NDX", "GLD", "USO")
 SLOTS = {"0730": "Mattina 07:30 Roma",
@@ -204,3 +206,41 @@ def archive_panel(symbol: str):
                 except Exception:
                     st.error("File o chiave archivio V2 non validi.")
     return None
+
+
+def load_pine_slot_captures(symbol, market_day, *, max_candidates=30):
+    """Read only actual same-NY-date encrypted captures for 07:30/15:50/20:30.
+
+    Reuses the existing GitHub artifact and snapshot Streamlit caches. Calls
+    do not touch Massive, Cboe live endpoints, or Supabase. Missing data remain
+    missing; never reuse a different day's photograph or clock.
+    """
+    if symbol not in AVAILABLE_MARKETS:
+        raise ValueError("Mercato V2 non valido.")
+    from datetime import date
+    if not isinstance(market_day, date):
+        raise ValueError("Data mercato non valida.")
+    try:
+        token = str(st.secrets.get("V2_GITHUB_TOKEN", "")).strip()
+        key = str(st.secrets.get("V2_ARCHIVE_FERNET_KEY", "")).strip()
+    except Exception:
+        token = key = ""
+    if not token or not key:
+        raise ValueError("Mancano Secrets di sola lettura archivio V2.")
+    artifacts = _cached_artifacts(token)
+    candidates = [x for x in artifacts
+                  if artifact_in_session_window(x.get("created_at"), market_day)]
+    result = {}
+    for artifact in candidates[:max_candidates]:
+        if len(result) == len(SLOTS):
+            break
+        try:
+            raw, filename = _cached_snapshot(
+                artifact["url"], symbol, token, key)
+            info = parse_archived_capture(filename, symbol, market_day)
+        except (ValueError, KeyError, TypeError, OSError):
+            continue
+        slot = info["slot"]
+        if slot not in result or info["utc"] > result[slot]["utc"]:
+            result[slot] = {**info, "raw": raw}
+    return result
