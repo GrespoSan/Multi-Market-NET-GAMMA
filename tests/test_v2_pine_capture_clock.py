@@ -126,9 +126,11 @@ class AcquisitionClockTests(unittest.TestCase):
         etf=(root/"etf_pine_view.py").read_text()
         self.assertIn("ndx_capture_rome_iso",ndx)
         self.assertIn("v2_archive_capture_rome_NDX",ndx)
-        self.assertIn("acquisition_time=acquisition",ndx)
-        self.assertIn('prefix + "source") != "Importazione manuale"',etf)
-        self.assertIn("acquisition_time=acquisition",etf)
+        self.assertIn("render_timed_pine_exports(",ndx)
+        self.assertIn("render_timed_pine_exports(",etf)
+        timed=(root/"v2_pine_timed_exports.py").read_text()
+        self.assertIn('acquisition_time=now["capture"]["rome"]',timed)
+        self.assertIn('make_pine_comparison_v2(',timed)
 
 
 if __name__=="__main__":
