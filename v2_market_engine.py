@@ -264,13 +264,15 @@ def render_selected_market(market_key):
     shared_price_range = [min(band_low, min(shown_strikes)) + price_shift,
                           max(band_high, max(shown_strikes)) + price_shift]
     
-    st.subheader(f'NET GAMMA — NDX · fascia ±{band_pct:g}%')
+    st.subheader(f'NET GAMMA — NDX → NQ · fascia ±{band_pct:g}%')
     st.caption('Formula invariata: NET = [(OI+Volume)×Gamma] Call − [(OI+Volume)×Gamma] Put. '
                'Tutti gli strike Cboe disponibili tra '
                f'**{band_low:,.2f} e {band_high:,.2f} NDX** (±{band_pct:g}% dal close precedente). '
                'Stessa fascia prezzi e stessa scala Gamma per 0DTE e Weekly.')
     if basis is None:
-        st.warning('Differenziale assente: vengono rappresentati gli strike NDX; esportazione NQ disabilitata.')
+        st.warning('Differenziale NQ–NDX assente: grafici in scala NQ non disponibili. '
+                   'Non vengono mostrati strike NDX come se fossero NQ; '
+                   'esportazione NQ disabilitata.')
     else:
         # Identico riferimento grafico SPX/ES: close indice precedente + basis future.
         # E' solo un livello guida e non interviene nel calcolo dei NET GAMMA.
@@ -301,17 +303,19 @@ def render_selected_market(market_key):
             _, capture_label = capture_display(
                 doc.get('timestamp'), st.session_state.get('ndx_download_rome'),
                 st.session_state.get('ndx_source', st.session_state.get('ndx_name', '')))
-            fg = profile_chart(
-                visual_profiles[kind]['rows'], 'NDX', reference,
-                (spx_shared_gamma_bounds([visual_profiles[kind]], field='net_gamma')
-                 if independent_scale else shared_gamma_range),
-                shared_price_range, level_field='strike_index',
-                gamma_field='net_gamma', price_shift=price_shift,
-                ndx=True, show_close=basis is not None,
-                title=kind, snapshot_label=capture_label,
-                tick_levels=shared_ticks)
-            st.plotly_chart(fg, use_container_width=True,
-                            key=f'ndx_spx_gamma_{kind}_{group["expiry"]}')
+            if basis is not None:
+                fg = profile_chart(
+                    visual_profiles[kind]['rows'], 'NDX', reference,
+                    (spx_shared_gamma_bounds([visual_profiles[kind]], field='net_gamma')
+                     if independent_scale else shared_gamma_range),
+                    shared_price_range, level_field='strike_index',
+                    gamma_field='net_gamma', price_shift=price_shift,
+                    axis_symbol='NQ', close_label='Close prec. proiettato',
+                    ndx=True, show_close=True,
+                    title=kind, snapshot_label=capture_label,
+                    tick_levels=shared_ticks)
+                st.plotly_chart(fg, use_container_width=True,
+                                key=f'ndx_spx_gamma_{kind}_{group["expiry"]}')
     
     # Vista confronto facoltativa: la chiamata Yahoo 5m parte soltanto se attivata.
     # I grafici NDX base e il motore Gamma rimangono invariati.
