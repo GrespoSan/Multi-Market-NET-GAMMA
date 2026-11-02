@@ -280,8 +280,13 @@ def render_etf_pine_exports(symbol, calculated, reference, day,
     exports = {}
     for title, selected_profiles in choices:
         try:
+            # Manual file import has an import clock, NOT a verified
+            # original Cboe acquisition instant. Never label it as such.
+            acquisition = (capture_dt if st.session_state.get(
+                prefix + "source") != "Importazione manuale" else None)
             exports[title] = make_etf_future_pine(
-                symbol, selected_profiles, reference, day, title, result)
+                symbol, selected_profiles, reference, day, title, result,
+                acquisition_time=acquisition)
         except Exception as exc:
             st.warning(f"Esportazione {title} non disponibile: {str(exc)[:250]}")
     if not exports:
