@@ -10,6 +10,7 @@ from datetime import date, datetime, timedelta, time
 from zoneinfo import ZoneInfo
 import pandas as pd
 import requests
+from v2_massive_day_cache import fetch_json as fetch_massive_json
 
 NY=ZoneInfo('America/New_York')
 MASSIVE_FUTURES_API="https://api.massive.com/futures/v1/aggs"
@@ -48,21 +49,14 @@ def _dated_nq_bars(contract: str, reference_day: date, api_key: str,
     """15m Massive bars at real UTC start timestamps for a single dated NQ."""
     if not str(api_key or "").strip():
         raise ValueError("MASSIVE_API_KEY assente: differenziale NQ non verificabile")
-    getter=get or requests.get
     try:
-        response=getter(
+        obj=fetch_massive_json(
             f"{MASSIVE_FUTURES_API}/{contract}",
-            headers={"Authorization":f"Bearer {api_key}",
-                     "Accept":"application/json"},
-            params={"resolution":"15min",
-                    "window_start.gte":reference_day.isoformat(),
-                    # Upper date bound is midnight UTC; use exclusive NEXT
-                    # day so the whole cash session is retrieved.
-                    "window_start.lt":(reference_day+timedelta(days=1)).isoformat(),
-                    "sort":"window_start.asc","limit":300},
-            timeout=(6,20))
-        response.raise_for_status()
-        obj=response.json()
+            {"resolution":"15min",
+             "window_start.gte":reference_day.isoformat(),
+             "window_start.lt":(reference_day+timedelta(days=1)).isoformat(),
+             "sort":"window_start.asc","limit":300},
+            api_key,get=get)
     except (requests.RequestException,ValueError,TypeError) as exc:
         raise ValueError("Massive: intraday NQ non disponibile per il contratto scelto") from exc
     if (not isinstance(obj,dict) or obj.get("status") not in ("OK","DELAYED")
