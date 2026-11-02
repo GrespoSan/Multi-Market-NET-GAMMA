@@ -91,6 +91,16 @@ class MassiveDayCacheTests(unittest.TestCase):
         self.assertTrue(b.exists())
         self.assertTrue(unrelated.exists())
 
+    def test_midnight_rollover_is_detected_across_browser_sessions(self):
+        """Cross-user transition invalidates one-hour Streamlit caches."""
+        import v2_massive_day_cache as mod
+        start = datetime(2026,11,2,23,59,tzinfo=ZoneInfo("Europe/Rome"))
+        next_day = datetime(2026,11,3,0,1,tzinfo=ZoneInfo("Europe/Rome"))
+        with patch.object(mod, "_LAST_ROMA_DAY", None):
+            self.assertFalse(purge_expired(start))
+            self.assertTrue(purge_expired(next_day))
+            self.assertFalse(purge_expired(next_day))
+
     def test_new_day_unfreezes_ratios_but_retains_original_snapshots(self):
         state={
             "_v2_massive_session_rome_day":"2026-11-02",
