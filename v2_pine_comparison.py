@@ -118,13 +118,23 @@ def make_pine_comparison_v2(symbol, previous, current, weekly,
         f"Gamma originale di ogni fotografia invariato.\n"
     )
     code = code.replace("//@version=6\n", "//@version=6\n" + insertion + display_comment, 1)
+    # Pine inputs appear in source declaration order. Place the previous
+    # snapshot toggle immediately above the current snapshot toggle for
+    # every comparison (NDX, GLD, USO; afternoon and evening).
+    current_toggle = 'showCurrentOdte = input.bool(true, "Mostra 0DTE corrente")'
+    if code.count(current_toggle) != 1:
+        raise ValueError("Template Pine SPX non compatibile con confronto.")
+    code = code.replace(
+        current_toggle,
+        'showPrevious = input.bool(true, "Mostra 0DTE precedente")\n'
+        + current_toggle, 1)
     setting = 'showTitles = input.bool(true, "Mostra intestazioni")'
     if code.count(setting) != 1:
         raise ValueError("Template Pine SPX non compatibile con confronto.")
     code = code.replace(
         setting,
-        setting + '\nshowPrevious = input.bool(true, "Mostra 0DTE precedente")'
-        '\noffsetCompare = input.int(95, "Distanza 0DTE corrente dalle precedenti",'
+        setting
+        + '\noffsetCompare = input.int(95, "Distanza 0DTE corrente dalle precedenti",'
         ' minval=20, maxval=300)', 1)
 
     anchor = "var array<float> odteLevels = " if symbol == "NDX" else "var array<float> mainStrikesETF = "
