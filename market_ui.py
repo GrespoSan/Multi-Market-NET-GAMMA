@@ -73,7 +73,7 @@ def render_dashboard_header(markets):
     return key
 
 
-def render_acquisition_controls(symbol, source_url, show_header=True):
+def render_acquisition_controls(symbol, source_url, show_header=True, collapsed_import=True):
     """Reusable acquisition UI: primary button, collapsed import, source notice.
 
     Returns only UI intent; market-specific caller does ALL validation/state
@@ -89,7 +89,12 @@ def render_acquisition_controls(symbol, source_url, show_header=True):
         type="primary",
         key=f"{symbol.lower()}_cboe_fetch",
     )
-    with st.expander("Importazione manuale JSON originale", expanded=False):
+    # Nella V2 la sezione principale e' gia' un expander superiore:
+    # evita un secondo expander annidato (ma conserva la compatibilita').
+    from contextlib import nullcontext
+    section = (st.expander("Importazione manuale JSON originale", expanded=False)
+               if collapsed_import else nullcontext())
+    with section:
         st.link_button(f"Apri file {symbol}.json su Cboe", source_url)
         uploaded = st.file_uploader(
             f"Carica file {symbol} (.json o .json.gz)",
