@@ -214,6 +214,90 @@ class RatioTests(unittest.TestCase):
                            yf_module=PriorYahoo(),
                            get=lambda *a,**k:self.fail("Must not call Massive"))
 
+
+    def test_automatic_oil_roll_uses_last_completed_session_volumes(self):
+        from future_ratio import fetch_oil_pair, AUTO_OIL_CONTRACT
+        capture=datetime(2026,11,2,7,31,tzinfo=ZoneInfo("Europe/Rome"))
+        cash=pd.date_range("2026-10-30T13:30:00Z",periods=78,freq="5min")
+        class FakeYahoo:
+            def Ticker(self,ticker):
+                if ticker != "USO": raise AssertionError("Unexpected Yahoo future")
+                return type("Quotes",(),{"history":lambda self,**kw:bars(
+                    *[(t.to_pydatetime(),168+.01*i) for i,t in enumerate(cash)])})()
+        class Response:
+            def __init__(self,data): self.data=data
+            def raise_for_status(self): return None
+            def json(self): return self.data
+        def contract(name,expiration):
+            return {"ticker":name,"product_code":"CL","active":True,
+                    "type":"single","first_trade_date":"2025-01-01",
+                    "last_trade_date":expiration}
+        expiry=[contract("CLF7","2026-12-21"),contract("CLZ6","2026-11-20")]
+        def make_get(volumes):
+            def getter(url,params=None,headers=None,timeout=None):
+                self.assertEqual(headers["Authorization"],"Bearer secret")
+                if url.endswith("/contracts"):
+                    self.assertEqual(params["date"],"2026-10-30")
+                    return Response({"status":"OK","results":expiry})
+                contract_name=url.rsplit("/",1)[-1]
+                if params["resolution"]=="1session":
+                    self.assertEqual(params["window_start.lte"],"2026-10-30")
+                    return Response({"status":"OK","results":[{
+                        "ticker":contract_name,"session_end_date":"2026-10-30",
+                        "volume":volumes[contract_name]}]})
+                self.assertEqual(params["resolution"],"5min")
+                self.assertEqual(params["window_start.lt"],"2026-10-31")
+                return Response({"status":"OK","results":[{
+                    "ticker":contract_name,"session_end_date":"2026-10-30",
+                    "window_start":int(t.value),
+                    "close":103+.002*i if contract_name=="CLZ6" else 101+.002*i}
+                    for i,t in enumerate(cash)]})
+            return getter
+        # Before CL roll: front has more volume.
+        front=fetch_oil_pair(AUTO_OIL_CONTRACT,capture,"secret",
+                             yf_module=FakeYahoo(),
+                             get=make_get({"CLZ6":199541,"CLF7":43594}))
+        self.assertEqual(front["future_massive_ticker"],"CLZ6")
+        self.assertEqual(front["future_tv_symbol"],"NYMEX:CLZ2026")
+        self.assertEqual(front["auto_contract"]["reference_date"],"2026-10-30")
+        self.assertAlmostEqual(front["ratio"],(103+.002*77)/(168+.01*77))
+        # Once the next contract overtakes front, auto selects the next.
+        next_month=fetch_oil_pair(AUTO_OIL_CONTRACT,capture,"secret",
+                                 yf_module=FakeYahoo(),
+                                 get=make_get({"CLZ6":43594,"CLF7":199541}))
+        self.assertEqual(next_month["future_massive_ticker"],"CLF7")
+        self.assertEqual(next_month["future_tv_symbol"],"NYMEX:CLF2027")
+        self.assertEqual(next_month["auto_contract"]["second_volume"],199541)
+
+    def test_automatic_oil_roll_fails_closed_on_unverified_volume(self):
+        from future_ratio import _auto_oil_contract
+        class Response:
+            def __init__(self,data): self.data=data
+            def raise_for_status(self): return None
+            def json(self): return self.data
+        contracts=[
+            {"ticker":t,"product_code":"CL","active":True,"type":"single",
+             "first_trade_date":"2025-01-01","last_trade_date":d}
+            for t,d in (("CLZ6","2026-11-20"),("CLF7","2026-12-21"))
+        ]
+        def getter(url,**kwargs):
+            if url.endswith("/contracts"):
+                return Response({"status":"OK","results":contracts})
+            return Response({"status":"OK","results":[]})
+        with self.assertRaisesRegex(ValueError,"volumi della stessa seduta"):
+            _auto_oil_contract(date(2026,10,30),"secret",get=getter)
+        with self.assertRaisesRegex(ValueError,"MASSIVE_API_KEY"):
+            _auto_oil_contract(date(2026,10,30),"",get=getter)
+
+    def test_oil_auto_ui_default_and_gold_logic_preserved(self):
+        from pathlib import Path
+        content=(Path(__file__).resolve().parent.parent/"etf_pine_view.py").read_text()
+        self.assertIn("[AUTO_OIL_CONTRACT] + list(CONTRACTS[symbol]",content)
+        self.assertIn('st.session_state["uso_ratio_contract"] = AUTO_OIL_CONTRACT',content)
+        self.assertIn("pair = fetch_gold_pair(selected, capture_dt, api_key)",content)
+        self.assertIn("pair = fetch_oil_pair(selected, capture_dt, api_key)",content)
+        self.assertIn("actual_contract = result",content)
+
     def test_manual_pair_is_explicitly_unverified(self):
         pair = manual_pair(167.46, 101.14, "USO",
                            "CLZ26 · dicembre 2026", DAY, "14:45")
