@@ -21,6 +21,7 @@ from ndx_engine import (unpack_snapshot, available_expirations, close_from_paylo
                         profile, weekly_target, DEFAULT_BAND_PCT)
 from ndx_basis import fetch_basis
 from pine_export import make_pine
+from v2_pine_timed_exports import render_timed_pine_exports
 from macro_events import events_for_pine, CREDITS as MACRO_CREDITS
 from pine_news_overlay import append_news
 from nq_price_panel import load_nq_candles, chart_compare_nq
@@ -356,10 +357,7 @@ def render_selected_market(market_key):
         st.info('Inserisci il differenziale NQ–NDX per esportare gli strike sul grafico NQ.')
         st.stop()
     
-    choices=[]
-    if '0DTE' in visual_profiles: choices.append(('Solo 0DTE',{'0DTE':visual_profiles['0DTE']}))
-    if 'Weekly' in visual_profiles: choices.append(('Solo Weekly',{'Weekly':visual_profiles['Weekly']}))
-    if len(visual_profiles)==2: choices.append(('0DTE + Weekly',visual_profiles))
+    # Time-based exports are prepared from verified same-day V2 archives.
     # Linee news opzionali: il calendario è indipendente dai NET GAMMA.
     # Nascondiamo i dettagli nella sezione espandibile, senza cambiare il
     # codice Pine esportato o inventare timestamp se la fonte è assente.
@@ -374,34 +372,10 @@ def render_selected_market(market_key):
         except Exception:
             st.caption('Calendario macro non disponibile: eventuali linee news '
                        'vengono omesse dai Pine. I livelli NET GAMMA non cambiano.')
-    exports=[]
-    for title,data in choices:
-        try:
-            # The original Cboe JSON timestamp has no certified timezone.
-            # Archive filenames carry actual UTC acquisition; direct capture
-            # records an aware Rome instant. An imported file has neither.
-            acquisition = (
-                st.session_state.get('ndx_capture_rome_iso')
-                or st.session_state.get('ndx_download_rome')
-                if st.session_state.get('ndx_source') != 'Importazione manuale'
-                else None)
-            code=make_pine(data,basis,day,day.strftime('%d/%m'),
-                           acquisition_time=acquisition)
-            if macro_news:
-                code=append_news(code,macro_news)
-            exports.append((title,code))
-        except Exception as exc:
-            st.error(f'{title}: {exc}')
-    if exports:
-        c=st.columns(len(exports))
-        for column,(title,code) in zip(c,exports):
-            with column:
-                st.download_button(f'Scarica Pine · {title}',data=code.encode('utf-8'),
-                                   file_name=f'NDX_NQ_{day:%Y%m%d}_{title.replace(" ","_")}.pine',
-                                   mime='text/plain',on_click='ignore',use_container_width=True)
-        with st.expander('Mostra codice Pine da copiare'):
-            name=st.selectbox('Profilo', [x[0] for x in exports])
-            st.code(dict(exports)[name],language='javascript')
-    st.caption('I file Pine contengono gli strike statici della fotografia scelta. '
-               'Per aggiornare il grafico, esporta nuovamente dopo una nuova fotografia.')
+    render_timed_pine_exports(
+        'NDX', day, reference, band_pct, basis,
+        extension=show_extension, macro_news=macro_news)
+    st.caption('I Pine utilizzano 0DTE e Weekly reali per ciascuno slot; '
+               'i confronti 15:50 e 20:30 non sono generati se manca '
+               'il precedente rilevamento valido della stessa giornata.')
     
