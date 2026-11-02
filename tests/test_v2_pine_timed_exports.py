@@ -79,6 +79,17 @@ class TimePineTests(unittest.TestCase):
                 self.assertIn("0DTE 20:30 · Acq 20:51 CET",code["2030"])
                 self.assertIn("Weekly 20:30 · Acq 20:51 CET",code["2030"])
                 self.assertIn("showPrevious = input.bool(true",code["1550"])
+                # TradingView lists inputs in source declaration order.
+                # Previous must be immediately above Current on both
+                # comparison Pine scripts for NDX, Gold and Oil.
+                prev_line = 'showPrevious = input.bool(true, "Mostra 0DTE precedente")'
+                curr_line = 'showCurrentOdte = input.bool(true, "Mostra 0DTE corrente")'
+                for comparison in ("1550", "2030"):
+                    lines = code[comparison].splitlines()
+                    self.assertEqual(lines.count(prev_line), 1)
+                    self.assertEqual(lines.count(curr_line), 1)
+                    self.assertEqual(
+                        lines.index(prev_line) + 1, lines.index(curr_line))
                 self.assertIn("var array<float> prevGamma =",code["2030"])
                 self.assertIn("if barstate.islast and validTicker",code["2030"])
                 self.assertIn("gammaPerCandle = input.float(",code["2030"])
