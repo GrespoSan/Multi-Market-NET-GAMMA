@@ -86,7 +86,7 @@ def make_pine_comparison_v2(symbol, previous, current, weekly,
             f"precedente {shown[0]}/{old[0]} strike reali; "
             f"corrente {shown[1]}/{old[1]}; Weekly {shown[2]}/{old[2]}. "
             "I restanti strike sono esclusi SOLO dal disegno Pine, "
-            "non dai dati Gamma originali.\\n"
+            "non dai dati Gamma originali.\n"
         )
 
     main_title = f"0DTE {LABELS[previous_slot]} · Acq {_safe_label(previous_info)}"
