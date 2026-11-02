@@ -92,6 +92,78 @@ class TimePineTests(unittest.TestCase):
                     self.assertIn("prevGamma",code["1550"])
                     self.assertIn("float lockedRatio =",code["0730"])
 
+    def test_ndx_15_50_pine_available_with_more_than_480_real_strikes(self):
+        """Regression: 15:50 snapshot exists, export was blocked at >480."""
+        from v2_pine_comparison import make_pine_comparison_v2
+        from v2_pine_strike_budget import prepare_comparison_profiles
+        captures=profiles("NDX")
+        day_profiles=[]
+        for group_idx in range(3):
+            rows=[{"strike_index": 24800.0+i*10,
+                   "net_gamma": float((i+2)*(group_idx+1))
+                                * (1 if i % 2 else -1)}
+                  for i in range(200)]
+            rows[7]["net_gamma"]=150000.0
+            rows[194]["net_gamma"]=-175000.0
+            day_profiles.append({
+                "expiry":DAY.isoformat() if group_idx < 2 else FRIDAY.isoformat(),
+                "reference":25500.0,"band_pct":3.0,"rows":rows})
+        before=[list(p["rows"]) for p in day_profiles]
+        trimmed, report=prepare_comparison_profiles("NDX",*day_profiles)
+        self.assertEqual(report["original"],[200,200,200])
+        self.assertEqual(report["rendered"],[140,140,140])
+        self.assertEqual(sum(report["rendered"]),420)
+        for i,p in enumerate(trimmed):
+            self.assertEqual(len(p["rows"]),140)
+            self.assertTrue(any(row["net_gamma"]==150000.0 for row in p["rows"]))
+            self.assertTrue(any(row["net_gamma"]==-175000.0 for row in p["rows"]))
+            self.assertEqual(before[i],day_profiles[i]["rows"])
+        exported={}
+        code=make_pine_comparison_v2(
+            "NDX", *day_profiles,140.0,DAY,
+            captures["0730"]["capture"],captures["1550"]["capture"],
+            "0730","1550", export_details=exported)
+        self.assertIn("Selezione per sola grafica",exported["note"])
+        self.assertIn("140/200",exported["note"])
+        self.assertIn("precedente 140/200",code)
+        self.assertIn("0DTE 07:30",code)
+        self.assertIn("0DTE 15:50",code)
+        self.assertIn("Weekly 15:50",code)
+        self.assertIn("150000",code)
+        self.assertIn("-175000",code)
+
+    def test_gold_and_oil_large_three_column_pine_disclose_real_strikes(self):
+        from v2_pine_comparison import make_pine_comparison_v2
+        for symbol in ("GLD","USO"):
+            base=300.0 if symbol=="GLD" else 70.0
+            p=profiles(symbol)
+            rows=[{"strike":base+i*.1,"net":((-1)**i)*(i+1)*.01}
+                  for i in range(180)]
+            prev={"expiry":DAY.isoformat(),"usable":True,"rows":list(rows)}
+            now={"expiry":DAY.isoformat(),"usable":True,"rows":list(rows)}
+            weekly={"expiry":FRIDAY.isoformat(),"usable":True,"rows":list(rows)}
+            details={}
+            code=make_pine_comparison_v2(
+                symbol,prev,now,weekly,mapping(symbol),DAY,
+                p["0730"]["capture"],p["1550"]["capture"],
+                "0730","1550",etf_previous_close=base,
+                export_details=details)
+            self.assertIn("140/180",details["note"])
+            self.assertIn("mapETF(prevStrikesETF, ratioToDraw)",code)
+            self.assertIn("Weekly 15:50",code)
+
+    def test_small_three_column_pine_has_no_reduction_warning(self):
+        from v2_pine_comparison import make_pine_comparison_v2
+        p=profiles("NDX")
+        details={}
+        code=make_pine_comparison_v2(
+            "NDX",p["0730"]["0DTE"],p["1550"]["0DTE"],
+            p["1550"]["Weekly"],140.0,DAY,
+            p["0730"]["capture"],p["1550"]["capture"],
+            "0730","1550", export_details=details)
+        self.assertNotIn("note",details)
+        self.assertNotIn("selezione grafica per limite",code)
+
     def test_missing_previous_slot_fails_closed(self):
         all_p=profiles("NDX")
         only={"1550":all_p["1550"],"2030":all_p["2030"]}
