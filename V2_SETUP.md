@@ -7,24 +7,23 @@ Report giornaliero AI.
 
 ## Architettura
 
-### Esportazione Pine semplificata (04/11/2026)
+### Esportazione Pine — 07:30 autonoma ripristinata (04/11/2026)
 
-Per tutti e tre i mercati — **NDX→NQ/MNQ**, **GLD→GC1!/MGC1!**,
-**USO→CL1!/MCL1!** — l'interfaccia esporta:
+Per tutti e tre i mercati **NDX→NQ/MNQ**, **GLD→GC1!/MGC1!**
+e **USO→CL1!/MCL1!**, mantenere quattro controlli di esportazione:
 
-- **NET GAMMA corrente (0DTE + Weekly)**: un solo file Pine della
-  fotografia Cboe selezionata in ANALISI NET GAMMA. Per esportare la
-  fotografia delle 07:30, selezionala nel menu archivio e usa questo
-  pulsante; non esiste un duplicato nella sezione dei confronti.
-- **Confronti orari** (espandibili): solo **07:30→15:50** e
-  **15:50→20:30**, disponibili soltanto quando entrambe le
-  fotografie originali della stessa seduta sono accessibili.
+- **Pine NET GAMMA corrente · 0DTE + Weekly** della fotografia Cboe
+  selezionata (NQ incluso).
+- Dentro **Pine per orari · 07:30 / 15:50 / 20:30**, tre pulsanti
+  esattamente come prima: **07:30 · 0DTE + Weekly**,
+  **07:30 0DTE → 15:50 0DTE + Weekly** e
+  **15:50 0DTE → 20:30 0DTE + Weekly**.
 
-Le formule NET GAMMA, i profili, le verifiche delle scadenze e i
-controlli sui ticker NON cambiano. Il generatore storico può ancora
-costruire internamente il Pine autonomo 07:30 per i test e per
-compatibilità, ma non presenta più un secondo pulsante 07:30 nella UI.
-Il motore Pine per i continui GC/CL resta distinto dal NDX→NQ.
+Il pulsante autonomo delle 07:30 è espressamente richiesto: NON va
+eliminato come "doppione" della fotografia corrente. Le tre
+esportazioni orarie si basano sulle fotografie originali archiviate;
+i confronti sono disponibili solo con entrambe le fotografie
+necessarie. Gamma, Pine, acquisizioni e ticker restano invariati.
 
 ## OPERATIVITÀ AGGIORNATA — SOLO FUTURES CONTINUI (04/11/2026)
 

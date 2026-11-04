@@ -1,8 +1,8 @@
-"""UI regression: exactly one current Pine and two real time comparisons.
+"""Regression: retain all THREE scheduled Pine exports on every V2 market.
 
-Keeps old 07:30 generator for parity tests, but no second 07:30 button.
-The selected Cboe archive photograph is the only source for current Pine.
-No changes to Gamma formulas, archived comparisons or futures conversion.
+The current Pine and the 07:30 scheduled Pine are both intentional user-facing
+controls. Never hide the 07:30 autonomous button to deduplicate the UI.
+No changes to Gamma calculations or historical snapshot validation.
 """
 from __future__ import annotations
 
@@ -10,9 +10,10 @@ import ast
 from pathlib import Path
 import unittest
 
-from v2_pine_timed_exports import COMPARISON_SLOTS, EXPLANATIONS, produce_timed_scripts
+from v2_pine_session import SLOTS
+from v2_pine_timed_exports import EXPLANATIONS, produce_timed_scripts
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT=Path(__file__).resolve().parents[1]
 
 
 def source(name):
@@ -21,62 +22,55 @@ def source(name):
     return code
 
 
-class CurrentAndComparisonsUI(unittest.TestCase):
-    def test_time_comparison_widget_has_exactly_two_options(self):
-        self.assertEqual(COMPARISON_SLOTS, ("1550", "2030"))
+class AllThreeScheduledPinesUI(unittest.TestCase):
+    def test_three_scheduled_buttons_always_in_order(self):
+        self.assertEqual(tuple(SLOTS), ("0730","1550","2030"))
         timed=source("v2_pine_timed_exports.py")
         visible=timed[timed.index("def render_timed_pine_exports("):]
-        self.assertIn("st.columns(len(COMPARISON_SLOTS)", visible)
-        self.assertIn("zip(cols, COMPARISON_SLOTS)", visible)
-        self.assertIn("slot for slot in COMPARISON_SLOTS if slot in scripts", visible)
-        self.assertIn('"Confronto orario", available_comparisons', visible)
-        self.assertNotIn("zip(cols, SLOTS)", visible)
-        self.assertNotIn('st.columns(3, gap="small")', visible)
-        self.assertNotIn('list(scripts)', visible)
-        self.assertNotIn('Pine 07:30, confronto',visible)
-        self.assertIn("07:30", EXPLANATIONS["1550"])
-        self.assertIn("15:50", EXPLANATIONS["2030"])
+        self.assertIn("st.columns(3, gap=\"small\")",visible)
+        self.assertIn("for col, slot in zip(cols, SLOTS):",visible)
+        self.assertIn('"Scarica Pine · " + EXPLANATIONS[slot]',visible)
+        self.assertIn('list(scripts)',visible)
+        self.assertIn('"Pine orario"',visible)
+        self.assertIn('"Aggiorna Pine per orari"',visible)
+        self.assertIn("07:30",EXPLANATIONS["0730"])
+        self.assertIn("15:50",EXPLANATIONS["1550"])
+        self.assertIn("20:30",EXPLANATIONS["2030"])
+        self.assertNotIn("COMPARISON_SLOTS",visible)
 
-    def test_ndx_has_single_selected_snapshot_current_export(self):
-        s=source("v2_market_engine.py")
-        self.assertEqual(
-            s.count('"Scarica Pine NET GAMMA corrente · NQ/MNQ (.pine)"'), 1)
-        self.assertEqual(s.count('current_script = make_pine('), 1)
-        self.assertIn('"0DTE": visual_profiles["0DTE"]', s)
-        self.assertIn('"Weekly": visual_profiles["Weekly"]', s)
-        self.assertIn('acquisition_time=st.session_state.get("ndx_capture_rome_iso")',s)
-        self.assertIn("append_news(current_script, macro_news)", s)
-        self.assertIn('with st.expander("Confronti orari · 07:30 → 15:50 / 15:50 → 20:30"',s)
-        self.assertEqual(s.count('render_timed_pine_exports('), 1)
-        self.assertLess(s.index('"Scarica Pine NET GAMMA corrente · NQ/MNQ (.pine)"'),
-                        s.index('with st.expander("Confronti orari'))
+    def test_ndx_keeps_both_current_and_all_three_scheduled(self):
+        ndx=source("v2_market_engine.py")
+        self.assertIn('current_script = make_pine(',ndx)
+        self.assertEqual(ndx.count(
+            '"Scarica Pine NET GAMMA corrente · NQ/MNQ (.pine)"'),1)
+        self.assertIn('acquisition_time=st.session_state.get("ndx_capture_rome_iso")',ndx)
+        self.assertIn('with st.expander("Pine per orari · 07:30 / 15:50 / 20:30"',ndx)
+        self.assertIn('render_timed_pine_exports(',ndx)
+        self.assertLess(
+            ndx.index('"Scarica Pine NET GAMMA corrente · NQ/MNQ (.pine)"'),
+            ndx.index('with st.expander("Pine per orari'))
+        self.assertIn('delle 07:30 rimane disponibile',ndx)
 
-    def test_etf_pine_current_export_is_unique_and_preserves_continuous(self):
-        s=source("etf_pine_view.py")
-        self.assertEqual(s.count('f"Scarica Pine NET GAMMA corrente · {label} (.pine)"'),1)
-        self.assertEqual(s.count('script = make_etf_future_pine('),1)
-        self.assertIn("continuous=True",s)
-        self.assertNotIn("fetch_oil_pair",s)
-        self.assertNotIn("prepare_locked_chart_mapping",s)
-        self.assertIn("CONFRONTI" if False else "Confronti orari",s)
-        self.assertEqual(s.count("render_timed_pine_exports("),1)
-        self.assertLess(s.index('f"Scarica Pine NET GAMMA corrente'),
-                        s.index('with st.expander("Confronti orari'))
+    def test_gold_and_oil_identical_original_current_and_three_slots(self):
+        view=source("etf_pine_view.py")
+        self.assertIn('st.subheader(f"Pine Script v6 · Future continuo {label}")',view)
+        self.assertEqual(view.count('f"Scarica Pine NET GAMMA · {label} (.pine)"'),1)
+        self.assertIn('continuous=True',view)
+        self.assertIn('with st.expander("Pine per orari · 07:30 / 15:50 / 20:30"',view)
+        self.assertEqual(view.count('render_timed_pine_exports('),1)
+        self.assertLess(view.index('f"Scarica Pine NET GAMMA · {label} (.pine)"'),
+                        view.index('with st.expander("Pine per orari'))
+        self.assertNotIn('prepare_locked_chart_mapping',view)
+        self.assertNotIn('fetch_oil_pair(',view)
 
-    def test_no_code_generating_comparisons_is_changed_by_ui(self):
-        # Separate the legacy pure generator and the new visible buttons.
-        s=source("v2_pine_timed_exports.py")
-        producer=s[s.index("def produce_timed_scripts("):
-                   s.index("def render_timed_pine_exports(")]
+    def test_generator_still_builds_real_0730_and_both_comparisons(self):
+        timed=source("v2_pine_timed_exports.py")
+        producer=timed[timed.index("def produce_timed_scripts("):
+                       timed.index("def render_timed_pine_exports(")]
         self.assertIn('if slot == "0730":',producer)
         self.assertIn('make_pine_comparison_v2(',producer)
         self.assertIn('prev_slot = "0730" if slot == "1550" else "1550"',producer)
         self.assertIn('scripts[slot] = script',producer)
-        # The generated standalone 07:30 script is not a UI duplicate.
-        view=s[s.index("def render_timed_pine_exports("):]
-        self.assertIn("available_comparisons",view)
-        self.assertIn('"Confronti non disponibili:',view)
-        self.assertNotIn("for col, slot in zip(cols, SLOTS)",view)
 
 
 if __name__ == "__main__":

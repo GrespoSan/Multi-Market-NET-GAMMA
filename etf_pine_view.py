@@ -21,7 +21,7 @@ def render_etf_pine_exports(symbol, calculated, reference, day,
     if symbol not in CONTINUOUS_LABELS:
         raise ValueError("Mercato ETF non riconosciuto.")
     label = CONTINUOUS_LABELS[symbol]
-    st.subheader(f"Esportazione Pine Script v6 · {label}")
+    st.subheader(f"Pine Script v6 · Future continuo {label}")
     st.caption("Gamma delle opzioni Cboe invariati. Conversione degli strike "
                "effettuata direttamente su TradingView, con rapporto da due "
                "barre M5 chiuse con identico timestamp. "
@@ -44,9 +44,8 @@ def render_etf_pine_exports(symbol, calculated, reference, day,
         st.caption(f"Pine non generabile da questa fotografia: {str(exc)[:210]}")
         return
 
-    st.markdown("**NET GAMMA corrente · 0DTE + Weekly**")
     st.download_button(
-        f"Scarica Pine NET GAMMA corrente · {label} (.pine)",
+        f"Scarica Pine NET GAMMA · {label} (.pine)",
         script.encode("utf-8"),
         file_name=f"{symbol}_NET_GAMMA_CONTINUO_{day:%Y%m%d}.pine",
         mime="text/plain", on_click="ignore",
@@ -60,7 +59,6 @@ def render_etf_pine_exports(symbol, calculated, reference, day,
     band = float(st.session_state.get(f"{symbol.lower()}_cboe_band", 3.0))
     extension = bool(st.session_state.get(
         f"v2_{symbol.lower()}_visual_extension", True))
-    with st.expander("Confronti orari · 07:30 → 15:50 / 15:50 → 20:30",
-                     expanded=False):
+    with st.expander("Pine per orari · 07:30 / 15:50 / 20:30", expanded=False):
         render_timed_pine_exports(
             symbol, day, reference, band, None, extension=extension)

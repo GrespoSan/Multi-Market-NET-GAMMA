@@ -344,8 +344,8 @@ def render_selected_market(market_key):
         except Exception:
             st.caption('Calendario macro non disponibile: eventuali linee news '
                        'vengono omesse dai Pine. I livelli NET GAMMA non cambiano.')
-    # One current Pine from the EXACT selected Cboe snapshot.
-    # No look-ahead or second 07:30 export in the comparison section.
+    # Pine corrente dalla fotografia selezionata: separato dai tre
+    # pulsanti orari, incluso 07:30 autonomo (richiesto dall'utente).
     st.markdown("**NET GAMMA corrente · NQ/MNQ · 0DTE + Weekly**")
     if "0DTE" in visual_profiles and "Weekly" in visual_profiles:
         try:
@@ -372,12 +372,12 @@ def render_selected_market(market_key):
         st.info("Per esportare il Pine corrente occorrono sia il profilo "
                 "0DTE sia il Weekly della fotografia selezionata.")
 
-    with st.expander("Confronti orari · 07:30 → 15:50 / 15:50 → 20:30",
+    with st.expander("Pine per orari · 07:30 / 15:50 / 20:30",
                      expanded=False):
         render_timed_pine_exports(
             'NDX', day, reference, band_pct, basis,
             extension=show_extension, macro_news=macro_news)
-    st.caption('Il Pine corrente usa la fotografia selezionata. I confronti '
-               'richiedono entrambe le fotografie reali della stessa seduta; '
-               'la fotografia 07:30 non viene esportata due volte.')
+    st.caption('Il Pine corrente usa la fotografia selezionata; quello '
+               'delle 07:30 rimane disponibile come esportazione autonoma '
+               'assieme ai confronti 07:30→15:50 e 15:50→20:30.')
     
