@@ -192,7 +192,10 @@ def make_pine_comparison_v2(symbol, previous, current, weekly,
     weekly_levels="weeklyLevels"
     mapped_init = ("" if symbol == "NDX" else
                    "    array<float> odteLevels = mapETF(mainStrikesETF, ratioToDraw)\n"
-                   "    array<float> weeklyLevels = mapETF(weeklyStrikesETF, ratioToDraw)\n")
+                   "    array<float> weeklyLevels = mapETF(weeklyStrikesETF, ratioToDraw)\n"
+                   "    array<float> topCallFutures = mapETF(topCallStrikesETF, ratioToDraw)\n"
+                   "    array<float> topPutFutures = mapETF(topPutStrikesETF, ratioToDraw)\n")
+    top3_calls = ("topCallOdteLevels", "topPutOdteLevels") if symbol == "NDX" else ("topCallFutures", "topPutFutures")
     code=code[:start]+f'''{marker}    for ln in drawnLines
         line.delete(ln)
     array.clear(drawnLines)
@@ -219,5 +222,8 @@ def make_pine_comparison_v2(symbol, previous, current, weekly,
             renderProfile({current_levels}, {("odteValues" if symbol=="NDX" else "mainGammaETF")}, bar_index + currentCenter, "{cur_title}", actualScale)
         if showCurrentWeekly
             renderProfile({weekly_levels}, {("weeklyValues" if symbol=="NDX" else "weeklyGammaETF")}, bar_index + weeklyCenter, "{weekly_title}", actualScale)
+    // Proietta i Top 3 SOLO della fotografia 0DTE CORRENTE, mai precedente/Weekly.
+    if showTop3Odte
+        drawOdteTopProjections({top3_calls[0]}, {top3_calls[1]})
 '''
     return normalize_indicator_header(code)
