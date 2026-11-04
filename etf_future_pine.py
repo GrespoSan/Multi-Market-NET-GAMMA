@@ -11,9 +11,11 @@ from v2_pine_capture import pine_capture_clock
 
 ASSETS = {
     "GLD": {"roots": ("GC", "MGC"), "label": "Gold GC/MGC",
-            "continuous": "COMEX:GC1!"},
+            "continuous": "COMEX:GC1!",
+            "continuous_micro": "COMEX_MINI:MGC1!"},
     "USO": {"roots": ("CL", "MCL"), "label": "Petrolio CL/MCL",
-            "continuous": "NYMEX:CL1!"},
+            "continuous": "NYMEX:CL1!",
+            "continuous_micro": "NYMEX:MCL1!"},
 }
 
 
@@ -141,7 +143,7 @@ indicator("Multi-Market NET GAMMA · @SYMBOL@ → @MARKET@ · @DATE@ · @CLOCK@ 
 // ETF non quotato durante tutta la sessione future: conserva l'ultimo rapporto valido.
 // Le barre 5m sono confermate, ma i livelli proiettati possono cambiare nel tempo.
 string etfTicker = "@ETF_TV@"
-string contractTicker = "@FUT_TV@"
+@CONTRACT_TICKER_LINE@
 validTicker = @VALID_TICKER_EXPR@
 @RATIO_MODE_LINE@
 @RATIO_LOCKED_LINE@
@@ -180,18 +182,27 @@ mapETF(array<float> etfLevels, float ratio) =>
 @SPX_DRAW@
 """
     if continuous:
-        validity = ('syminfo.type == "futures" and '
-                    f'ticker.standard(syminfo.tickerid) == "{future_tv}"')
+        micro_tv = ASSETS[symbol]["continuous_micro"]
+        validity = (
+            'syminfo.type == "futures" and '
+            f'(ticker.standard(syminfo.tickerid) == "{future_tv}" or '
+            f'ticker.standard(syminfo.tickerid) == "{micro_tv}")')
+        # The 5m future price comes from the ACTUAL continuous contract
+        # open in TradingView, so GC and MGC (or CL and MCL) are never
+        # silently mixed for the same ratio.
+        contract_line = 'string contractTicker = ticker.standard(syminfo.tickerid)'
         mapping_note = (
             "SOLO FUTURE CONTINUO: Gamma Cboe ETF fissi per lo snapshot, "
             "ratio DINAMICO TradingView da barre 5m chiuse e sincronizzate. "
             "Nessun rapporto iniziale inventato. "
-            "Usare su timeframe 1m o 5m e sul continuo indicato.")
+            "Usare su timeframe 1m o 5m su GC1!/MGC1! "
+            "oppure CL1!/MCL1! secondo lo strumento.")
         mode_line = 'modeRatio = "Dinamico"'
         locked_line = 'float lockedRatio = na'
         ratio_selection = 'dynamicAvailable ? lastDynamicRatio : na'
     else:
         validity = f'syminfo.type == "futures" and ({valid})'
+        contract_line = f'string contractTicker = "{future_tv}"'
         mapping_note = (
             f"Rapporto congelato ETF {etf_price:.5f}; Future {fut_price:.5f}; "
             f"ratio {locked_ratio:.12f}; barra {mapping['bar_ny']}. "
@@ -219,6 +230,7 @@ mapETF(array<float> etfLevels, float ratio) =>
         "@ETF_REFERENCE@": n(etf_reference),
         "@ETF_TV@": "AMEX:" + symbol,
         "@FUT_TV@": future_tv,
+        "@CONTRACT_TICKER_LINE@": contract_line,
         "@SPX_INPUTS@": visual_inputs,
         "@SPX_RENDER_FUNCTIONS@": SPX_RENDER_FUNCTIONS,
         "@SPX_DRAW@": visual_draw,
