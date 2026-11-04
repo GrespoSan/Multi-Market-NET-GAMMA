@@ -118,7 +118,8 @@ def produce_timed_scripts(symbol, day, captures, reference, band,
                     script = make_etf_future_pine(
                         symbol, {"0DTE":now["0DTE"], "Weekly":now["Weekly"]},
                         reference, day, EXPLANATIONS[slot],
-                        basis_or_mapping, acquisition_time=now["capture"]["rome"])
+                        None, acquisition_time=now["capture"]["rome"],
+                        continuous=True)
             else:
                 prev_slot = "0730" if slot == "1550" else "1550"
                 if prev_slot not in profiles:
