@@ -118,21 +118,31 @@ def build_current_pine(symbol, raw, trade_day, reference, conversion, *,
         factor = 1.0
         shift = basis
     else:
-        if not isinstance(conversion, dict):
-            raise ValueError("Rapporto ETF/future bloccato non disponibile.")
-        if conversion.get("etf_symbol") != symbol:
-            raise ValueError("Rapporto ETF/future di un altro strumento.")
-        ratio = _number(conversion.get("ratio"), "Rapporto ETF/future")
-        if ratio <= 0:
-            raise ValueError("Rapporto ETF/future non valido.")
-        # The existing ETF exporter verifies matched prices and contract.
-        script = make_etf_future_pine(
-            symbol, selected, reference, trade_day, "EMERGENZA CORRENTE",
-            conversion, acquisition_time=capture_time)
-        conversion_label = (
-            f"{symbol} → {conversion['future_tv_symbol']} · "
-            f"rapporto bloccato {ratio:.8f}")
-        factor, shift = ratio, 0.0
+        if conversion is None:
+            # Continuous alternative: never invent an initial conversion.
+            tv = "COMEX:GC1!" if symbol == "GLD" else "NYMEX:CL1!"
+            script = make_etf_future_pine(
+                symbol, selected, reference, trade_day, "EMERGENZA CONTINUO",
+                None, acquisition_time=capture_time, continuous=True)
+            conversion_label = (
+                f"{symbol} → {tv}: rapporto dinamico interno TradingView; "
+                "anteprima sui soli strike ETF originali")
+            factor, shift = 1.0, 0.0
+        else:
+            if not isinstance(conversion, dict):
+                raise ValueError("Rapporto ETF/future non valido.")
+            if conversion.get("etf_symbol") != symbol:
+                raise ValueError("Rapporto ETF/future di un altro strumento.")
+            ratio = _number(conversion.get("ratio"), "Rapporto ETF/future")
+            if ratio <= 0:
+                raise ValueError("Rapporto ETF/future non valido.")
+            script = make_etf_future_pine(
+                symbol, selected, reference, trade_day, "EMERGENZA CORRENTE",
+                conversion, acquisition_time=capture_time)
+            conversion_label = (
+                f"{symbol} → {conversion['future_tv_symbol']} · "
+                f"rapporto bloccato {ratio:.8f}")
+            factor, shift = ratio, 0.0
     if not script.startswith("//@version=6\n") or script.count("indicator(") != 1:
         raise ValueError("Pine v6: intestazione non valida.")
     return {
@@ -142,6 +152,7 @@ def build_current_pine(symbol, raw, trade_day, reference, conversion, *,
         "reference": reference, "sha256": hashlib.sha256(raw).hexdigest(),
         "conversion_label": conversion_label, "factor": factor,
         "shift": shift, "symbol": symbol,
+        "projected": symbol == "NDX" or conversion is not None,
         "contract_count": len(doc["data"]["options"]),
         "strike_key": strike_key, "gamma_key": gamma_key,
     }
@@ -182,7 +193,8 @@ def _current_trading_day(now=None):
     return day
 
 
-def _profile_chart(group, *, symbol, title, factor, shift, strike_key, gamma_key):
+def _profile_chart(group, *, symbol, title, factor, shift, strike_key, gamma_key,
+                   projected=True):
     import plotly.graph_objects as go
     rows = group["rows"]
     y = [float(r[strike_key]) * factor + shift for r in rows]
@@ -197,7 +209,9 @@ def _profile_chart(group, *, symbol, title, factor, shift, strike_key, gamma_key
                     margin=dict(l=20,r=20,t=55,b=45),
                     xaxis_title=f"NET GAMMA {symbol}",
                     yaxis_title=("Prezzo NQ" if symbol == "NDX" else
-                                 "Prezzo future equivalente (proiezione ETF)"),
+                                 "Prezzo future equivalente (proiezione ETF)"
+                                 if projected else
+                                 f"Strike ETF {symbol} · USD (NON prezzi future)"),
                     showlegend=False)
     return f
 
@@ -401,16 +415,20 @@ def render(market_key):
             if manual is not None:
                 conversion = manual
             if conversion is None:
-                st.info(f"Per generare il Pine {future} serve un rapporto "
-                        f"{symbol}/future verificato con barre sincronizzate, "
-                        "oppure due prezzi allo stesso orario dichiarati manualmente.")
-                return
-            st.markdown(f"**Rapporto {symbol} / future bloccato:** "
-                        f"{conversion['ratio']:.8f} · "
-                        f"{conversion['future_tv_symbol']}")
-            if conversion.get("mode") == "manual-attested":
-                st.caption("Coppia inserita dall'utente: sincronizzazione "
-                           "NON verificata indipendentemente.")
+                tv = "COMEX:GC1!" if symbol == "GLD" else "NYMEX:CL1!"
+                st.info(
+                    f"Rapporto bloccato {symbol}/future non disponibile. "
+                    f"Il Pine sarà comunque generato per {tv}: "
+                    "TradingView calcola la conversione su due barre M5 "
+                    "sincronizzate e CHIUSE. Se mancano, non disegna livelli. "
+                    "I grafici di anteprima qui restano sugli strike ETF originali.")
+            else:
+                st.markdown(f"**Rapporto {symbol} / future bloccato:** "
+                            f"{conversion['ratio']:.8f} · "
+                            f"{conversion['future_tv_symbol']}")
+                if conversion.get("mode") == "manual-attested":
+                    st.caption("Coppia inserita dall'utente: sincronizzazione "
+                               "NON verificata indipendentemente.")
 
         try:
             result = build_current_pine(
@@ -434,7 +452,8 @@ def render(market_key):
                                symbol=symbol, title="NET GAMMA 0DTE · corrente",
                                factor=result["factor"], shift=result["shift"],
                                strike_key=result["strike_key"],
-                               gamma_key=result["gamma_key"]),
+                               gamma_key=result["gamma_key"],
+                               projected=result["projected"]),
                 use_container_width=True,
                 key=f"v2_emergency_{symbol}_odte")
         with right_chart:
@@ -443,16 +462,23 @@ def render(market_key):
                                symbol=symbol, title="NET GAMMA Weekly · corrente",
                                factor=result["factor"], shift=result["shift"],
                                strike_key=result["strike_key"],
-                               gamma_key=result["gamma_key"]),
+                               gamma_key=result["gamma_key"],
+                               projected=result["projected"]),
                 use_container_width=True,
                 key=f"v2_emergency_{symbol}_weekly")
         if symbol != "NDX":
-            st.caption(f"Gamma dalle opzioni ETF {symbol}, NON da opzioni "
-                       f"sui futures {future}: livelli su {future} indicativi.")
+            st.caption(
+                f"Gamma dalle opzioni ETF {symbol}, NON da opzioni sui futures "
+                f"{future}. Il Pine continuo converte su TradingView; "
+                "nessun rapporto o livello future viene inventato.")
         st.download_button(
-            "Scarica Pine NET GAMMA corrente (.pine)",
+            ("Scarica Pine NET GAMMA CONTINUO GC1!/CL1! (.pine)"
+             if symbol != "NDX" and conversion is None else
+             "Scarica Pine NET GAMMA corrente (.pine)"),
             data=result["pine"].encode("utf-8"),
-            file_name=f"MultiMarket_{symbol}_NET_GAMMA_corrente_{trade_day:%Y%m%d}.pine",
+            file_name=(f"MultiMarket_{symbol}_NET_GAMMA_CONTINUO_{trade_day:%Y%m%d}.pine"
+                       if symbol != "NDX" and conversion is None else
+                       f"MultiMarket_{symbol}_NET_GAMMA_corrente_{trade_day:%Y%m%d}.pine"),
             mime="text/plain", key=f"v2_emergency_export_{symbol}",
             on_click="ignore", use_container_width=True)
         with st.expander("Mostra codice Pine da copiare"):
