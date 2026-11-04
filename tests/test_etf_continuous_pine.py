@@ -45,8 +45,10 @@ class ContinuousPineTests(unittest.TestCase):
                     symbol,rows,float(base),DAY,"CONTINUO",None,
                     continuous=True)
                 self.assertIn("//@version=6",code)
-                self.assertIn(f'string contractTicker = "{ticker}"',code)
+                self.assertIn('string contractTicker = ticker.standard(syminfo.tickerid)',code)
                 self.assertIn(f'ticker.standard(syminfo.tickerid) == "{ticker}"',code)
+                micro = ("COMEX_MINI:MGC1!" if symbol == "GLD" else "NYMEX:MCL1!")
+                self.assertIn(f'ticker.standard(syminfo.tickerid) == "{micro}"',code)
                 self.assertIn('modeRatio = "Dinamico"',code)
                 self.assertIn("float lockedRatio = na",code)
                 self.assertIn("float ratioToDraw = dynamicAvailable ? lastDynamicRatio : na",code)
