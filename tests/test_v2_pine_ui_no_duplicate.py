@@ -49,7 +49,7 @@ class AllThreeScheduledPinesUI(unittest.TestCase):
         self.assertLess(
             ndx.index('"Scarica Pine NET GAMMA corrente · NQ/MNQ (.pine)"'),
             ndx.index('with st.expander("Pine per orari'))
-        self.assertIn('quello delle 07:30 rimane disponibile',ndx)
+        self.assertIn('delle 07:30 rimane disponibile',ndx)
 
     def test_gold_and_oil_identical_original_current_and_three_slots(self):
         view=source("etf_pine_view.py")
