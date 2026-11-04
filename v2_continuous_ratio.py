@@ -139,11 +139,12 @@ def load_chart_continuous_mapping(symbol, state, loader=None):
         return None, str(exc)[:200]
 
 
+# Cache values by BOTH market and exact Cboe acquisition timestamp.
+# Never prefix parameters with "_" here: Streamlit then excludes them
+# from cache hashing, potentially reusing a GC ratio for USO/CL.
+import streamlit as st
+
+
+@st.cache_data(ttl=900, show_spinner=False)
 def _cached_continuous(symbol, cutoff):
-    import streamlit as st
-
-    @st.cache_data(ttl=900, show_spinner=False)
-    def cached(_symbol, _cutoff):
-        return fetch_continuous_pair(_symbol, _cutoff)
-
-    return cached(symbol, cutoff)
+    return fetch_continuous_pair(symbol, cutoff)
