@@ -289,14 +289,17 @@ class RatioTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError,"MASSIVE_API_KEY"):
             _auto_oil_contract(date(2026,10,30),"",get=getter)
 
-    def test_oil_auto_ui_default_and_gold_logic_preserved(self):
+    def test_old_oil_auto_ratio_is_not_accessible_in_v2_ui(self):
         from pathlib import Path
         content=(Path(__file__).resolve().parent.parent/"etf_pine_view.py").read_text()
-        self.assertIn("[AUTO_OIL_CONTRACT] + list(CONTRACTS[symbol]",content)
-        self.assertIn('st.session_state["uso_ratio_contract"] = AUTO_OIL_CONTRACT',content)
-        self.assertIn("pair = fetch_gold_pair(selected, capture_dt, api_key)",content)
-        self.assertIn("pair = fetch_oil_pair(selected, capture_dt, api_key)",content)
-        self.assertIn("actual_contract = result",content)
+        self.assertIn('make_etf_future_pine(', content)
+        self.assertIn('continuous=True', content)
+        for removed in ("AUTO_OIL_CONTRACT", "uso_ratio_contract",
+                        "fetch_gold_pair(", "fetch_oil_pair(",
+                        "MASSIVE_API_KEY", "Riprova calcolo rapporto"):
+            self.assertNotIn(removed, content)
+        # Legacy dated-contract calculation functions remain testable,
+        # but the only user-facing exporter is the continuous Pine.
 
 
     def test_cached_oil_rollover_survives_429_on_last_request(self):
