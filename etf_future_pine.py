@@ -137,7 +137,7 @@ indicator("Multi-Market NET GAMMA · @SYMBOL@ → @MARKET@ · @DATE@ · @CLOCK@ 
 // Formula ETF invariata: Call [(OI+Volume)*Gamma] - Put [(OI+Volume)*Gamma].
 // Riferimento ETF (close precedente al rilevamento): @ETF_REFERENCE@.
 // @MAPPING_NOTE@
-// Riferimento future: @FUT_TV@.
+// Contratto future riferimento: @FUT_TV@.
 // ETF non quotato durante tutta la sessione future: conserva l'ultimo rapporto valido.
 // Le barre 5m sono confermate, ma i livelli proiettati possono cambiare nel tempo.
 string etfTicker = "@ETF_TV@"
