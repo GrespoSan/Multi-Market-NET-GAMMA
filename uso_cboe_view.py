@@ -63,8 +63,9 @@ def _save_snapshot(raw, filename, source):
 
 def render_uso_cboe():
     st.subheader("Fotografia opzioni Cboe · USO")
+    st.caption("La stessa fotografia alimenta anche il Pine di emergenza in fondo alla pagina.")
     snapshot_placement = st.container()
-    with st.expander("Acquisizione manuale / importazione JSON", expanded=False):
+    with st.expander("Acquisizione Cboe / importazione manuale — condivisa con Pine di emergenza", expanded=False):
         fetch_pressed, uploaded = render_acquisition_controls("USO", USO_URL, show_header=False)
         if fetch_pressed:
             try:
