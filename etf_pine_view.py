@@ -109,6 +109,42 @@ def render_etf_pine_exports(symbol, calculated, reference, day,
         st.info("Esportazione Pine non disponibile: serve almeno un profilo Cboe valido.")
         return
 
+    # Independent continuous Pine: uses genuine ETF Gamma from the selected
+    # Cboe snapshot and converts strike levels WITHIN TradingView itself.
+    # No Massive request and no invented or stale frozen ETF/future ratio.
+    continuous_tv = "COMEX:GC1!" if symbol == "GLD" else "NYMEX:CL1!"
+    with st.expander(
+        f"PINE TRADINGVIEW · {continuous_tv} · CONTINUO (senza Massive)",
+        expanded=True
+    ):
+        st.caption(
+            f"Esporta il codice Pine v6 anche senza rapporto verificato. "
+            f"Su TradingView apri {continuous_tv} in TF 1m o 5m: "
+            "il rapporto si forma soltanto da due barre ETF/future M5 "
+            "chiuse con identico timestamp. Se mancano, NON vengono "
+            "disegnati livelli. Valori NET GAMMA Cboe invariati; "
+            "la proiezione NON è Gamma delle opzioni sul future.")
+        try:
+            continuous_pine = make_etf_future_pine(
+                symbol, usable, reference, day,
+                "CONTINUO DINAMICO", None,
+                acquisition_time=st.session_state.get(prefix + "import_rome"),
+                continuous=True)
+            st.download_button(
+                f"Scarica Pine · {continuous_tv} (.pine)",
+                continuous_pine.encode("utf-8"),
+                file_name=f"{symbol}_NET_GAMMA_{day:%Y%m%d}_CONTINUO.pine",
+                mime="text/plain", on_click="ignore",
+                key=f"v2_continuous_pine_{symbol}_{day}",
+                use_container_width=True)
+            with st.expander("Mostra codice Pine continuo da copiare"):
+                st.code(continuous_pine, language="pine")
+        except (ValueError, KeyError, TypeError, OverflowError) as exc:
+            st.warning("Pine continuo non generabile: " + str(exc)[:260])
+    st.caption(
+        "Il Pine sul continuo resta separato dal Pine con rapporto "
+        "BLOCCATO sul contratto specifico, che richiede prezzi verificati.")
+
     today_ny = datetime.now(ZoneInfo("America/New_York")).date()
     snapshot_day, date_from_source = _source_day(cboe_stamp, today_ny)
     capture_time = st.session_state.get(prefix + "import_rome")
