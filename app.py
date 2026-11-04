@@ -149,6 +149,11 @@ with context_slot.container():
         from v2_context import render as render_market_context
         render_market_context(market_key)
 
+# One shared snapshot per market: the emergency export reuses the same
+# session-state photograph; no redundant download/import widgets.
+from v2_emergency_pine import render as render_v2_emergency_pine
+render_v2_emergency_pine(market_key)
+
 # No GEX EDGE, REPLAY E CONFRONTO, or REPORT GIORNALIERO AI.
 # Cboe snapshot management stays inside the market-specific gamma analysis
 # via v2_storage_off.archive_panel, not via Supabase.
