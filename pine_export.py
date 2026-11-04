@@ -22,6 +22,24 @@ def _pine_array(rows, field, offset=0.0):
     )+"\n    )"
 
 
+def _top_gamma_rows(rows, strike_field, gamma_field, *, positive, limit=3):
+    """Select actual biggest positive / most negative 0DTE NET bars.
+
+    Sort by absolute Net Gamma descending; when equal, take lower strike.
+    Missing/zero signs never manufacture a third line.
+    """
+    found = []
+    for row in rows:
+        price = float(row[strike_field])
+        gamma = float(row[gamma_field])
+        if not (isfinite(price) and price > 0 and isfinite(gamma)):
+            raise ValueError("Strike o NET GAMMA non valido per Top 3")
+        if (positive and gamma > 0) or (not positive and gamma < 0):
+            found.append(row)
+    return sorted(found, key=lambda r: (-abs(float(r[gamma_field])),
+                                        float(r[strike_field])))[:limit]
+
+
 def _initial_manual_scale(profiles):
     """Suggerisce la scala di PRESENTAZIONE dal Gamma realmente esportato.
 
@@ -79,6 +97,12 @@ def make_pine(profiles: dict, basis: float, target: date, label: str,
         )
     odte=profiles.get("0DTE",{"rows":[],"expiry":""})
     weekly=profiles.get("Weekly",{"rows":[],"expiry":""})
+    # The TOP3 comes from the very SAME 0DTE rows shown by the histogram.
+    # No Weekly substitution if the 0DTE profile is unavailable.
+    top_call = _top_gamma_rows(odte["rows"], "strike_index", "net_gamma",
+                               positive=True)
+    top_put = _top_gamma_rows(odte["rows"], "strike_index", "net_gamma",
+                              positive=False)
     scale, scale_step=_initial_manual_scale([(odte,100),(weekly,200)])
     scale_text=f"{scale:.8f}".rstrip("0").rstrip(".")
     scale_step_text=f"{scale_step:.8f}".rstrip("0").rstrip(".")
@@ -96,7 +120,9 @@ def make_pine(profiles: dict, basis: float, target: date, label: str,
                  f'"0DTE {first} · {capture_suffix}", actualScale)' if odte["rows"] else "")
     weekly_call = (f'renderProfile(weeklyLevels, weeklyValues, bar_index + weeklyCenter, '
                    f'"Weekly {second} · {capture_suffix}", actualScale)' if weekly["rows"] else "")
-    draw = spx_last_bar(main_call, weekly_call, "odteValues", "weeklyValues")
+    draw = spx_last_bar(
+        main_call, weekly_call, "odteValues", "weeklyValues",
+        top3_levels=("topCallOdteLevels", "topPutOdteLevels") if odte["rows"] else None)
     return f'''//@version=6
 indicator("Multi-Market NET GAMMA · NDX/NQ · {target.isoformat()} · {capture_suffix} · {label}", overlay=true, max_lines_count=500, max_labels_count=35)
 // Ora acquisizione fotografia Cboe (Europe/Rome, CET/CEST): {capture["stamp"]}. Non e' l'ora Cboe originale.
@@ -114,6 +140,9 @@ var array<line> drawnLines = array.new_line()
 var array<label> drawnLabels = array.new_label()
 var array<float> odteLevels = {_pine_array(odte["rows"],"strike_index",basis)}
 var array<float> odteValues = {_pine_array(odte["rows"],"net_gamma")}
+// TOP3 solo 0DTE: livelli reali NDX traslati al futuro NQ/MNQ.
+var array<float> topCallOdteLevels = {_pine_array(top_call,"strike_index",basis)}
+var array<float> topPutOdteLevels = {_pine_array(top_put,"strike_index",basis)}
 var array<float> weeklyLevels = {_pine_array(weekly["rows"],"strike_index",basis)}
 var array<float> weeklyValues = {_pine_array(weekly["rows"],"net_gamma")}
 
