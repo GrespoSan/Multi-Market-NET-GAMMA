@@ -104,7 +104,9 @@ class ContinuousPineTests(unittest.TestCase):
         self.assertNotIn("fetch_oil_pair(",view)
         self.assertIn('continuous=True',view)
         self.assertIn('continuous=True',emergency)
-        self.assertIn('projected=result["projected"]',emergency)
+        self.assertIn('if result["projected"]:',emergency)
+        self.assertIn('continuous=True',emergency)
+        self.assertNotIn("prepare_locked_chart_mapping",emergency)
         self.assertIn('NET GAMMA CONTINUO GC1!/MGC1! o CL1!/MCL1!',emergency)
 
 
