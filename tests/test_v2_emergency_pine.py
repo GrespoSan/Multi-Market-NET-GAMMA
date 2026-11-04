@@ -52,14 +52,15 @@ class EmergencyTests(unittest.TestCase):
         for symbol in ("NDX", "GLD", "USO"):
             with self.subTest(symbol=symbol):
                 raw = original(symbol)
-                conversion = 125.0 if symbol == "NDX" else mapping(symbol)
+                conversion = 125.0 if symbol == "NDX" else None
                 result = build_current_pine(
                     symbol, raw, DAY, photo(symbol)["data"]["prev_day_close"],
                     conversion, capture_time="2026-11-04T15:50:00+01:00")
                 script = result["pine"]
                 self.assertTrue(script.startswith("//@version=6\nindicator("))
                 self.assertEqual(script.count("indicator("), 1)
-                self.assertIn("EMERGENZA CORRENTE", script)
+                self.assertIn("EMERGENZA CORRENTE" if symbol == "NDX"
+                              else "EMERGENZA CONTINUO", script)
                 self.assertEqual(set(result["profiles"]), {"0DTE", "Weekly"})
                 self.assertEqual(result["expiry_weekly"], WEEK)
                 self.assertEqual(result["symbol"], symbol)
@@ -72,12 +73,12 @@ class EmergencyTests(unittest.TestCase):
                     self.assertNotIn("mapETF(", script)
                 else:
                     self.assertIn("mapETF(", script)
-                    self.assertIn("Bloccato", script)
+                    self.assertIn('modeRatio = "Dinamico"', script)
                     self.assertIn("Gamma", script)
 
     def test_gzip_keeps_original_parser_rules(self):
         raw = gzip.compress(original("GLD"))
-        result = build_current_pine("GLD", raw, DAY, 368., mapping("GLD"))
+        result = build_current_pine("GLD", raw, DAY, 368., None)
         self.assertIn("GLD", result["pine"])
 
     def test_old_source_rejected_without_false_current_label(self):
@@ -85,13 +86,13 @@ class EmergencyTests(unittest.TestCase):
         old["timestamp"] = "2026-10-30 20:30:00"
         with self.assertRaisesRegex(ValueError, "troppo distante"):
             build_current_pine("USO", json.dumps(old).encode(), DAY,
-                               168., mapping("USO"))
+                               168., None)
         self.assertEqual(_source_near_session("2026-11-03 23:50:00", DAY),
                          date(2026, 11, 3))
 
     def test_different_market_and_missing_expiries_fail_closed(self):
         with self.assertRaisesRegex(ValueError, "Atteso GLD"):
-            build_current_pine("GLD", original("USO"), DAY, 368., mapping("GLD"))
+            build_current_pine("GLD", original("USO"), DAY, 368., None)
         d = photo("NDX")
         d["data"]["options"] = [o for o in d["data"]["options"] if "261104" not in o["option"]]
         with self.assertRaisesRegex(ValueError, "0DTE"):
@@ -99,7 +100,7 @@ class EmergencyTests(unittest.TestCase):
         d2 = photo("GLD")
         d2["data"]["options"] = [o for o in d2["data"]["options"] if "261106" not in o["option"]]
         with self.assertRaisesRegex(ValueError, "Weekly"):
-            build_current_pine("GLD", json.dumps(d2).encode(), DAY, 368., mapping("GLD"))
+            build_current_pine("GLD", json.dumps(d2).encode(), DAY, 368., None)
 
     def test_no_implicit_futures_conversion(self):
         # Missing ratio now explicitly exports a continuous CL1! Pine,
@@ -110,7 +111,7 @@ class EmergencyTests(unittest.TestCase):
         self.assertIn('ticker.standard(syminfo.tickerid) == "NYMEX:MCL1!"', dynamic["pine"])
         self.assertFalse(dynamic["projected"])
         self.assertEqual(dynamic["factor"], 1.0)
-        with self.assertRaisesRegex(ValueError, "altro strumento"):
+        with self.assertRaisesRegex(ValueError, "Solo prezzi continui"):
             build_current_pine("USO", original("USO"), DAY, 168., mapping("GLD"))
         with self.assertRaisesRegex(ValueError, "Differenziale"):
             build_current_pine("NDX", original("NDX"), DAY, 25500., None)
