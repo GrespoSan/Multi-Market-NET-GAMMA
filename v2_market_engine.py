@@ -17,6 +17,7 @@ from v2_visual_extension import expanded_display
 from v2_storage_off import archive_panel, prefer_manual_source
 from market_ui import render_acquisition_controls, render_empty_snapshot
 from data_sources import download_ndx, NDX_URL
+from v2_manual_import import normalize_manual_upload
 from ndx_engine import (unpack_snapshot, available_expirations, close_from_payload,
                         profile, weekly_target, DEFAULT_BAND_PCT)
 from ndx_basis import fetch_basis
@@ -70,18 +71,19 @@ def render_selected_market(market_key):
             except Exception as exc:
                 st.error(f'Fonte live non disponibile: {str(exc)[:260]}')
         if uploaded is not None:
-            content=uploaded.getvalue()
-            if st.session_state.get('ndx_upload_tag') != (uploaded.name, len(content),hash(content)):
+            uploaded_bytes=uploaded.getvalue()
+            if st.session_state.get('ndx_upload_tag') != (uploaded.name, len(uploaded_bytes), hash(uploaded_bytes)):
                 try:
+                    content, inner_name = normalize_manual_upload(uploaded.name, uploaded_bytes, "NDX")
                     unpack_snapshot(content)
                     prefer_manual_source('NDX')
                     st.session_state['ndx_blob']=content
                     st.session_state.pop("v2_ndx_reference_current", None)
-                    st.session_state['ndx_name']=uploaded.name
+                    st.session_state['ndx_name']=inner_name
                     st.session_state['ndx_source']='Importazione manuale'
                     st.session_state['ndx_download_rome']=None
                     st.session_state['ndx_capture_rome_iso']=None
-                    st.session_state['ndx_upload_tag']=(uploaded.name,len(content),hash(content))
+                    st.session_state['ndx_upload_tag']=(uploaded.name,len(uploaded_bytes),hash(uploaded_bytes))
                     st.success('JSON originale NDX importato e validato.')
                 except Exception as exc:
                     st.error(f'File NDX non riconosciuto: {exc}')
