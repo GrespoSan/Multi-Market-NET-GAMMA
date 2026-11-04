@@ -38,7 +38,7 @@ def array_values(code, name):
     tail = code.split(marker, 1)[1]
     if tail.startswith("array.new_float()"):
         return []
-    match = re.match(r"array.from\\((.*?)\\)", tail, re.DOTALL)
+    match = re.match(r"array\.from\((.*?)\)", tail, re.DOTALL)
     assert match is not None, (name, tail[:100])
     return [float(x.strip()) for x in match.group(1).split(",")]
 
