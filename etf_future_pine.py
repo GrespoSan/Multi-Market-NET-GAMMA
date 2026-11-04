@@ -5,7 +5,7 @@ claims native GC/CL options levels, and raw Gamma is never rescaled.
 """
 from datetime import date
 from math import isfinite
-from pine_export import _pine_array, _initial_manual_scale
+from pine_export import _pine_array, _initial_manual_scale, _top_gamma_rows
 from pine_spx_visual import spx_inputs, SPX_RENDER_FUNCTIONS, spx_last_bar
 from v2_pine_capture import pine_capture_clock
 
@@ -82,6 +82,11 @@ def make_etf_future_pine(symbol: str, profiles: dict, etf_previous_close: float,
     main = profiles.get(main_name, {"rows": [], "expiry": ""})
     weekly = profiles.get("Weekly", {"rows": [], "expiry": ""})
     main_rows, weekly_rows = main["rows"], weekly["rows"]
+    # Principale/Weekly is NOT 0DTE. Never project those as 0DTE.
+    top_call = (_top_gamma_rows(main_rows, "strike", "net", positive=True)
+                if main_name == "0DTE" else [])
+    top_put = (_top_gamma_rows(main_rows, "strike", "net", positive=False)
+               if main_name == "0DTE" else [])
     scale_p = [(dict(rows=[{"net_gamma": row["net"]} for row in main_rows]), 100),
                (dict(rows=[{"net_gamma": row["net"]} for row in weekly_rows]), 200)]
     scale, step = _initial_manual_scale(scale_p)
@@ -110,10 +115,14 @@ def make_etf_future_pine(symbol: str, profiles: dict, etf_previous_close: float,
                    f'"{weekly_label}", actualScale)' if weekly_rows else "")
     prepare = (
         "array<float> odteLevels = mapETF(mainStrikesETF, ratioToDraw)\n"
-        "array<float> weeklyLevels = mapETF(weeklyStrikesETF, ratioToDraw)"
+        "array<float> weeklyLevels = mapETF(weeklyStrikesETF, ratioToDraw)\n"
+        "array<float> topCallFutures = mapETF(topCallStrikesETF, ratioToDraw)\n"
+        "array<float> topPutFutures = mapETF(topPutStrikesETF, ratioToDraw)"
     )
-    visual_draw = spx_last_bar(main_call, weekly_call,
-                               "mainGammaETF", "weeklyGammaETF", prepare)
+    visual_draw = spx_last_bar(
+        main_call, weekly_call, "mainGammaETF", "weeklyGammaETF", prepare,
+        top3_levels=("topCallFutures", "topPutFutures")
+        if main_name == "0DTE" and main_rows else None)
     if continuous:
         # Without a true matched pair, NEVER create fictitious 0-price lines.
         visual_draw = visual_draw.replace(
@@ -166,6 +175,9 @@ var array<line> drawnLines = array.new_line()
 var array<label> drawnLabels = array.new_label()
 var array<float> mainStrikesETF = @MAIN_STRIKES@
 var array<float> mainGammaETF = @MAIN_GAMMA@
+// TOP3 solo dalle opzioni ETF 0DTE; stessa conversione al continuo del profilo.
+var array<float> topCallStrikesETF = @TOP_CALL_STRIKES@
+var array<float> topPutStrikesETF = @TOP_PUT_STRIKES@
 var array<float> weeklyStrikesETF = @WEEKLY_STRIKES@
 var array<float> weeklyGammaETF = @WEEKLY_GAMMA@
 
@@ -236,6 +248,8 @@ mapETF(array<float> etfLevels, float ratio) =>
         "@SPX_DRAW@": visual_draw,
         "@MAIN_STRIKES@": _pine_array(main_rows, "strike"),
         "@MAIN_GAMMA@": _pine_array(main_rows, "net"),
+        "@TOP_CALL_STRIKES@": _pine_array(top_call, "strike"),
+        "@TOP_PUT_STRIKES@": _pine_array(top_put, "strike"),
         "@WEEKLY_STRIKES@": _pine_array(weekly_rows, "strike"),
         "@WEEKLY_GAMMA@": _pine_array(weekly_rows, "net"),
     }
