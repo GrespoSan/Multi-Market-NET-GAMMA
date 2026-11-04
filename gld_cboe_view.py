@@ -12,6 +12,7 @@ from gamma_chart_style import profile_chart, panel_heading, capture_display, spx
 from v2_visual_extension import expanded_display
 
 from etf_pine_view import render_etf_pine_exports, prepare_locked_chart_mapping
+from etf_gamma_axes import chart_price_axes
 from v2_storage_off import archive_panel, prefer_manual_source
 from market_ui import render_empty_snapshot
 
@@ -30,11 +31,13 @@ def _to_csv(rows):
 
 
 def _plot(p, reference, common_x, shared_y, *, price_ratio=1.0,
-          title="0DTE", snapshot_label="", tick_levels=None):
+          projected=False, title="0DTE", snapshot_label="", tick_levels=None):
+    # Native ETF fallback is not a projected GC price: label it as GLD.
     return profile_chart(
         p["rows"], "GLD", reference, common_x, shared_y,
-        price_scale=price_ratio, axis_symbol="GC",
-        close_label="Close prec. proiettato",
+        price_scale=price_ratio,
+        axis_symbol="GC" if projected else None,
+        close_label="Close prec. proiettato" if projected else "Close prec. GLD",
         title=title, snapshot_label=snapshot_label, tick_levels=tick_levels)
 
 
@@ -191,12 +194,9 @@ def render_gld_cboe():
         st.warning("Nessun profilo NET GAMMA utilizzabile nella fotografia "
                    "selezionata; non vengono inventati strike o Gamma.")
         return
-    # Read the identical locked price ratio used by Pine *before* plotting.
-    # Missing conversion must not show ETF levels pretending to be GC.
+    # Convert the Y axis only with a valid existing synchronized ratio.
+    # Crucial: lack of a mapping never hides original NET GAMMA GLD.
     mapping = prepare_locked_chart_mapping("GLD")
-    ratio = float(mapping["ratio"]) if mapping else None
-    if ratio is not None and not (0 < ratio < 1000):
-        ratio = None
     # SPX gamma_section uses one common min/max with 8% spread margin.
     # Independent of bar presentation: no change to original Cboe Gamma.
     xlim = spx_shared_gamma_bounds(good)
@@ -209,18 +209,26 @@ def render_gld_cboe():
     if len(shared_ticks) > 80:
         step = (len(shared_ticks) + 79) // 80
         shared_ticks = shared_ticks[::step]
-    st.markdown("**NET GAMMA GLD → GC · 0DTE / Weekly**")
-    st.caption("Gamma originali opzioni GLD Cboe; asse prezzi proiettato sul future GC "
-               "con lo stesso rapporto bloccato dell'esportazione Pine. "
-               "Stessa fascia prezzi e stessa scala Gamma per entrambi i grafici.")
-    if mapping:
+    axes = chart_price_axes("GLD", mapping, ylim, shared_ticks)
+    projected = axes["projected"]
+    if projected:
+        st.markdown("**NET GAMMA GLD → GC · 0DTE / Weekly**")
+        st.caption("Gamma originali opzioni GLD Cboe; asse prezzi proiettato su GC "
+                   "solo con rapporto ETF/future sincronizzato e bloccato. "
+                   "Stessa fascia prezzi e stessa scala Gamma nei due grafici.")
         st.caption(f"Scala GC · {mapping['future_tv_symbol']} · rapporto "
-                   f"{ratio:.8f} · prezzi sincronizzati {mapping['bar_ny']} New York. "
-                   "Close precedente e guide percentuali proiettati nella scala future.")
+                   f"{axes['price_ratio']:.8f} · prezzi sincronizzati "
+                   f"{mapping['bar_ny']} New York.")
     else:
-        st.warning("Grafici GC non disponibili: rapporto GLD→GC non verificato. "
-                   + st.session_state.get("gld_ratio_error", "")
-                   + " · Controlla il rapporto nella sezione Pine o riprova il calcolo.")
+        st.markdown("**NET GAMMA GLD · 0DTE / Weekly — STRIKE ETF ORIGINALI**")
+        st.warning("Rapporto GLD→GC non verificato: i grafici NET GAMMA sono "
+                   "disponibili sui prezzi originali dell'ETF GLD in USD, "
+                   "NON sono livelli GC. La proiezione GC e il Pine "
+                   "su future restano bloccati fino a un rapporto valido. "
+                   + st.session_state.get("gld_ratio_error", ""))
+        st.caption("Dati Cboe GLD non modificati. Asse verticale: strike GLD, "
+                   "senza conversioni o livelli future presunti. "
+                   "Stessa scala NET GAMMA e stessi strike nei due grafici.")
     independent_scale = st.checkbox(
         "Ingrandisci ogni profilo con scala indipendente",
         value=False, key="v2_gld_independent_scale",
@@ -256,20 +264,21 @@ def render_gld_cboe():
                 st.caption(f"Estensione grafica: +{extra} strike autentici; "
                            "valori originali invariati.")
             gamma_x = spx_shared_gamma_bounds([shown]) if independent_scale else xlim
-            if mapping is not None and ratio is not None:
-                future_y = [v * ratio for v in ylim]
-                future_ticks = [v * ratio for v in shared_ticks]
-                fig = _plot(shown, reference, gamma_x, future_y,
-                            price_ratio=ratio, title=title,
-                            snapshot_label=capture_label, tick_levels=future_ticks)
-                st.plotly_chart(fig, use_container_width=True,
-                                key=f"gld_spx_gamma_{title}_{p['expiry']}")
+            # Always show a usable original ETF profile, even when Massive
+            # rate-limits the synchronized future price ratio (HTTP 429).
+            fig = _plot(shown, reference, gamma_x, axes["y_range"],
+                        price_ratio=axes["price_ratio"], projected=projected,
+                        title=title, snapshot_label=capture_label,
+                        tick_levels=axes["tick_levels"])
+            st.plotly_chart(fig, use_container_width=True,
+                            key=f"gld_spx_gamma_{title}_{p['expiry']}")
             st.download_button(f"Esporta CSV GLD · {title}",
                                data=_to_csv(p["rows"]),
                                file_name=f"GLD_CBOE_{p['expiry']}_{title}.csv",
                                mime="text/csv", on_click="ignore")
-    st.caption("I NET GAMMA provengono dalle opzioni GLD, non da opzioni native GC. "
-               "La proiezione converte solo gli strike e non identifica automaticamente Gamma Flip.")
+    st.caption("I NET GAMMA provengono dalle opzioni GLD, NON da opzioni native GC. "
+               "Quando disponibile, la proiezione GC converte solo gli strike "
+               "e non identifica automaticamente Gamma Flip.")
     # Keep 4-argument call compatible with a previous module during Streamlit hot reload.
     # The current exporter reads source SHA and Cboe timestamp from session state.
     st.session_state["gld_cboe_timestamp"] = stamp
