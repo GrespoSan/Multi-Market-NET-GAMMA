@@ -1,8 +1,7 @@
-"""Native ETF NET GAMMA stays visible during Massive/API ratio outages.
+"""Original GLD/USO gamma stays unchanged: UI draws only verified continuous axes.
 
-Use deterministic fake Cboe rows and no external API. Chart tests verify
-the Y axis is explicitly GLD/USO without a ratio and GC/CL only WITH an
-internally consistent locked price pair. X gamma values remain unchanged.
+Pure chart geometry can still represent raw ETF values for tests, but the V2
+user interface never presents raw ETF strikes as GC/CL future levels.
 """
 import unittest
 from pathlib import Path
@@ -99,7 +98,7 @@ class ETFChartFallbackTests(unittest.TestCase):
                 self.assertFalse(chart_price_axes(symbol,bad,y,ticks)["projected"])
                 self.assertFalse(chart_price_axes(symbol,{"ratio":float("nan")},y,ticks)["projected"])
 
-    def test_ratio_failure_cannot_hide_the_chart_in_either_view(self):
+    def test_ui_never_falls_back_to_etf_axes_when_continuous_price_missing(self):
         for file,symbol in (
             ("gld_cboe_view.py","GLD"),
             ("uso_cboe_view.py","USO")
@@ -107,11 +106,13 @@ class ETFChartFallbackTests(unittest.TestCase):
             text=(ROOT / file).read_text(encoding="utf-8")
             with self.subTest(symbol=symbol):
                 self.assertIn(f'axes = chart_price_axes("{symbol}", mapping, ylim, shared_ticks)',text)
+                self.assertIn('if projected:',text)
                 self.assertIn('fig = _plot(shown, reference, gamma_x, axes["y_range"]',text)
                 self.assertIn('st.plotly_chart(fig, use_container_width=True,',text)
                 self.assertNotIn("if mapping is not None and ratio is not None:",text)
-                self.assertIn("STRIKE ETF ORIGINALI",text)
-                self.assertIn(f"Rapporto {symbol}→",text)
+                self.assertIn(f"NET GAMMA {('GC' if symbol == 'GLD' else 'CL')} CONTINUO",text)
+                self.assertNotIn("STRIKE ETF ORIGINALI",text)
+                self.assertNotIn("Massive",text)
                 self.assertIn(f'render_etf_pine_exports("{symbol}"',text)
 
 
