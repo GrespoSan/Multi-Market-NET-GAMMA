@@ -10,14 +10,18 @@ from pine_spx_visual import spx_inputs, SPX_RENDER_FUNCTIONS, spx_last_bar
 from v2_pine_capture import pine_capture_clock
 
 ASSETS = {
-    "GLD": {"roots": ("GC", "MGC"), "label": "Gold GC/MGC"},
-    "USO": {"roots": ("CL", "MCL"), "label": "Petrolio CL/MCL"},
+    "GLD": {"roots": ("GC", "MGC"), "label": "Gold GC/MGC",
+            "continuous": "COMEX:GC1!",
+            "continuous_micro": "COMEX_MINI:MGC1!"},
+    "USO": {"roots": ("CL", "MCL"), "label": "Petrolio CL/MCL",
+            "continuous": "NYMEX:CL1!",
+            "continuous_micro": "NYMEX:MCL1!"},
 }
 
 
 def make_etf_future_pine(symbol: str, profiles: dict, etf_previous_close: float,
                          target: date, label: str, mapping: dict,
-                         acquisition_time=None) -> str:
+                         acquisition_time=None, *, continuous=False) -> str:
     if symbol not in ASSETS:
         raise ValueError("Sottostante Pine ETF non riconosciuto.")
     if not isinstance(target, date):
@@ -28,20 +32,28 @@ def make_etf_future_pine(symbol: str, profiles: dict, etf_previous_close: float,
         raise ValueError("Close precedente ETF mancante.") from exc
     if not isfinite(etf_reference) or etf_reference <= 0:
         raise ValueError("Close precedente ETF non valido.")
-    if not isinstance(mapping, dict) or mapping.get("etf_symbol") != symbol:
-        raise ValueError("Acquisisci un rapporto ETF/future sincronizzato e bloccato prima di esportare.")
-    try:
-        etf_price, fut_price, locked_ratio = (
-            float(mapping["etf_price"]), float(mapping["future_price"]), float(mapping["ratio"]))
-    except (TypeError, ValueError, KeyError) as exc:
-        raise ValueError("Prezzi per la mappatura ETF/future mancanti.") from exc
-    if (not all(isfinite(x) and x > 0 for x in (etf_price, fut_price, locked_ratio))
-            or abs(locked_ratio - fut_price / etf_price) > 1e-8):
-        raise ValueError("Rapporto ETF/future incoerente con i prezzi abbinati.")
-    future_tv = str(mapping.get("future_tv_symbol", ""))
-    valid_prefix = "COMEX:GC" if symbol == "GLD" else "NYMEX:CL"
-    if not future_tv.startswith(valid_prefix) or not mapping.get("bar_ny"):
-        raise ValueError("Contratto future o timestamp rapporto non valido.")
+    if continuous:
+        # Pine obtains both CLOSED 5m quotes from TradingView. No Massive,
+        # Yahoo proxy, guessed locked ratio, or cross-contract substitution.
+        if mapping is not None:
+            raise ValueError("Per il continuo non inserire un rapporto esterno.")
+        etf_price = fut_price = locked_ratio = None
+        future_tv = ASSETS[symbol]["continuous"]
+    else:
+        if not isinstance(mapping, dict) or mapping.get("etf_symbol") != symbol:
+            raise ValueError("Acquisisci un rapporto ETF/future sincronizzato e bloccato prima di esportare.")
+        try:
+            etf_price, fut_price, locked_ratio = (
+                float(mapping["etf_price"]), float(mapping["future_price"]), float(mapping["ratio"]))
+        except (TypeError, ValueError, KeyError) as exc:
+            raise ValueError("Prezzi per la mappatura ETF/future mancanti.") from exc
+        if (not all(isfinite(x) and x > 0 for x in (etf_price, fut_price, locked_ratio))
+                or abs(locked_ratio - fut_price / etf_price) > 1e-8):
+            raise ValueError("Rapporto ETF/future incoerente con i prezzi abbinati.")
+        future_tv = str(mapping.get("future_tv_symbol", ""))
+        valid_prefix = "COMEX:GC" if symbol == "GLD" else "NYMEX:CL"
+        if not future_tv.startswith(valid_prefix) or not mapping.get("bar_ny"):
+            raise ValueError("Contratto future o timestamp rapporto non valido.")
     if not profiles or any(x not in ("0DTE", "Principale", "Weekly") for x in profiles):
         raise ValueError("Profili Pine ETF non riconosciuti.")
     if "Principale" in profiles and "0DTE" in profiles:
@@ -102,6 +114,23 @@ def make_etf_future_pine(symbol: str, profiles: dict, etf_previous_close: float,
     )
     visual_draw = spx_last_bar(main_call, weekly_call,
                                "mainGammaETF", "weeklyGammaETF", prepare)
+    if continuous:
+        # Without a true matched pair, NEVER create fictitious 0-price lines.
+        visual_draw = visual_draw.replace(
+            "if barstate.islast and validTicker\n",
+            "if barstate.islast and validTicker and not na(ratioToDraw)\n", 1)
+        visual_draw += """
+var label missingRatioLabel = na
+if barstate.islast and validTicker and na(ratioToDraw)
+    if not na(missingRatioLabel)
+        label.delete(missingRatioLabel)
+    missingRatioLabel := label.new(bar_index, close, "NET GAMMA ETF: rapporto continuo non disponibile. Apri @FUT_TV@ su TF 1m/5m e verifica dati ETF/future.", style=label.style_label_left, textcolor=color.black, color=color.orange, size=size.small)
+else if barstate.islast and not na(missingRatioLabel)
+    label.delete(missingRatioLabel)
+    missingRatioLabel := na
+"""
+    if continuous:
+        visual_draw = visual_draw.replace("@FUT_TV@", future_tv)
     template = """//@version=6
 indicator("Multi-Market NET GAMMA · @SYMBOL@ → @MARKET@ · @DATE@ · @CLOCK@ · @LABEL@", overlay=true, max_lines_count=500, max_labels_count=50)
 // Ora acquisizione fotografia Cboe (Europe/Rome; CET/CEST): @ACQUISITION@. Non e' il timestamp Cboe originale.
@@ -109,30 +138,29 @@ indicator("Multi-Market NET GAMMA · @SYMBOL@ → @MARKET@ · @DATE@ · @CLOCK@ 
 // ATTENZIONE: la mappatura percentuale ETF → future e' una STIMA grafica, NON un livello opzioni @MARKET@.
 // Formula ETF invariata: Call [(OI+Volume)*Gamma] - Put [(OI+Volume)*Gamma].
 // Riferimento ETF (close precedente al rilevamento): @ETF_REFERENCE@.
-// Fotografia rapporto: ETF @CAPTURE_ETF@; future @CAPTURE_FUTURE@; ratio @LOCKED_RATIO@.
-// Contratto future riferimento: @FUT_TV@; prezzi alla barra @CAPTURE_TIME@.
-// Fonte del rapporto: @CAPTURE_SOURCE@.
-// Mappatura BLOCCATA predefinita: livelloFuture = strikeETF * ratioBloccato.
-// Modalita' dinamica opzionale: coppie 5m CHIUSE e con timestamp uguale.
-// Gli ETF non sono quotati durante tutta la sessione dei futures: blocca l'ultimo ratio valido.
-validTicker = syminfo.type == "futures" and (@VALID_ROOTS@)
-modeRatio = input.string("Bloccato", "Rapporto ETF/future", options=["Bloccato", "Dinamico"], tooltip="Bloccato usa esattamente i prezzi abbinati della fotografia. Dinamico usa gli ultimi prezzi ETF e future delle stesse barre 5m completate; puo' spostare tutti i livelli. Non usare Dinamico come livelli fissi dello snapshot.")
-float lockedRatio = @LOCKED_RATIO@
+// @MAPPING_NOTE@
+// Contratto future riferimento: @FUT_TV@.
+// ETF non quotato durante tutta la sessione future: conserva l'ultimo rapporto valido.
+// Le barre 5m sono confermate, ma i livelli proiettati possono cambiare nel tempo.
 string etfTicker = "@ETF_TV@"
-string contractTicker = "@FUT_TV@"
+@CONTRACT_TICKER_LINE@
+validTicker = @VALID_TICKER_EXPR@
+@RATIO_MODE_LINE@
+@RATIO_LOCKED_LINE@
 @SPX_INPUTS@
 
 // Coppie CHIUSE a 5 minuti. Il time-key viene dall'inizio della barra:
 // solo stesso timestamp, mai prezzi di sessioni diverse o ETF fermo dopo le 16 NY.
-[etfLast, etfTime] = request.security(etfTicker, "5", [close[1], time[1]], gaps=barmerge.gaps_on, lookahead=barmerge.lookahead_on)
-[futLast, futTime] = request.security(contractTicker, "5", [close[1], time[1]], gaps=barmerge.gaps_on, lookahead=barmerge.lookahead_on)
+[etfLast, etfTime] = request.security(etfTicker, "5", [close[1], time[1]], gaps=barmerge.gaps_on, lookahead=barmerge.lookahead_on, ignore_invalid_symbol=true)
+[futLast, futTime] = request.security(contractTicker, "5", [close[1], time[1]], gaps=barmerge.gaps_on, lookahead=barmerge.lookahead_on, ignore_invalid_symbol=true)
 var float lastDynamicRatio = na
 var int lastMatchedTime = na
 if timeframe.isintraday and timeframe.in_seconds() <= 300 and not na(etfLast) and not na(futLast) and etfLast > 0 and futLast > 0 and not na(etfTime) and etfTime == futTime and (na(lastMatchedTime) or etfTime > lastMatchedTime)
     lastDynamicRatio := futLast / etfLast
     lastMatchedTime := etfTime
 bool dynamicAvailable = modeRatio == "Dinamico" and not na(lastDynamicRatio)
-float ratioToDraw = dynamicAvailable ? lastDynamicRatio : lockedRatio
+float ratioToDraw = @RATIO_SELECTION@
+plot(ratioToDraw, title="Rapporto ETF/future", display=display.data_window)
 
 var array<line> drawnLines = array.new_line()
 var array<label> drawnLabels = array.new_label()
@@ -153,22 +181,56 @@ mapETF(array<float> etfLevels, float ratio) =>
 
 @SPX_DRAW@
 """
+    if continuous:
+        micro_tv = ASSETS[symbol]["continuous_micro"]
+        validity = (
+            'syminfo.type == "futures" and '
+            f'(ticker.standard(syminfo.tickerid) == "{future_tv}" or '
+            f'ticker.standard(syminfo.tickerid) == "{micro_tv}")')
+        # The 5m future price comes from the ACTUAL continuous contract
+        # open in TradingView, so GC and MGC (or CL and MCL) are never
+        # silently mixed for the same ratio.
+        contract_line = 'string contractTicker = ticker.standard(syminfo.tickerid)'
+        mapping_note = (
+            "SOLO FUTURE CONTINUO: Gamma Cboe ETF fissi per lo snapshot, "
+            "ratio DINAMICO TradingView da barre 5m chiuse e sincronizzate. "
+            "Nessun rapporto iniziale inventato. "
+            "Usare su timeframe 1m o 5m su GC1!/MGC1! "
+            "oppure CL1!/MCL1! secondo lo strumento.")
+        mode_line = 'modeRatio = "Dinamico"'
+        locked_line = 'float lockedRatio = na'
+        ratio_selection = 'dynamicAvailable ? lastDynamicRatio : na'
+    else:
+        validity = f'syminfo.type == "futures" and ({valid})'
+        contract_line = f'string contractTicker = "{future_tv}"'
+        mapping_note = (
+            f"Rapporto congelato ETF {etf_price:.5f}; Future {fut_price:.5f}; "
+            f"ratio {locked_ratio:.12f}; barra {mapping['bar_ny']}. "
+            f"Fonte: {str(mapping.get('source', ''))[:120]}. "
+            "Bloccato predefinito, dinamico facoltativo.")
+        mode_line = (
+            'modeRatio = input.string("Bloccato", "Rapporto ETF/future", '
+            'options=["Bloccato", "Dinamico"], '
+            'tooltip="Bloccato: rapporto verificato per la fotografia. '
+            'Dinamico: ultimo rapporto barre ETF e futuro 5m CHIUSE con stesso timestamp.")')
+        locked_line = f"float lockedRatio = {locked_ratio:.12f}".rstrip("0").rstrip(".")
+        ratio_selection = 'dynamicAvailable ? lastDynamicRatio : lockedRatio'
     substitutions = {
         "@SYMBOL@": symbol,
         "@MARKET@": market,
         "@DATE@": target.isoformat(),
         "@CLOCK@": capture_suffix,
         "@ACQUISITION@": capture["stamp"],
-        "@LABEL@": label.replace('"', "").replace("\n", " ")[:60],
-        "@VALID_ROOTS@": valid,
+        "@LABEL@": label.replace('"', "").replace("\\n", " ")[:60],
+        "@VALID_TICKER_EXPR@": validity,
+        "@MAPPING_NOTE@": mapping_note.replace("\\n", " "),
+        "@RATIO_MODE_LINE@": mode_line,
+        "@RATIO_LOCKED_LINE@": locked_line,
+        "@RATIO_SELECTION@": ratio_selection,
         "@ETF_REFERENCE@": n(etf_reference),
         "@ETF_TV@": "AMEX:" + symbol,
         "@FUT_TV@": future_tv,
-        "@LOCKED_RATIO@": f"{locked_ratio:.12f}".rstrip("0").rstrip("."),
-        "@CAPTURE_ETF@": f"{etf_price:.5f}",
-        "@CAPTURE_FUTURE@": f"{fut_price:.5f}",
-        "@CAPTURE_TIME@": str(mapping["bar_ny"]),
-        "@CAPTURE_SOURCE@": str(mapping.get("source", "")).replace("\n", " ")[:120],
+        "@CONTRACT_TICKER_LINE@": contract_line,
         "@SPX_INPUTS@": visual_inputs,
         "@SPX_RENDER_FUNCTIONS@": SPX_RENDER_FUNCTIONS,
         "@SPX_DRAW@": visual_draw,

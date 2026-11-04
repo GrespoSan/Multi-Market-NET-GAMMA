@@ -102,8 +102,14 @@ class EmergencyTests(unittest.TestCase):
             build_current_pine("GLD", json.dumps(d2).encode(), DAY, 368., mapping("GLD"))
 
     def test_no_implicit_futures_conversion(self):
-        with self.assertRaisesRegex(ValueError, "Rapporto ETF/future"):
-            build_current_pine("USO", original("USO"), DAY, 168., None)
+        # Missing ratio now explicitly exports a continuous CL1! Pine,
+        # never silently injecting a fabricated locked ETF/future mapping.
+        dynamic = build_current_pine("USO", original("USO"), DAY, 168., None)
+        self.assertIn('string contractTicker = ticker.standard(syminfo.tickerid)', dynamic["pine"])
+        self.assertIn('ticker.standard(syminfo.tickerid) == "NYMEX:CL1!"', dynamic["pine"])
+        self.assertIn('ticker.standard(syminfo.tickerid) == "NYMEX:MCL1!"', dynamic["pine"])
+        self.assertFalse(dynamic["projected"])
+        self.assertEqual(dynamic["factor"], 1.0)
         with self.assertRaisesRegex(ValueError, "altro strumento"):
             build_current_pine("USO", original("USO"), DAY, 168., mapping("GLD"))
         with self.assertRaisesRegex(ValueError, "Differenziale"):
