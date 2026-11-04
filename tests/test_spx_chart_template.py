@@ -145,9 +145,10 @@ class ReferenceSPXHistogramTests(unittest.TestCase):
             ("uso_cboe_view.py","USO","CL")):
             with self.subTest(symbol=symbol):
                 page=(root/source).read_text(encoding="utf-8")
-                self.assertIn(f'prepare_locked_chart_mapping("{symbol}")',page)
+                self.assertIn(f'load_chart_continuous_mapping(',page)
+                self.assertNotIn("prepare_locked_chart_mapping(",page)
                 self.assertIn(f'chart_price_axes("{symbol}", mapping, ylim, shared_ticks)',page)
-                self.assertIn('price_ratio=axes["price_ratio"], projected=projected',page)
+                self.assertIn('price_ratio=axes["price_ratio"], projected=True',page)
                 self.assertIn('st.plotly_chart(fig, use_container_width=True,',page)
                 self.assertIn("render_etf_pine_exports(",page)
                 self.assertIn('_to_csv(p["rows"])',page)
