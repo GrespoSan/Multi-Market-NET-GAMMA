@@ -118,32 +118,27 @@ def build_current_pine(symbol, raw, trade_day, reference, conversion, *,
         factor = 1.0
         shift = basis
     else:
-        if conversion is None:
-            # Continuous alternative: never invent an initial conversion.
-            tv = ("COMEX:GC1!/COMEX_MINI:MGC1!" if symbol == "GLD"
-                  else "NYMEX:CL1!/NYMEX:MCL1!")
-            script = make_etf_future_pine(
-                symbol, selected, reference, trade_day, "EMERGENZA CONTINUO",
-                None, acquisition_time=capture_time, continuous=True)
-            conversion_label = (
-                f"{symbol} → {tv}: rapporto dinamico interno TradingView; "
-                "anteprima sui soli strike ETF originali")
-            factor, shift = 1.0, 0.0
-        else:
-            if not isinstance(conversion, dict):
-                raise ValueError("Rapporto ETF/future non valido.")
-            if conversion.get("etf_symbol") != symbol:
-                raise ValueError("Rapporto ETF/future di un altro strumento.")
-            ratio = _number(conversion.get("ratio"), "Rapporto ETF/future")
+        # Same choice everywhere: ONLY the TradingView continuous Pine.
+        # Yahoo continuous ratio is used exclusively for the in-app chart.
+        script = make_etf_future_pine(
+            symbol, selected, reference, trade_day, "EMERGENZA CONTINUO",
+            None, acquisition_time=capture_time, continuous=True)
+        continuous_tv = (
+            "COMEX:GC1!/COMEX_MINI:MGC1!" if symbol == "GLD"
+            else "NYMEX:CL1!/NYMEX:MCL1!")
+        conversion_label = f"{symbol} → {continuous_tv}"
+        if conversion is not None:
+            if (not isinstance(conversion, dict)
+                    or conversion.get("etf_symbol") != symbol
+                    or not conversion.get("continuous_proxy")):
+                raise ValueError("Solo prezzi continui sincronizzati consentiti.")
+            ratio = _number(conversion.get("ratio"), "Rapporto continuo")
             if ratio <= 0:
-                raise ValueError("Rapporto ETF/future non valido.")
-            script = make_etf_future_pine(
-                symbol, selected, reference, trade_day, "EMERGENZA CORRENTE",
-                conversion, acquisition_time=capture_time)
-            conversion_label = (
-                f"{symbol} → {conversion['future_tv_symbol']} · "
-                f"rapporto bloccato {ratio:.8f}")
-            factor, shift = ratio, 0.0
+                raise ValueError("Rapporto continuo non valido.")
+            factor = ratio
+        else:
+            factor = 1.0
+        shift = 0.0
     if not script.startswith("//@version=6\n") or script.count("indicator(") != 1:
         raise ValueError("Pine v6: intestazione non valida.")
     return {
@@ -215,48 +210,6 @@ def _profile_chart(group, *, symbol, title, factor, shift, strike_key, gamma_key
                                  f"Strike ETF {symbol} · USD (NON prezzi future)"),
                     showlegend=False)
     return f
-
-
-def _manual_ratio_panel(symbol, trade_day, sha):
-    """SPX-like explicit fallback when same-time ETF/future pairing is unavailable."""
-    import streamlit as st
-    from future_ratio import CONTRACTS, manual_pair
-    key = f"v2_emergency_manual_ratio_{symbol}"
-    saved = st.session_state.get(key)
-    if saved and saved.get("_source_token") != f"{sha}|{trade_day}":
-        st.session_state.pop(key, None)
-        saved = None
-    with st.expander("Inserisci manualmente due prezzi allo stesso orario (alternativa)",
-                     expanded=False):
-        st.caption("Solo prezzi ETF e future osservati nella STESSA barra a 5 minuti. "
-                   "La corrispondenza è dichiarata dall'utente, non verificata.")
-        selection = st.selectbox("Contratto future specifico",
-                                 list(CONTRACTS[symbol]["contracts"]),
-                                 key=f"v2_emergency_contract_{symbol}")
-        a, b, c = st.columns(3)
-        with a:
-            etf_px = st.number_input(f"Prezzo ETF {symbol}", min_value=0.0,
-                                     value=0.0, format="%.4f",
-                                     key=f"v2_emergency_etf_px_{symbol}")
-        with b:
-            fut_px = st.number_input("Prezzo future", min_value=0.0, value=0.0,
-                                     format="%.4f",
-                                     key=f"v2_emergency_fut_px_{symbol}")
-        with c:
-            time_ny = st.text_input("Ora New York HH:MM", value="15:30",
-                                    key=f"v2_emergency_ny_time_{symbol}")
-        if st.button("Conferma e blocca coppia manuale",
-                     key=f"v2_emergency_lock_manual_{symbol}"):
-            try:
-                pair = manual_pair(etf_px, fut_px, symbol, selection,
-                                   trade_day, time_ny)
-                pair["_source_token"] = f"{sha}|{trade_day}"
-                st.session_state[key] = pair
-                saved = pair
-                st.success("Rapporto manuale bloccato per questa fotografia.")
-            except (ValueError, KeyError, TypeError) as exc:
-                st.error(f"Coppia manuale non utilizzabile: {str(exc)[:250]}")
-    return saved
 
 
 def _calculate_basis_explicitly(day, key):
@@ -408,30 +361,28 @@ def render(market_key):
             band = st.session_state.get("ndx_strike_band_percent", 3.0)
             extension = st.session_state.get("v2_ndx_visual_extension", True)
         else:
-            from etf_pine_view import prepare_locked_chart_mapping
+            from v2_continuous_ratio import load_chart_continuous_mapping
             band = st.session_state.get(f"{symbol.lower()}_cboe_band", 3.0)
-            extension = st.session_state.get(f"v2_{symbol.lower()}_visual_extension", True)
-            conversion = prepare_locked_chart_mapping(symbol)
-            manual = _manual_ratio_panel(symbol, trade_day, sha)
-            if manual is not None:
-                conversion = manual
-            if conversion is None:
-                tv = ("COMEX:GC1!/COMEX_MINI:MGC1!" if symbol == "GLD"
-                      else "NYMEX:CL1!/NYMEX:MCL1!")
-                st.info(
-                    f"Rapporto bloccato {symbol}/future non disponibile. "
-                    f"Il Pine sarà comunque generato per {tv}: "
-                    "TradingView calcola la conversione su due barre M5 "
-                    "sincronizzate e CHIUSE. Se mancano, non disegna livelli. "
-                    "I grafici di anteprima qui restano sugli strike ETF originali.")
-            else:
-                st.markdown(f"**Rapporto {symbol} / future bloccato:** "
-                            f"{conversion['ratio']:.8f} · "
-                            f"{conversion['future_tv_symbol']}")
-                if conversion.get("mode") == "manual-attested":
-                    st.caption("Coppia inserita dall'utente: sincronizzazione "
-                               "NON verificata indipendentemente.")
-
+            extension = st.session_state.get(
+                f"v2_{symbol.lower()}_visual_extension", True)
+            # Timestamp ONLY from this deliberate live download. Manually
+            # imported bytes have no independently verifiable capture clock.
+            state = {
+                f"{symbol.lower()}_cboe_source": (
+                    "Acquisizione diretta su richiesta"
+                    if active.get("download_rome") else "Importazione manuale"),
+                f"{symbol.lower()}_cboe_import_rome": active.get("download_rome"),
+            }
+            conversion, _missing = load_chart_continuous_mapping(
+                symbol, state)
+            st.caption("Pine SOLO continuo GC1!/MGC1! o CL1!/MCL1!: "
+                       "rapporto dinamico calcolato su TradingView.")
+            if conversion is not None:
+                st.caption(
+                    f"Anteprima continuo Yahoo "
+                    f"{conversion['future_yahoo_ticker']} · "
+                    f"rapporto M5 {conversion['ratio']:.8f} · "
+                    f"{conversion['bar_ny']} New York.")
         try:
             result = build_current_pine(
                 symbol, active["content"], trade_day, reference, conversion,
@@ -447,39 +398,38 @@ def render(market_key):
             f"0DTE {trade_day:%d/%m/%Y} · "
             f"Weekly {result['expiry_weekly']:%d/%m/%Y}."
         )
-        left_chart, right_chart = st.columns(2, gap="medium")
-        with left_chart:
-            st.plotly_chart(
-                _profile_chart(result["profiles"]["0DTE"],
-                               symbol=symbol, title="NET GAMMA 0DTE · corrente",
-                               factor=result["factor"], shift=result["shift"],
-                               strike_key=result["strike_key"],
-                               gamma_key=result["gamma_key"],
-                               projected=result["projected"]),
-                use_container_width=True,
-                key=f"v2_emergency_{symbol}_odte")
-        with right_chart:
-            st.plotly_chart(
-                _profile_chart(result["profiles"]["Weekly"],
-                               symbol=symbol, title="NET GAMMA Weekly · corrente",
-                               factor=result["factor"], shift=result["shift"],
-                               strike_key=result["strike_key"],
-                               gamma_key=result["gamma_key"],
-                               projected=result["projected"]),
-                use_container_width=True,
-                key=f"v2_emergency_{symbol}_weekly")
-        if symbol != "NDX":
-            st.caption(
-                f"Gamma dalle opzioni ETF {symbol}, NON da opzioni sui futures "
-                f"{future}. Il Pine continuo converte su TradingView; "
-                "nessun rapporto o livello future viene inventato.")
+        if result["projected"]:
+            left_chart, right_chart = st.columns(2, gap="medium")
+            with left_chart:
+                st.plotly_chart(
+                    _profile_chart(
+                        result["profiles"]["0DTE"],
+                        symbol=symbol, title="NET GAMMA 0DTE · CONTINUO",
+                        factor=result["factor"], shift=result["shift"],
+                        strike_key=result["strike_key"],
+                        gamma_key=result["gamma_key"], projected=True),
+                    use_container_width=True,
+                    key=f"v2_emergency_{symbol}_odte")
+            with right_chart:
+                st.plotly_chart(
+                    _profile_chart(
+                        result["profiles"]["Weekly"],
+                        symbol=symbol, title="NET GAMMA Weekly · CONTINUO",
+                        factor=result["factor"], shift=result["shift"],
+                        strike_key=result["strike_key"],
+                        gamma_key=result["gamma_key"], projected=True),
+                    use_container_width=True,
+                    key=f"v2_emergency_{symbol}_weekly")
+        else:
+            st.caption("Anteprima grafica non disponibile: prezzo continuo "
+                       "sincronizzato non verificabile dal file importato. "
+                       "Il Pine scaricato calcola il rapporto su TradingView.")
         st.download_button(
             ("Scarica Pine NET GAMMA CONTINUO GC1!/MGC1! o CL1!/MCL1! (.pine)"
-             if symbol != "NDX" and conversion is None else
-             "Scarica Pine NET GAMMA corrente (.pine)"),
+             if symbol != "NDX" else "Scarica Pine NET GAMMA corrente (.pine)"),
             data=result["pine"].encode("utf-8"),
             file_name=(f"MultiMarket_{symbol}_NET_GAMMA_CONTINUO_{trade_day:%Y%m%d}.pine"
-                       if symbol != "NDX" and conversion is None else
+                       if symbol != "NDX" else
                        f"MultiMarket_{symbol}_NET_GAMMA_corrente_{trade_day:%Y%m%d}.pine"),
             mime="text/plain", key=f"v2_emergency_export_{symbol}",
             on_click="ignore", use_container_width=True)
