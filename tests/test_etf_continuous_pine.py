@@ -99,8 +99,9 @@ class ContinuousPineTests(unittest.TestCase):
         base=Path(__file__).resolve().parent.parent
         view=(base/"etf_pine_view.py").read_text(encoding="utf-8")
         emergency=(base/"v2_emergency_pine.py").read_text(encoding="utf-8")
-        self.assertLess(view.index('continuous_pine = make_etf_future_pine('),
-                        view.index('    if not result or result.get("_token") != snapshot_token:'))
+        self.assertIn('script = make_etf_future_pine(',view)
+        self.assertNotIn("snapshot_token",view)
+        self.assertNotIn("fetch_oil_pair(",view)
         self.assertIn('continuous=True',view)
         self.assertIn('continuous=True',emergency)
         self.assertIn('projected=result["projected"]',emergency)
