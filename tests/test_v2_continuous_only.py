@@ -100,6 +100,12 @@ class TestContinuousOnly(unittest.TestCase):
             self.assertNotIn("CLZ2026",src)
             self.assertNotIn("GCZ2026",src)
 
+    def test_streamlit_cache_key_includes_symbol_and_snapshot_timestamp(self):
+        code=(ROOT/"v2_continuous_ratio.py").read_text(encoding="utf-8")
+        self.assertIn("def _cached_continuous(symbol, cutoff):",code)
+        self.assertIn("return fetch_continuous_pair(symbol, cutoff)",code)
+        self.assertNotIn("def cached(_symbol, _cutoff)",code)
+
     def test_no_legacy_conversion_is_reachable_from_gl_or_uso_ui(self):
         pine=(ROOT/"etf_pine_view.py").read_text()
         self.assertNotIn("prepare_locked_chart_mapping",pine)
