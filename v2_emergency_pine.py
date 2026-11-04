@@ -120,7 +120,8 @@ def build_current_pine(symbol, raw, trade_day, reference, conversion, *,
     else:
         if conversion is None:
             # Continuous alternative: never invent an initial conversion.
-            tv = "COMEX:GC1!" if symbol == "GLD" else "NYMEX:CL1!"
+            tv = ("COMEX:GC1!/COMEX_MINI:MGC1!" if symbol == "GLD"
+                  else "NYMEX:CL1!/NYMEX:MCL1!")
             script = make_etf_future_pine(
                 symbol, selected, reference, trade_day, "EMERGENZA CONTINUO",
                 None, acquisition_time=capture_time, continuous=True)
@@ -415,7 +416,8 @@ def render(market_key):
             if manual is not None:
                 conversion = manual
             if conversion is None:
-                tv = "COMEX:GC1!" if symbol == "GLD" else "NYMEX:CL1!"
+                tv = ("COMEX:GC1!/COMEX_MINI:MGC1!" if symbol == "GLD"
+                      else "NYMEX:CL1!/NYMEX:MCL1!")
                 st.info(
                     f"Rapporto bloccato {symbol}/future non disponibile. "
                     f"Il Pine sarà comunque generato per {tv}: "
@@ -472,7 +474,7 @@ def render(market_key):
                 f"{future}. Il Pine continuo converte su TradingView; "
                 "nessun rapporto o livello future viene inventato.")
         st.download_button(
-            ("Scarica Pine NET GAMMA CONTINUO GC1!/CL1! (.pine)"
+            ("Scarica Pine NET GAMMA CONTINUO GC1!/MGC1! o CL1!/MCL1! (.pine)"
              if symbol != "NDX" and conversion is None else
              "Scarica Pine NET GAMMA corrente (.pine)"),
             data=result["pine"].encode("utf-8"),
