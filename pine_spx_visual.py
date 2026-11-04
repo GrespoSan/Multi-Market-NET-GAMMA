@@ -23,6 +23,7 @@ offsetOdte = input.int(100, "Distanza 0DTE da ultima candela", minval=45, maxval
 offsetWeekly = input.int(100, "Distanza Weekly dalle 0DTE", minval=20, maxval=600)
 showCurrentOdte = input.bool(true, "Mostra 0DTE corrente")
 showCurrentWeekly = input.bool(true, "Mostra Weekly corrente")
+showTop3Odte = input.bool(true, "Proietta Top 3 Call / Put 0DTE")
 positiveColor = input.color(color.rgb(0, 230, 117), "NET GAMMA positivo")
 negativeColor = input.color(color.rgb(242, 54, 69), "NET GAMMA negativo")
 showTitles = input.bool(true, "Mostra intestazioni")'''
@@ -60,11 +61,28 @@ renderProfile(array<float> levels, array<float> gamma, int center, string headin
         if showTitles
             float spacing = count > 1 ? math.max(5.0, (top - bottom) / 20.0) : 10.0
             label t = label.new(center, top + spacing, heading, xloc=xloc.bar_index, yloc=yloc.price, color=color.new(color.black, 50), textcolor=color.white, style=label.style_label_down, size=size.normal)
-            array.push(drawnLabels, t)"""
+            array.push(drawnLabels, t)
+
+// Solo i 3 NET GAMMA 0DTE positivi/negativi piu' forti della fotografia.
+// Linee dal margine dell'ULTIMA candela verso destra; nessuna label.
+drawOdteTopProjections(array<float> callLevels, array<float> putLevels) =>
+    int nCall = array.size(callLevels)
+    if nCall > 0
+        for j = 0 to nCall - 1
+            float y = array.get(callLevels, j)
+            line lc = line.new(bar_index, y, bar_index + 1, y, xloc=xloc.bar_index, extend=extend.right, color=positiveColor, style=line.style_dashed, width=1)
+            array.push(drawnLines, lc)
+    int nPut = array.size(putLevels)
+    if nPut > 0
+        for j = 0 to nPut - 1
+            float y = array.get(putLevels, j)
+            line lp = line.new(bar_index, y, bar_index + 1, y, xloc=xloc.bar_index, extend=extend.right, color=negativeColor, style=line.style_dashed, width=1)
+            array.push(drawnLines, lp)"""
 
 
 def spx_last_bar(main_call: str, weekly_call: str, main_values: str,
-                 weekly_values: str, prepare: str = "") -> str:
+                 weekly_values: str, prepare: str = "",
+                 top3_levels: tuple[str, str] | None = None) -> str:
     """Draw SPX-style overlays on the last bar, with only error labels.
 
     'prepare' can map ETF strikes onto future y-coordinates before rendering.
@@ -73,6 +91,11 @@ def spx_last_bar(main_call: str, weekly_call: str, main_values: str,
     prefix = (indent(prepare.strip(), "    ") + "\n") if prepare.strip() else ""
     main = ("if showCurrentOdte\n            " + main_call) if main_call else "// Profilo principale assente"
     weekly = ("if showCurrentWeekly\n            " + weekly_call) if weekly_call else "// Profilo Weekly assente"
+    # Top 3 remain visible even when the histogram is hidden or the
+    # user-chosen graphic scale exceeds Pine's histogram limit.
+    top3 = (f"\n    if showTop3Odte\n        "
+            f"drawOdteTopProjections({top3_levels[0]}, {top3_levels[1]})"
+            if top3_levels is not None else "")
     return f'''if barstate.islast and validTicker
     for ln in drawnLines
         line.delete(ln)
@@ -92,4 +115,4 @@ def spx_last_bar(main_call: str, weekly_call: str, main_values: str,
         array.push(drawnLabels, unsafe)
     else
         {main}
-        {weekly}'''
+        {weekly}{top3}'''
