@@ -1,319 +1,64 @@
-"""Read-only ratio capture and Pine v6 exports for GC/MGC and CL/MCL.
+"""Only continuous GC/MGC and CL/MCL Pine exports.
 
-Freeze an exactly time-matched pair once per original Cboe snapshot;
-never substitute the previous daily close or fake synchronized prices.
+No month selection, Massive API, manual ratio, Yahoo chart fallback,
+or stale frozen per-contract mapping. This is the sole ETF Pine interface.
+NET GAMMA is always the original Cboe GLD/USO profile.
 """
-from datetime import date, datetime
-from zoneinfo import ZoneInfo
+from __future__ import annotations
 
 import streamlit as st
-
-from etf_future_pine import ASSETS, make_etf_future_pine
+from etf_future_pine import make_etf_future_pine
 from v2_pine_timed_exports import render_timed_pine_exports
-from future_ratio import CONTRACTS, AUTO_OIL_CONTRACT, choose_contract, fetch_pair, fetch_gold_pair, fetch_oil_pair, manual_pair
 
-
-def _source_day(stamp, fallback):
-    try:
-        d = date.fromisoformat(str(stamp)[:10])
-        return d, True
-    except (ValueError, TypeError):
-        return fallback, False
-
-
-def prepare_locked_chart_mapping(symbol):
-    """Reuse the snapshot-locked ratio from Pine for on-screen future plots.
-
-    Called before charts; zero widgets and at most one acquisition per
-    snapshot+contract. No assumed prices or silent fallback to ETF strikes.
-    """
-    if symbol not in ("GLD", "USO"):
-        return None
-    prefix = symbol.lower() + "_cboe_"
-    if symbol == "USO" and not st.session_state.get("uso_auto_roll_initialized"):
-        st.session_state["uso_ratio_contract"] = AUTO_OIL_CONTRACT
-        st.session_state["uso_auto_roll_initialized"] = True
-    selections = ([AUTO_OIL_CONTRACT] + list(CONTRACTS[symbol]["contracts"])
-                  if symbol == "USO" else list(CONTRACTS[symbol]["contracts"]))
-    selected = st.session_state.get(f"{symbol.lower()}_ratio_contract", selections[0])
-    if selected not in selections:
-        st.session_state[f"{symbol.lower()}_ratio_contract"] = selections[0]
-        selected = selections[0]
-    is_auto = symbol == "USO" and selected == AUTO_OIL_CONTRACT
-    tv_symbol = "CL automatico" if is_auto else choose_contract(symbol, selected)[1]
-    try:
-        captured = datetime.fromisoformat(str(st.session_state.get(prefix + "import_rome")))
-        if captured.tzinfo is None:
-            raise ValueError("Timezone assente")
-        snapshot_day = captured.astimezone(ZoneInfo("America/New_York")).date()
-    except (ValueError, TypeError):
-        st.session_state[f"{symbol.lower()}_ratio_error"] = (
-            "Ora della fotografia Cboe senza fuso verificabile")
-        return None
-    source_sha = st.session_state.get(prefix + "sha256", "")
-    version = "gold_capture_v2" if symbol == "GLD" else "oil_capture_v2"
-    token = f"{version}|{source_sha}|{snapshot_day.isoformat()}|{captured.isoformat()}|{tv_symbol}"
-    state_key, tried_key, error_key = (
-        f"{symbol.lower()}_ratio_locked",
-        f"{symbol.lower()}_ratio_tried",
-        f"{symbol.lower()}_ratio_error")
-    locked = st.session_state.get(state_key)
-    if locked and locked.get("_token") == token:
-        return locked
-    if locked:
-        st.session_state.pop(state_key, None)
-    if st.session_state.get(tried_key) == token:
-        return None
-    st.session_state[tried_key] = token
-    try:
-        try:
-            api_key = str(st.secrets.get("MASSIVE_API_KEY", "")).strip()
-        except Exception:
-            api_key = ""
-        pair = (fetch_gold_pair(selected, captured, api_key)
-                if symbol == "GLD" else fetch_oil_pair(selected, captured, api_key))
-        pair["_token"] = token
-        st.session_state[state_key] = pair
-        st.session_state.pop(error_key, None)
-        return pair
-    except Exception as exc:
-        st.session_state[error_key] = str(exc)[:320]
-        return None
+CONTINUOUS_LABELS = {
+    "GLD": "GC1! / MGC1!",
+    "USO": "CL1! / MCL1!",
+}
 
 
 def render_etf_pine_exports(symbol, calculated, reference, day,
                             source_sha=None, cboe_stamp=None):
-    if symbol not in ASSETS:
-        raise ValueError("Modulo Pine non supportato.")
-    # Read optional snapshot metadata from the Streamlit session, keeping the
-    # public 4-argument interface backward compatible with live page reloads.
-    prefix = symbol.lower() + "_cboe_"
-    if source_sha is None:
-        source_sha = st.session_state.get(prefix + "sha256", "")
-    if cboe_stamp is None:
-        cboe_stamp = st.session_state.get(prefix + "timestamp")
-    market = ASSETS[symbol]["label"]
-    st.subheader(f"Esportazione Pine Script v6 · {market}")
-    st.caption("Fonte dei Gamma: opzioni ETF Cboe, NON opzioni sui futures. "
-               "Trasposizione del SOLO PREZZO degli strike, senza alterare NET GAMMA.")
-    if symbol == "GLD":
-        st.caption("I livelli trasferiti sono una proiezione indicativa degli strike "
-                   "ETF, non livelli ricavati dalle opzioni native COMEX.")
-    else:
-        st.warning("La proiezione ETF → future è indicativa, non una resistenza o un "
-                   "supporto certificato dalle opzioni native CME/NYMEX.")
-
-    usable = {k: v for k, v in calculated.items()
-              if k in ("0DTE", "Principale", "Weekly") and v.get("usable") and v.get("rows")}
-    if not usable:
-        st.info("Esportazione Pine non disponibile: serve almeno un profilo Cboe valido.")
+    if symbol not in CONTINUOUS_LABELS:
+        raise ValueError("Mercato ETF non riconosciuto.")
+    label = CONTINUOUS_LABELS[symbol]
+    st.subheader(f"Pine Script v6 · Future continuo {label}")
+    st.caption("Gamma delle opzioni Cboe invariati. Conversione degli strike "
+               "effettuata direttamente su TradingView, con rapporto da due "
+               "barre M5 chiuse con identico timestamp. "
+               "Non vengono usati Massive o contratti a scadenza.")
+    valid = {name: group for name, group in calculated.items()
+             if name in ("0DTE", "Principale", "Weekly")
+             and group.get("usable") and group.get("rows")}
+    if not valid:
+        st.caption("Nessun profilo Cboe completo disponibile per l'esportazione.")
         return
 
-    # Independent continuous Pine: uses genuine ETF Gamma from the selected
-    # Cboe snapshot and converts strike levels WITHIN TradingView itself.
-    # No Massive request and no invented or stale frozen ETF/future ratio.
-    continuous_tv = ("COMEX:GC1! / COMEX_MINI:MGC1!" if symbol == "GLD"
-                     else "NYMEX:CL1! / NYMEX:MCL1!")
-    with st.expander(
-        f"PINE TRADINGVIEW · {continuous_tv} · CONTINUO (senza Massive)",
-        expanded=True
-    ):
-        st.caption(
-            f"Esporta il codice Pine v6 anche senza rapporto verificato. "
-            f"Su TradingView apri {continuous_tv} in TF 1m o 5m: "
-            "il rapporto si forma soltanto da due barre ETF/future M5 "
-            "chiuse con identico timestamp. Se mancano, NON vengono "
-            "disegnati livelli. Valori NET GAMMA Cboe invariati; "
-            "la proiezione NON è Gamma delle opzioni sul future.")
-        try:
-            continuous_pine = make_etf_future_pine(
-                symbol, usable, reference, day,
-                "CONTINUO DINAMICO", None,
-                acquisition_time=st.session_state.get(prefix + "import_rome"),
-                continuous=True)
-            st.download_button(
-                f"Scarica Pine · {continuous_tv} (.pine)",
-                continuous_pine.encode("utf-8"),
-                file_name=f"{symbol}_NET_GAMMA_{day:%Y%m%d}_CONTINUO.pine",
-                mime="text/plain", on_click="ignore",
-                key=f"v2_continuous_pine_{symbol}_{day}",
-                use_container_width=True)
-            with st.expander("Mostra codice Pine continuo da copiare"):
-                st.code(continuous_pine, language="pine")
-        except (ValueError, KeyError, TypeError, OverflowError) as exc:
-            st.warning("Pine continuo non generabile: " + str(exc)[:260])
-    st.caption(
-        "Il Pine sul continuo resta separato dal Pine con rapporto "
-        "BLOCCATO sul contratto specifico, che richiede prezzi verificati.")
-
-    today_ny = datetime.now(ZoneInfo("America/New_York")).date()
-    snapshot_day, date_from_source = _source_day(cboe_stamp, today_ny)
-    capture_time = st.session_state.get(prefix + "import_rome")
-    if symbol in ("GLD", "USO"):
-        # Original Cboe timestamp lacks timezone; use verified acquisition time.
-        try:
-            capture_dt = datetime.fromisoformat(str(capture_time))
-            if capture_dt.tzinfo is None:
-                raise ValueError()
-            snapshot_day = capture_dt.astimezone(ZoneInfo("America/New_York")).date()
-        except (ValueError, TypeError):
-            capture_dt = None
-        if capture_dt is None:
-            st.warning(f"{symbol}: ora di acquisizione con fuso non verificabile. "
-                       "Nessun rapporto automatico può essere bloccato.")
-        product = "GC" if symbol == "GLD" else "CL"
-        st.caption(f"{symbol}→{product}: prezzi della stessa barra da 5 minuti "
-                   "completata prima della fotografia Cboe, anche se appartiene "
-                   "alla precedente seduta ETF USA. Nessuna anticipazione dei prezzi.")
-    else:
-        capture_dt = None
-        if not date_from_source:
-            st.warning("Timestamp Cboe non interpretabile: per l'allineamento si usa "
-                       "la data odierna di New York, NON un istante Cboe accertato.")
-        st.caption(f"Data della fotografia Cboe: {snapshot_day:%d/%m/%Y} "
-                   "(la timezone del timestamp originale non è dichiarata). "
-                   "I prezzi ETF e future devono avere lo STESSO timestamp.")
-
-    selections = ([AUTO_OIL_CONTRACT] + list(CONTRACTS[symbol]["contracts"])
-                  if symbol == "USO" else list(CONTRACTS[symbol]["contracts"]))
-    # One-time migration of the pre-automatic V2 session, preserving any
-    # manual override that the user makes after this version is loaded.
-    if symbol == "USO" and not st.session_state.get("uso_auto_roll_initialized"):
-        st.session_state["uso_ratio_contract"] = AUTO_OIL_CONTRACT
-        st.session_state["uso_auto_roll_initialized"] = True
-    selected = st.selectbox("Contratto future da usare come riferimento",
-                            selections, key=f"{symbol.lower()}_ratio_contract")
-    is_auto = symbol == "USO" and selected == AUTO_OIL_CONTRACT
-    yahoo_symbol, tv_symbol = (("Massive CL", "CL automatico")
-                               if is_auto else choose_contract(symbol, selected))
-    product = "GC" if symbol == "GLD" else "CL"
-    if is_auto:
-        st.caption("CL: selezione automatica fra le prime due scadenze tramite "
-                   "il volume della seduta precedente alla fotografia Cboe. "
-                   "Il contratto scelto verrà mostrato con il rapporto. "
-                   "Puoi disattivare l'automatismo dal menu.")
-    else:
-        st.caption(f"Contratto {product} di riferimento: {tv_symbol}; "
-                   f"prezzi future Massive e {symbol} Yahoo, barra 5m sincronizzata. "
-                   "Il rapporto resta specifico del contratto selezionato.")
-
-    state_key = f"{symbol.lower()}_ratio_locked"
-    tried_key = f"{symbol.lower()}_ratio_tried"
-    error_key = f"{symbol.lower()}_ratio_error"
-    capture_id = capture_dt.isoformat() if capture_dt is not None else ""
-    snapshot_token = (
-        f"gold_capture_v2|{source_sha}|{snapshot_day.isoformat()}|{capture_id}|{tv_symbol}"
-        if symbol == "GLD" else
-        f"oil_capture_v2|{source_sha}|{snapshot_day.isoformat()}|{capture_id}|{tv_symbol}"
-    )
-    result = st.session_state.get(state_key)
-    if result and result.get("_token") != snapshot_token:
-        st.session_state.pop(state_key, None)
-        result = None
-
-    retry_label = ("Riprova calcolo rapporto GLD → GC" if symbol == "GLD"
-                   else "Riprova calcolo rapporto USO → CL")
-    do_retry = st.button(retry_label, key=f"{symbol.lower()}_ratio_retry")
-    # One automatic attempt per unique snapshot + dated futures contract,
-    # never on every Streamlit rerun. A failure does not invent a ratio.
-    if st.session_state.get(tried_key) != snapshot_token or do_retry:
-        st.session_state[tried_key] = snapshot_token
-        try:
-            with st.spinner(f"Confronto barre chiuse ETF {symbol} e {tv_symbol} a 5 minuti..."):
-                if symbol == "GLD":
-                    if capture_dt is None:
-                        raise ValueError("Ora di acquisizione GLD non verificabile.")
-                    try:
-                        api_key = str(st.secrets.get("MASSIVE_API_KEY", "")).strip()
-                    except Exception:
-                        api_key = ""
-                    pair = fetch_gold_pair(selected, capture_dt, api_key)
-                else:
-                    if capture_dt is None:
-                        raise ValueError("Ora di acquisizione USO non verificabile.")
-                    try:
-                        api_key = str(st.secrets.get("MASSIVE_API_KEY", "")).strip()
-                    except Exception:
-                        api_key = ""
-                    pair = fetch_oil_pair(selected, capture_dt, api_key)
-            pair["_token"] = snapshot_token
-            st.session_state[state_key] = pair
-            st.session_state.pop(error_key, None)
-            result = pair
-            if do_retry:
-                st.rerun()
-        except Exception as exc:
-            st.session_state[error_key] = str(exc)[:320]
-            if do_retry:
-                st.session_state.pop(state_key, None)
-                result = None
-
-    if st.session_state.get(error_key) and not result:
-        st.warning("Rapporto automatico non disponibile: " + st.session_state[error_key] +
-                   ". Nessun Pine con livelli arbitrari viene generato.")
-
-    with st.expander("Inserisci manualmente due prezzi allo stesso orario (alternativa)", expanded=False):
-        st.caption("Utilizza questo metodo SOLO se hai verificato due prezzi ETF e future "
-                   "alla stessa ora. La sincronizzazione è dichiarata da chi li inserisce, "
-                   "non verificata automaticamente dall'app.")
-        a, b, c = st.columns(3)
-        with a:
-            etf_manual = st.number_input(f"Prezzo {symbol} ETF", min_value=0.0,
-                                          value=0.0, format="%.4f",
-                                          key=f"{symbol.lower()}_manual_etf")
-        with b:
-            future_manual = st.number_input(f"Prezzo future {tv_symbol}",
-                                             min_value=0.0, value=0.0, format="%.4f",
-                                             key=f"{symbol.lower()}_manual_future")
-        with c:
-            time_manual = st.text_input("Ora New York HH:MM", value="15:30",
-                                        key=f"{symbol.lower()}_manual_time")
-        if st.button("Conferma e blocca coppia manuale",
-                     key=f"{symbol.lower()}_ratio_manual"):
-            try:
-                if is_auto:
-                    raise ValueError("Per inserire prezzi manuali, seleziona prima "
-                                     "un contratto CL specifico nel menu.")
-                pair = manual_pair(etf_manual, future_manual, symbol,
-                                   selected, snapshot_day, time_manual)
-                pair["_token"] = snapshot_token
-                st.session_state[state_key] = pair
-                st.session_state.pop(error_key, None)
-                result = pair
-                st.rerun()
-            except Exception as exc:
-                st.error(f"Coppia manuale non valida: {str(exc)[:250]}")
-
-    if not result or result.get("_token") != snapshot_token:
-        st.info("Per esportare serve un rapporto ETF/future bloccato, "
-                "ottenuto da barre sincronizzate o da una coppia manuale dichiarata.")
+    try:
+        script = make_etf_future_pine(
+            symbol, valid, reference, day, "CONTINUO",
+            None,
+            acquisition_time=st.session_state.get(
+                f"{symbol.lower()}_cboe_import_rome"),
+            continuous=True)
+    except (ValueError, KeyError, TypeError, OverflowError) as exc:
+        st.caption(f"Pine non generabile da questa fotografia: {str(exc)[:210]}")
         return
 
-    ratio = float(result["ratio"])
-    actual_contract = result["future_tv_symbol"]
-    if symbol == "USO" and result.get("auto_contract"):
-        a = result["auto_contract"]
-        st.caption(f"Rollover automatico · seduta {a['reference_date']} · "
-                   f"{a['front_ticker']}: {a['front_volume']:,} contratti; "
-                   f"{a['second_ticker']}: {a['second_volume']:,} contratti. "
-                   f"Selezionato **{actual_contract}**. "
-                   "Riferimento per il grafico, non replica del portafoglio USO.")
-    st.markdown(f"**Rapporto BLOCCATO {symbol} → {actual_contract}: {ratio:.8f}**")
-    st.caption(f"ETF {result['etf_price']:,.4f} · Future {result['future_price']:,.4f} "
-               f"· Barra {result['bar_ny']} (New York) · {result['source']}.")
-    st.caption("Il rapporto resterà IDENTICO fino alla successiva acquisizione esplicita. "
-               "Il Pine nasce in modalità Bloccato. Modalità Dinamico facoltativa "
-               "nelle impostazioni TradingView: aggiorna soltanto con barre 5m chiuse "
-               "e timestamp coincidenti, poi conserva l'ultimo rapporto valido.")
+    st.download_button(
+        f"Scarica Pine NET GAMMA · {label} (.pine)",
+        script.encode("utf-8"),
+        file_name=f"{symbol}_NET_GAMMA_CONTINUO_{day:%Y%m%d}.pine",
+        mime="text/plain", on_click="ignore",
+        key=f"v2_only_continuous_pine_{symbol}_{day}",
+        use_container_width=True)
+    with st.expander("Mostra codice Pine continuo da copiare"):
+        st.code(script, language="pine")
 
-    # Generate chronological SPX-style captures. The fixed synchronized
-    # ETF/future ratio is shared across all same-day snapshots and changes
-    # only the strike PRICE, never ETF Net Gamma values.
+    st.caption("TradingView: TF 1m/5m. Se manca una coppia ETF/future "
+               "sincronizzata, il Pine non disegna livelli non verificati.")
     band = float(st.session_state.get(f"{symbol.lower()}_cboe_band", 3.0))
     extension = bool(st.session_state.get(
         f"v2_{symbol.lower()}_visual_extension", True))
-    render_timed_pine_exports(
-        symbol, day, reference, band, result, extension=extension)
-    st.caption("I Pine cronologici conservano Gamma originali ETF e "
-               "lo stesso rapporto ETF/future bloccato. Verifica sempre "
-               "ticker e contratto future prima dell'utilizzo.")
+    with st.expander("Pine per orari · 07:30 / 15:50 / 20:30", expanded=False):
+        render_timed_pine_exports(
+            symbol, day, reference, band, None, extension=extension)

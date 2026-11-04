@@ -27,8 +27,9 @@ class PineViewIntegrationTests(unittest.TestCase):
         self.assertIsNone(params["source_sha"].default)
         self.assertIsNone(params["cboe_stamp"].default)
         page = (ROOT / "etf_pine_view.py").read_text(encoding="utf-8")
-        self.assertIn('prefix + "sha256"', page)
-        self.assertIn('prefix + "timestamp"', page)
+        self.assertIn('continuous=True', page)
+        self.assertNotIn("MASSIVE_API_KEY", page)
+        self.assertNotIn("prepare_locked_chart_mapping", page)
         for instrument in ("gld", "uso"):
             source = (ROOT / f"{instrument}_cboe_view.py").read_text(encoding="utf-8")
             self.assertIn(f'["{instrument}_cboe_timestamp"] = stamp', source)
