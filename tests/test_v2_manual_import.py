@@ -22,7 +22,9 @@ def packaged(files):
 def payload(symbol):
     return json.dumps({
         "symbol": symbol, "timestamp": "2026-11-04 09:30:00",
-        "data": {"prev_day_close": 100, "current_price": 101, "options": []},
+        "data": {"prev_day_close": 100, "current_price": 101,
+                 "options": [{"option": f"{symbol}261104C00100000",
+                              "gamma": 0.03, "open_interest": 20, "volume": 2}]},
     }).encode()
 
 
