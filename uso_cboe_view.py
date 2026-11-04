@@ -14,6 +14,7 @@ from v2_visual_extension import expanded_display
 from etf_pine_view import render_etf_pine_exports, prepare_locked_chart_mapping
 from v2_storage_off import archive_panel, prefer_manual_source
 from market_ui import render_acquisition_controls, render_empty_snapshot
+from v2_manual_import import normalize_manual_upload
 
 from uso_cboe import (USO_URL, download_uso, read_uso, expirations, next_weekly,
                       close_previous, current_price, profile, MIN_VALID_COVERAGE)
@@ -63,8 +64,9 @@ def _save_snapshot(raw, filename, source):
 
 def render_uso_cboe():
     st.subheader("Fotografia opzioni Cboe · USO")
+    st.caption("La stessa fotografia alimenta anche il Pine di emergenza in fondo alla pagina.")
     snapshot_placement = st.container()
-    with st.expander("Acquisizione manuale / importazione JSON", expanded=False):
+    with st.expander("Acquisizione Cboe / importazione manuale — condivisa con Pine di emergenza", expanded=False):
         fetch_pressed, uploaded = render_acquisition_controls("USO", USO_URL, show_header=False)
         if fetch_pressed:
             try:
@@ -89,7 +91,9 @@ def render_uso_cboe():
             if st.session_state.get("uso_cboe_upload_handled") != fingerprint:
                 try:
                     prefer_manual_source("USO")
-                    _save_snapshot(raw_uploaded, uploaded.name, "Importazione manuale")
+                    extracted, inner_name = normalize_manual_upload(
+                        uploaded.name, raw_uploaded, "USO")
+                    _save_snapshot(extracted, inner_name, "Importazione manuale")
                     st.session_state["uso_cboe_upload_handled"] = fingerprint
                     st.success("File originale USO importato e validato.")
                 except Exception as exc:

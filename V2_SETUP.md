@@ -7,6 +7,46 @@ Report giornaliero AI.
 
 ## Architettura
 
+### PINE DI EMERGENZA — NET GAMMA CORRENTE (NQ · GC · CL)
+
+È posizionato **in fondo alla pagina V2**, per tutti e tre i mercati.
+Come nella Serafini SPX, produce **un solo Pine statico 0DTE + Weekly**
+e due grafici da un'unica fotografia originale, senza storico comparativo
+e senza dover disporre degli slot 07:30 / 15:50 / 20:30.
+
+**Acquisizione unica, non due pannelli di download.** Aprire
+`ANALISI NET GAMMA → Acquisizione Cboe / importazione manuale` per
+premere Aggiorna fotografia o caricare ZIP / JSON / JSON.GZ. Se il file
+è ZIP, l'importatore accetta **un'unica** catena originale del mercato
+selezionato e rifiuta archivi ambigui. La fotografia validata,
+già usata dai grafici NET GAMMA, viene riutilizzata dal riquadro
+di emergenza: nessun secondo upload, download, login o storage.
+Se è già stata selezionata una fotografia dall'archivio cifrato V2,
+anche quella può essere usata, ma **solo se recente**. L'emergenza
+non interroga l'archivio da sola e non usa Supabase.
+
+- **NDX → NQ/MNQ:** differenziale NQ−NDX già calcolato/modificabile.
+- **GLD → GC/MGC:** solo rapporto GLD/future sincronizzato e bloccato.
+- **USO → CL/MCL:** solo rapporto USO/future sincronizzato e bloccato.
+  Le due proiezioni ETF sui futures non rappresentano Gamma di opzioni
+  native CME/NYMEX.
+- Scadenza **0DTE effettivamente presente** nella catena per il giorno
+  di sessione New York, più prossima Weekly di venerdì disponibile.
+  Se dati Gamma, scadenza o conversione mancano, il Pine non viene
+  generato: nessuna scadenza né livello inventato.
+- Etichetta di acquisizione italiana solo da un **orario documentato**.
+  L'importazione locale non certifica l'ora di download Cboe.
+  Si mostra il timestamp originale della fonte senza attribuirgli
+  un fuso orario non certificato.
+- Resta invariata la formula NET GAMMA su NDX/GLD/USO. Lo stesso
+  esportatore Pine dei profili normali verifica i ticker e il limite
+  TradingView delle linee. Nessun Gamma viene scalato o inventato.
+- Una nuova fotografia richiede di rigenerare e scaricare il Pine:
+  TradingView non legge automaticamente il Cboe JSON dalla V2.
+
+Test automatici: `tests/test_v2_emergency_pine.py` e suite V2
+completa. Il ramo operativo è `v2-spx`; `main` è la V1 sospesa.
+
 ## Analisi del contesto · porting reale della SPX
 
 La V2 non contiene più il riquadro placeholder: i pannelli della

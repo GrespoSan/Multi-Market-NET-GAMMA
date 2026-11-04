@@ -17,6 +17,7 @@ from v2_visual_extension import expanded_display
 from v2_storage_off import archive_panel, prefer_manual_source
 from market_ui import render_acquisition_controls, render_empty_snapshot
 from data_sources import download_ndx, NDX_URL
+from v2_manual_import import normalize_manual_upload
 from ndx_engine import (unpack_snapshot, available_expirations, close_from_payload,
                         profile, weekly_target, DEFAULT_BAND_PCT)
 from ndx_basis import fetch_basis
@@ -34,21 +35,22 @@ def render_selected_market(market_key):
     if market_key == 'GOLD':
         from gld_cboe_view import render_gld_cboe
         render_gld_cboe()
-        st.stop()
+        return
     if market_key == 'WTI':
         from uso_cboe_view import render_uso_cboe
         render_uso_cboe()
-        st.stop()
+        return
     
     if not market.enabled:
         st.info(f'{market.label}: modulo predisposto, non ancora operativo. {market.info} '
                 'Nessun livello sarà simulato senza una catena opzioni validata.')
-        st.stop()
+        return
     
     
     st.subheader("Fotografia opzioni Cboe · NDX")
+    st.caption("La stessa fotografia viene utilizzata anche dal Pine di emergenza in fondo alla pagina; nessun secondo download.")
     snapshot_placement = st.container()
-    with st.expander("Acquisizione manuale / importazione JSON", expanded=False):
+    with st.expander("Acquisizione Cboe / importazione manuale — condivisa con Pine di emergenza", expanded=False):
         fetch_pressed,uploaded=render_acquisition_controls('NDX',NDX_URL, show_header=False)
         if fetch_pressed:
             try:
@@ -57,6 +59,7 @@ def render_selected_market(market_key):
                     unpack_snapshot(raw)
                 prefer_manual_source('NDX')
                 st.session_state['ndx_blob']=raw
+                st.session_state.pop("v2_ndx_reference_current", None)
                 st.session_state['ndx_name']='NDX_CBOE_online.json'
                 st.session_state['ndx_source']='Acquisizione diretta su richiesta'
                 # Keep a real timezone-aware instant for DST-safe Pine output,
@@ -68,17 +71,19 @@ def render_selected_market(market_key):
             except Exception as exc:
                 st.error(f'Fonte live non disponibile: {str(exc)[:260]}')
         if uploaded is not None:
-            content=uploaded.getvalue()
-            if st.session_state.get('ndx_upload_tag') != (uploaded.name, len(content),hash(content)):
+            uploaded_bytes=uploaded.getvalue()
+            if st.session_state.get('ndx_upload_tag') != (uploaded.name, len(uploaded_bytes), hash(uploaded_bytes)):
                 try:
+                    content, inner_name = normalize_manual_upload(uploaded.name, uploaded_bytes, "NDX")
                     unpack_snapshot(content)
                     prefer_manual_source('NDX')
                     st.session_state['ndx_blob']=content
-                    st.session_state['ndx_name']=uploaded.name
+                    st.session_state.pop("v2_ndx_reference_current", None)
+                    st.session_state['ndx_name']=inner_name
                     st.session_state['ndx_source']='Importazione manuale'
                     st.session_state['ndx_download_rome']=None
                     st.session_state['ndx_capture_rome_iso']=None
-                    st.session_state['ndx_upload_tag']=(uploaded.name,len(content),hash(content))
+                    st.session_state['ndx_upload_tag']=(uploaded.name,len(uploaded_bytes),hash(uploaded_bytes))
                     st.success('JSON originale NDX importato e validato.')
                 except Exception as exc:
                     st.error(f'File NDX non riconosciuto: {exc}')
@@ -89,6 +94,7 @@ def render_selected_market(market_key):
             try:
                 unpack_snapshot(scheduled_raw)
                 st.session_state['ndx_blob']=scheduled_raw
+                st.session_state.pop("v2_ndx_reference_current", None)
                 st.session_state['ndx_name']=scheduled_name
                 st.session_state['ndx_source']='Archivio privato · rilevamento programmato'
                 st.session_state['ndx_capture_rome_iso']=st.session_state.get(
@@ -103,16 +109,16 @@ def render_selected_market(market_key):
     blob=st.session_state.get('ndx_blob')
     if not blob:
         render_empty_snapshot('NDX')
-        st.stop()
+        return
     try:
         doc=unpack_snapshot(blob)
         expiry_dates=available_expirations(doc)
     except Exception as exc:
         st.error(f'Fotografia non valida: {exc}')
-        st.stop()
+        return
     if not expiry_dates:
         st.error('Nessuna scadenza NDX/NDXP riconosciuta: controllare il formato dei contratti.')
-        st.stop()
+        return
     
     st.markdown(f'**File:** {st.session_state.get("ndx_name")} · '
                 f'**Acquisizione:** {st.session_state.get("ndx_download_rome") or "non verificabile (file importato)"} · '
@@ -128,8 +134,9 @@ def render_selected_market(market_key):
         if reference<=0 or not math.isfinite(reference):raise ValueError()
     except ValueError:
         st.info('Inserisci una chiusura NDX precedente valida per procedere.')
-        st.stop()
+        return
     
+    st.session_state["v2_ndx_reference_current"] = reference
     now=datetime.now(ZoneInfo('America/New_York')).date()
     archive_ny_day = (
         st.session_state.get('v2_archive_capture_nyday_NDX')
@@ -211,7 +218,7 @@ def render_selected_market(market_key):
         if basis is not None and not math.isfinite(basis):raise ValueError()
     except ValueError:
         st.error('Differenziale non numerico o non finito')
-        st.stop()
+        return
     if st.session_state.get('ndx_basis_result'):
         res=st.session_state['ndx_basis_result']
         st.caption(f"Proposta automatica {res['basis']:+.2f} pt · "
@@ -236,7 +243,7 @@ def render_selected_market(market_key):
             st.warning(f'{kind}: {exc}')
     if not profiles:
         st.error('Nessuno strike disponibile nella fascia percentuale: NET GAMMA e Pine non generati.')
-        st.stop()
+        return
     show_extension = st.checkbox(
         "Estensione automatica NET GAMMA — solo grafici e Pine",
         value=True, key="v2_ndx_visual_extension",
@@ -355,7 +362,7 @@ def render_selected_market(market_key):
     st.subheader('Esportazione Pine Script v6')
     if basis is None:
         st.info('Inserisci il differenziale NQ–NDX per esportare gli strike sul grafico NQ.')
-        st.stop()
+        return
     
     # Time-based exports are prepared from verified same-day V2 archives.
     # Linee news opzionali: il calendario è indipendente dai NET GAMMA.

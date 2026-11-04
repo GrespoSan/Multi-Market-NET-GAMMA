@@ -92,8 +92,8 @@ def render_acquisition_controls(symbol, source_url, show_header=True):
     with st.expander("Importazione manuale JSON originale", expanded=False):
         st.link_button(f"Apri file {symbol}.json su Cboe", source_url)
         uploaded = st.file_uploader(
-            f"Carica file {symbol} (.json o .json.gz)",
-            type=["json", "gz"], key=UPLOAD_KEYS[symbol],
+            f"Carica file {symbol} (ZIP / JSON / JSON.GZ)",
+            type=["json", "gz", "zip"], key=UPLOAD_KEYS[symbol],
         )
     st.caption(
         "Acquisizione diretta solo su richiesta. Le fotografie programmate "

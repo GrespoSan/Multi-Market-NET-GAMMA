@@ -54,10 +54,12 @@ class SPXSnapshotParityTests(unittest.TestCase):
         for file in ("v2_market_engine.py", "gld_cboe_view.py", "uso_cboe_view.py"):
             source=(ROOT/file).read_text()
             self.assertIn("snapshot_placement = st.container()", source)
-            self.assertIn('with st.expander("Acquisizione manuale / importazione JSON"', source)
+            shared_label = 'with st.expander("Acquisizione Cboe / importazione manuale'
+            self.assertIn(shared_label, source)
+            self.assertIn("condivisa con Pine di emergenza", source)
             self.assertIn("with snapshot_placement:", source)
             self.assertLess(source.index("snapshot_placement = st.container()"),
-                            source.index('with st.expander("Acquisizione manuale'))
+                            source.index(shared_label))
         ui=(ROOT/"market_ui.py").read_text()
         self.assertIn("show_header=False", (ROOT/"v2_market_engine.py").read_text())
         self.assertIn("show_header=True", ui)
