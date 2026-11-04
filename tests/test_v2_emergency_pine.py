@@ -15,8 +15,9 @@ WEEK = date(2026, 11, 6)
 def photo(symbol):
     base = {"NDX": 25500, "GLD": 368, "USO": 168}[symbol]
     opts = []
+    step = 10 if symbol == "NDX" else 1
     for expiry in (DAY, WEEK):
-        for strike in (base-10, base, base+10):
+        for strike in (base-step, base, base+step):
             for kind in ("C", "P"):
                 opts.append({
                     "option": f"{symbol}{expiry:%y%m%d}{kind}{strike*1000:08d}",
