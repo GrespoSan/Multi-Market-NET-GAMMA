@@ -13,8 +13,7 @@ from v2_visual_extension import expanded_display
 
 from etf_pine_view import render_etf_pine_exports, prepare_locked_chart_mapping
 from v2_storage_off import archive_panel, prefer_manual_source
-from market_ui import render_acquisition_controls, render_empty_snapshot
-from v2_manual_import import normalize_manual_upload
+from market_ui import render_empty_snapshot
 
 from uso_cboe import (USO_URL, download_uso, read_uso, expirations, next_weekly,
                       close_previous, current_price, profile, MIN_VALID_COVERAGE)
@@ -66,38 +65,10 @@ def render_uso_cboe():
     st.subheader("Fotografia opzioni Cboe · USO")
     st.caption("La stessa fotografia alimenta anche il Pine di emergenza in fondo alla pagina.")
     snapshot_placement = st.container()
-    with st.expander("Acquisizione Cboe / importazione manuale — condivisa con Pine di emergenza", expanded=False):
-        fetch_pressed, uploaded = render_acquisition_controls("USO", USO_URL, show_header=False)
-        if fetch_pressed:
-            try:
-                with st.spinner("Lettura catena USO originale da Cboe..."):
-                    raw_online = download_uso()
-                    prefer_manual_source("USO")
-                    changed = _save_snapshot(raw_online, "USO_CBOE_online.json",
-                                             "Acquisizione diretta su richiesta")
-                if changed:
-                    st.success("Nuova fotografia USO ricevuta e validata.")
-                else:
-                    st.info("Cboe ha restituito la stessa fotografia USO già caricata.")
-            except Exception as exc:
-                st.warning(f"Acquisizione diretta USO non riuscita: {str(exc)[:260]}. "
-                           "La fotografia precedente, se disponibile, non è stata modificata.")
-
-        if uploaded is not None:
-            raw_uploaded = uploaded.getvalue()
-            fingerprint = hashlib.sha256(raw_uploaded).hexdigest()
-            # L'upload rimane un'alternativa esplicita: non ripristina vecchi
-            # file ogni volta che Streamlit riesegue la pagina.
-            if st.session_state.get("uso_cboe_upload_handled") != fingerprint:
-                try:
-                    prefer_manual_source("USO")
-                    extracted, inner_name = normalize_manual_upload(
-                        uploaded.name, raw_uploaded, "USO")
-                    _save_snapshot(extracted, inner_name, "Importazione manuale")
-                    st.session_state["uso_cboe_upload_handled"] = fingerprint
-                    st.success("File originale USO importato e validato.")
-                except Exception as exc:
-                    st.error(f"File USO non valido: {str(exc)[:300]}")
+    # Unico download/importazione manuale nel pannello emergenza in fondo pagina.
+    # Qui rimane il selettore delle fotografie archiviate, non un secondo upload.
+    st.caption("Per download manuale Cboe o importazione ZIP/JSON, usa "
+               "PINE DI EMERGENZA — NET GAMMA CORRENTE in fondo alla pagina.")
     with snapshot_placement:
         archive_selected = archive_panel("USO")
         if archive_selected is not None:

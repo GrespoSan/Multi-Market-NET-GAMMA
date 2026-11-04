@@ -15,9 +15,7 @@ from markets import MARKETS
 from gamma_chart_style import profile_chart, panel_heading, capture_display, spx_shared_gamma_bounds
 from v2_visual_extension import expanded_display
 from v2_storage_off import archive_panel, prefer_manual_source
-from market_ui import render_acquisition_controls, render_empty_snapshot
-from data_sources import download_ndx, NDX_URL
-from v2_manual_import import normalize_manual_upload
+from market_ui import render_empty_snapshot
 from ndx_engine import (unpack_snapshot, available_expirations, close_from_payload,
                         profile, weekly_target, DEFAULT_BAND_PCT)
 from ndx_basis import fetch_basis
@@ -50,43 +48,10 @@ def render_selected_market(market_key):
     st.subheader("Fotografia opzioni Cboe · NDX")
     st.caption("La stessa fotografia viene utilizzata anche dal Pine di emergenza in fondo alla pagina; nessun secondo download.")
     snapshot_placement = st.container()
-    with st.expander("Acquisizione Cboe / importazione manuale — condivisa con Pine di emergenza", expanded=False):
-        fetch_pressed,uploaded=render_acquisition_controls('NDX',NDX_URL, show_header=False)
-        if fetch_pressed:
-            try:
-                with st.spinner('Lettura fotografia NDX da Cboe...'):
-                    raw=download_ndx()
-                    unpack_snapshot(raw)
-                prefer_manual_source('NDX')
-                st.session_state['ndx_blob']=raw
-                st.session_state.pop("v2_ndx_reference_current", None)
-                st.session_state['ndx_name']='NDX_CBOE_online.json'
-                st.session_state['ndx_source']='Acquisizione diretta su richiesta'
-                # Keep a real timezone-aware instant for DST-safe Pine output,
-                # separately from the old user-facing Rome display string.
-                captured_now = datetime.now(ROME)
-                st.session_state['ndx_download_rome']=captured_now.strftime('%d/%m/%Y %H:%M:%S Roma')
-                st.session_state['ndx_capture_rome_iso']=captured_now.isoformat(timespec='seconds')
-                st.success('Fotografia NDX ricevuta e verificata nella struttura.')
-            except Exception as exc:
-                st.error(f'Fonte live non disponibile: {str(exc)[:260]}')
-        if uploaded is not None:
-            uploaded_bytes=uploaded.getvalue()
-            if st.session_state.get('ndx_upload_tag') != (uploaded.name, len(uploaded_bytes), hash(uploaded_bytes)):
-                try:
-                    content, inner_name = normalize_manual_upload(uploaded.name, uploaded_bytes, "NDX")
-                    unpack_snapshot(content)
-                    prefer_manual_source('NDX')
-                    st.session_state['ndx_blob']=content
-                    st.session_state.pop("v2_ndx_reference_current", None)
-                    st.session_state['ndx_name']=inner_name
-                    st.session_state['ndx_source']='Importazione manuale'
-                    st.session_state['ndx_download_rome']=None
-                    st.session_state['ndx_capture_rome_iso']=None
-                    st.session_state['ndx_upload_tag']=(uploaded.name,len(uploaded_bytes),hash(uploaded_bytes))
-                    st.success('JSON originale NDX importato e validato.')
-                except Exception as exc:
-                    st.error(f'File NDX non riconosciuto: {exc}')
+    # Unico download/importazione manuale nel pannello emergenza in fondo pagina.
+    # Qui rimane il selettore delle fotografie archiviate, non un secondo upload.
+    st.caption("Per download manuale Cboe o importazione ZIP/JSON, usa "
+               "PINE DI EMERGENZA — NET GAMMA CORRENTE in fondo alla pagina.")
     with snapshot_placement:
         archive_selected=archive_panel('NDX')
         if archive_selected is not None:

@@ -39,30 +39,27 @@ class SPXSnapshotParityTests(unittest.TestCase):
         self.assertIn("v2_archive_capture_nyday_", accessor)
         self.assertNotIn("st.session_state.get(\"v2_role\") != \"admin\"",accessor)
         self.assertNotIn("from storage import Store",accessor)
+        acquisition=(ROOT/"v2_emergency_acquisition.py").read_text()
+        emergency=(ROOT/"v2_emergency_pine.py").read_text()
+        self.assertIn("prefer_manual_source(symbol)",acquisition)
+        self.assertIn('"Scarica CBOE adesso"',emergency)
+        self.assertIn('"In alternativa importa ZIP / JSON / JSON.GZ"',emergency)
+        self.assertIn('"Usa file importato"',emergency)
+        self.assertIn('"Scarica una fotografia CBOE oppure importa un file "',emergency)
         for file,symbol in (
             ("v2_market_engine.py","NDX"),
             ("gld_cboe_view.py","GLD"),
             ("uso_cboe_view.py","USO")):
             source=(ROOT/file).read_text()
             with self.subTest(symbol=symbol):
-                self.assertIn(f"prefer_manual_source('{symbol}')" if symbol=="NDX"
-                              else f'prefer_manual_source("{symbol}")',source)
                 self.assertIn("archive_panel",source)
                 self.assertIn("v2_archive_capture_nyday_",source)
                 self.assertIn("v2_archive_capture_rome_",source)
                 self.assertIn("independent_scale",source)
-        for file in ("v2_market_engine.py", "gld_cboe_view.py", "uso_cboe_view.py"):
-            source=(ROOT/file).read_text()
-            self.assertIn("snapshot_placement = st.container()", source)
-            shared_label = 'with st.expander("Acquisizione Cboe / importazione manuale'
-            self.assertIn(shared_label, source)
-            self.assertIn("condivisa con Pine di emergenza", source)
-            self.assertIn("with snapshot_placement:", source)
-            self.assertLess(source.index("snapshot_placement = st.container()"),
-                            source.index(shared_label))
-        ui=(ROOT/"market_ui.py").read_text()
-        self.assertIn("show_header=False", (ROOT/"v2_market_engine.py").read_text())
-        self.assertIn("show_header=True", ui)
+                self.assertIn("snapshot_placement = st.container()",source)
+                self.assertIn("with snapshot_placement:",source)
+                self.assertNotIn('with st.expander("Acquisizione Cboe / importazione manuale',source)
+                self.assertNotIn("st.file_uploader(",source)
         header=(ROOT/"app.py").read_text()
         self.assertIn('st.header("NET GAMMA · formula Serafini")',header)
         self.assertIn("60%/23%",header)
@@ -70,9 +67,10 @@ class SPXSnapshotParityTests(unittest.TestCase):
 
     def test_ndx_archive_provenance_preserved_in_both_plot_titles(self):
         source=(ROOT/"v2_market_engine.py").read_text(encoding="utf-8")
+        acquisition=(ROOT/"v2_emergency_acquisition.py").read_text(encoding="utf-8")
         self.assertIn("st.session_state['ndx_source']='Archivio privato · rilevamento programmato'", source)
-        self.assertIn("st.session_state['ndx_source']='Acquisizione diretta su richiesta'", source)
-        self.assertIn("st.session_state['ndx_source']='Importazione manuale'", source)
+        self.assertIn('"Acquisizione diretta su richiesta"', acquisition)
+        self.assertIn('"Importazione manuale"', acquisition)
         self.assertEqual(source.count("st.session_state.get('ndx_source', st.session_state.get('ndx_name', ''))"), 2)
         date_text, descriptor = capture_display(
             "2026-11-02 06:27:15", "2026-11-02T07:31:08+01:00",

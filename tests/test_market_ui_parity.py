@@ -51,37 +51,49 @@ class CommonMarketLayoutTests(unittest.TestCase):
         self.assertIn("render_selected_market(market_key)", app)
         self.assertNotIn("st.title('Multi-Market", app)
 
-    def test_acquisition_controls_are_shared_by_all_markets(self):
+    def test_only_one_manual_acquisition_panel_serves_all_markets(self):
+        # SPX-style emergency is the only manual Cboe widget surface.
+        emergency = source("v2_emergency_pine.py")
+        acquisition = source("v2_emergency_acquisition.py")
+        for symbol in ("NDX", "GLD", "USO"):
+            self.assertIn(f'"{symbol}"', acquisition)
+        self.assertIn('st.button("Scarica CBOE adesso"', emergency)
+        self.assertIn('st.file_uploader(', emergency)
+        self.assertIn('st.button("Usa file importato"', emergency)
+        self.assertIn('type=["zip", "json", "gz"]', emergency)
+        self.assertIn('download_current_snapshot(symbol)', emergency)
+        self.assertIn('v2_emergency_pending_activation_{symbol}', emergency)
+        self.assertIn('activate_for_analysis(symbol_for_market, pending)', source("app.py"))
         for filename, symbol in (("v2_market_engine.py", "NDX"),
                                  ("gld_cboe_view.py", "GLD"),
                                  ("uso_cboe_view.py", "USO")):
             with self.subTest(market=symbol):
+                src = source(filename)
                 self.assertEqual(len(calls_by_name(filename,
-                                                   "render_acquisition_controls")), 1)
+                                                   "render_acquisition_controls")), 0)
                 self.assertEqual(len(calls_by_name(filename,
                                                    "render_empty_snapshot")), 1)
                 self.assertEqual(len(calls_by_name(filename,
                                                    "archive_panel")), 1)
-                # No independent layout/upload implementations can silently diverge.
-                self.assertNotIn("st.file_uploader(", source(filename))
-                self.assertNotIn("st.subheader(\"Fotografia Cboe", source(filename))
+                self.assertNotIn("st.file_uploader(", src)
                 self.assertIn(f'archive_panel("{symbol}")'
                               if symbol != "NDX" else "archive_panel('NDX')",
-                              source(filename))
+                              src)
 
-    def test_same_import_and_archive_controls_in_same_order(self):
-        ui = source("market_ui.py")
-        self.assertIn("Importazione manuale JSON originale", ui)
-        self.assertIn('st.subheader(f"Fotografia opzioni Cboe · {symbol}")', ui)
-        self.assertIn("uploaded = st.file_uploader(", ui)
-        self.assertIn('key=f"{symbol.lower()}_cboe_fetch"', ui)
-        for filename in ("gld_cboe_view.py", "uso_cboe_view.py"):
+    def test_manual_capture_overrides_archive_without_duplicate_controls(self):
+        acquisition = source("v2_emergency_acquisition.py")
+        self.assertIn("def activate_for_analysis(symbol, active):", acquisition)
+        self.assertIn("prefer_manual_source(symbol)", acquisition)
+        self.assertIn('state["ndx_blob"] = verified["content"]', acquisition)
+        self.assertIn("save(verified[", acquisition)
+        self.assertIn("def use_uploaded_snapshot(symbol, filename, raw):", acquisition)
+        for filename in ("v2_market_engine.py", "gld_cboe_view.py", "uso_cboe_view.py"):
             s = source(filename)
-            self.assertLess(s.index("render_acquisition_controls"),
-                            s.index("archive_panel(\""))
-        engine = source("v2_market_engine.py")
-        self.assertLess(engine.index("fetch_pressed,uploaded=render_acquisition_controls"),
-                        engine.index("archive_selected=archive_panel"))
+            self.assertLess(s.index("snapshot_placement = st.container()"),
+                            s.index("with snapshot_placement:"))
+            self.assertNotIn("with st.expander(\"Acquisizione Cboe / importazione manuale", s)
+        app = source("app.py")
+        self.assertIn("render_v2_emergency_pine(market_key)", app)
 
     def test_pine_and_gamma_calculations_stay_independent_of_layout(self):
         ui = source("market_ui.py")
