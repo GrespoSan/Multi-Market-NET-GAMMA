@@ -151,10 +151,17 @@ def _snapshot_in_session(symbol):
     raw = st.session_state.get(raw_key)
     if not isinstance(raw, bytes) or not raw:
         return None
+    origin = st.session_state.get(source_key, "origine non documentata")
+    # Import time is NOT the original Cboe download time. Archive fallback
+    # can also be mere time of loading into Streamlit; ignore it unless
+    # independently verified in the archive capture metadata.
+    capture = (None if "Importazione manuale" in str(origin) else
+               st.session_state.get(f"v2_archive_capture_rome_{symbol}")
+               if "Archivio" in str(origin) else
+               st.session_state.get(capture_key))
     return {
         "raw": raw, "name": st.session_state.get(name_key, "file senza nome"),
-        "source": st.session_state.get(source_key, "origine non documentata"),
-        "capture": st.session_state.get(capture_key),
+        "source": origin, "capture": capture,
     }
 
 
