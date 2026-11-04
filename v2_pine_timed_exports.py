@@ -26,6 +26,11 @@ EXPLANATIONS = {
     "2030": "15:50 0DTE → 20:30 0DTE + Weekly",
 }
 
+# The 07:30 single-snapshot script remains available in the pure legacy
+# generator for regression parity but has NO second download in the UI.
+# The selected snapshot is exported once by each market's "corrente" button.
+COMPARISON_SLOTS = ("1550", "2030")
+
 
 def _model(symbol):
     if symbol == "NDX":
@@ -146,16 +151,17 @@ def produce_timed_scripts(symbol, day, captures, reference, band,
 def render_timed_pine_exports(symbol, day, reference, band, basis_or_mapping,
                               *, extension=True, macro_news=None):
     """Use only the authenticated 30-day V2 artifact archive, not live Cboe."""
-    st.caption("Come in SPX: Pine 07:30, confronto 07:30→15:50 e confronto "
-               "15:50→20:30; ogni confronto usa soltanto fotografie reali "
-               "della stessa seduta di New York. Gli orari effettivi sono "
-               "indicati in CET/CEST. Nessun Gamma inventato.")
+    st.caption("Solo confronti 07:30 → 15:50 e 15:50 → 20:30: "
+               "ciascuno usa fotografie Cboe autentiche della stessa seduta NY. "
+               "Il Pine singolo 07:30 non è duplicato: per esportarlo "
+               "seleziona la relativa fotografia in ANALISI NET GAMMA e "
+               "usa il pulsante NET GAMMA corrente. Orari acquisizione CET/CEST.")
     # First view loads same-day GitHub archives automatically just like SPX.
     # Subsequent Streamlit reruns reuse the session and underlying 20min cache;
     # refresh requires an explicit click and never touches Massive quota.
     key = f"v2_pine_times_{symbol}_{day.isoformat()}"
     state = st.session_state.get(key)
-    refresh = st.button("Aggiorna Pine per orari", key=f"refresh_{key}")
+    refresh = st.button("Aggiorna confronti orari", key=f"refresh_{key}")
     # When later scheduled captures arrive, a normal rerun can discover
     # them without a manual refresh. Only archive APIs, never Massive.
     loaded_at = st.session_state.get(key + "_loaded_at", 0.0)
@@ -181,8 +187,8 @@ def render_timed_pine_exports(symbol, day, reference, band, basis_or_mapping,
         symbol, day, state, reference, band, basis_or_mapping,
         extension=extension, macro_news=macro_news)
 
-    cols = st.columns(3, gap="small")
-    for col, slot in zip(cols, SLOTS):
+    cols = st.columns(len(COMPARISON_SLOTS), gap="small")
+    for col, slot in zip(cols, COMPARISON_SLOTS):
         with col:
             if slot in scripts:
                 script = scripts[slot]
@@ -203,13 +209,17 @@ def render_timed_pine_exports(symbol, day, reference, band, basis_or_mapping,
                           use_container_width=True)
                 st.caption(issues.get(slot, "Fotografia non disponibile."))
 
-    if scripts:
-        with st.expander("Mostra codice Pine da copiare e incollare"):
+    available_comparisons = [
+        slot for slot in COMPARISON_SLOTS if slot in scripts
+    ]
+    if available_comparisons:
+        with st.expander("Mostra codice Pine del confronto da copiare"):
             selected = st.selectbox(
-                "Pine orario", list(scripts),
+                "Confronto orario", available_comparisons,
                 format_func=lambda slot: EXPLANATIONS[slot],
                 key=f"v2_timed_code_{symbol}_{day}")
             st.code(scripts[selected], language="pine")
     else:
-        st.warning("Nessuna esportazione oraria possibile: verifica le "
-                   "fotografie effettivamente presenti nell'archivio GitHub.")
+        st.info("Confronti non disponibili: servono due fotografie Cboe "
+                "complete e ordinate della stessa seduta. "
+                "Il Pine NET GAMMA corrente resta indipendente.")
