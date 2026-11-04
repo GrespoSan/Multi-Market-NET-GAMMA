@@ -107,3 +107,43 @@ def fetch_continuous_pair(symbol, captured_at, *, yf_module=None, now=None):
         raise ValueError("Barre M5 Yahoo non disponibili.") from exc
     return last_closed_continuous_pair(
         symbol, e, f, captured_at, now=now)
+
+
+def active_snapshot_cutoff(symbol, state):
+    """Only independently timed downloads: archive or deliberate direct fetch."""
+    if symbol not in CONTINUOUS:
+        raise ValueError("Mercato continuo non riconosciuto.")
+    source = str(state.get(f"{symbol.lower()}_cboe_source", ""))
+    if "Archivio privato" in source:
+        return state.get(f"v2_archive_capture_rome_{symbol}")
+    if "Acquisizione diretta su richiesta" in source:
+        return state.get(f"{symbol.lower()}_cboe_import_rome")
+    # A local import time is NOT the original Cboe acquisition time.
+    return None
+
+
+def load_chart_continuous_mapping(symbol, state, loader=None):
+    """Isolated chart lookup with bounded success cache, no Massive ever.
+
+    Errors remain metadata, never warning widgets. Fail closed rather
+    than displaying ETF strikes under false GC/CL coordinates.
+    """
+    cutoff = active_snapshot_cutoff(symbol, state)
+    if cutoff is None:
+        return None, "Ora di acquisizione del file non documentata"
+    if loader is None:
+        loader = _cached_continuous
+    try:
+        return loader(symbol, str(cutoff)), None
+    except (ValueError, TypeError, KeyError, OSError) as exc:
+        return None, str(exc)[:200]
+
+
+def _cached_continuous(symbol, cutoff):
+    import streamlit as st
+
+    @st.cache_data(ttl=900, show_spinner=False)
+    def cached(_symbol, _cutoff):
+        return fetch_continuous_pair(_symbol, _cutoff)
+
+    return cached(symbol, cutoff)
