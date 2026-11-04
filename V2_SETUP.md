@@ -16,7 +16,9 @@ e senza dover disporre degli slot 07:30 / 15:50 / 20:30.
 
 **Acquisizione unica, non due pannelli di download.** Aprire
 `ANALISI NET GAMMA → Acquisizione Cboe / importazione manuale` per
-premere Aggiorna fotografia o caricare il file. La fotografia validata,
+premere Aggiorna fotografia o caricare ZIP / JSON / JSON.GZ. Se il file
+è ZIP, l'importatore accetta **un'unica** catena originale del mercato
+selezionato e rifiuta archivi ambigui. La fotografia validata,
 già usata dai grafici NET GAMMA, viene riutilizzata dal riquadro
 di emergenza: nessun secondo upload, download, login o storage.
 Se è già stata selezionata una fotografia dall'archivio cifrato V2,
