@@ -112,7 +112,8 @@ def render_etf_pine_exports(symbol, calculated, reference, day,
     # Independent continuous Pine: uses genuine ETF Gamma from the selected
     # Cboe snapshot and converts strike levels WITHIN TradingView itself.
     # No Massive request and no invented or stale frozen ETF/future ratio.
-    continuous_tv = "COMEX:GC1!" if symbol == "GLD" else "NYMEX:CL1!"
+    continuous_tv = ("COMEX:GC1! / COMEX_MINI:MGC1!" if symbol == "GLD"
+                     else "NYMEX:CL1! / NYMEX:MCL1!")
     with st.expander(
         f"PINE TRADINGVIEW · {continuous_tv} · CONTINUO (senza Massive)",
         expanded=True
