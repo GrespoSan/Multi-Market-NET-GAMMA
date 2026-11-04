@@ -174,8 +174,8 @@ def make_pine_comparison_v2(symbol, previous, current, weekly,
     )
     code=code[:m.start()]+new_scale+code[m.end():]
 
-    marker=("if barstate.islast and validTicker\\n" if symbol == "NDX"
-            else "if barstate.islast and validTicker and not na(ratioToDraw)\\n")
+    marker=("if barstate.islast and validTicker\n" if symbol == "NDX"
+            else "if barstate.islast and validTicker and not na(ratioToDraw)\n")
     if code.count(marker) != 1:
         raise ValueError("Blocco disegno Pine non compatibile.")
     start=code.index(marker)
