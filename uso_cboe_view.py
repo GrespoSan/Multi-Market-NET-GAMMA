@@ -11,7 +11,8 @@ import streamlit as st
 from gamma_chart_style import profile_chart, panel_heading, capture_display, spx_shared_gamma_bounds
 from v2_visual_extension import expanded_display
 
-from etf_pine_view import render_etf_pine_exports, prepare_locked_chart_mapping
+from etf_pine_view import render_etf_pine_exports
+from v2_continuous_ratio import load_chart_continuous_mapping
 from etf_gamma_axes import chart_price_axes
 from v2_storage_off import archive_panel, prefer_manual_source
 from market_ui import render_empty_snapshot
@@ -194,9 +195,10 @@ def render_uso_cboe():
         st.warning("Nessun profilo NET GAMMA utilizzabile nella fotografia "
                    "selezionata; non vengono inventati strike o Gamma.")
         return
-    # Convert the Y axis only with a valid existing synchronized ratio.
-    # Crucial: lack of a mapping never hides original NET GAMMA USO.
-    mapping = prepare_locked_chart_mapping("USO")
+    # Single choice: continuous CL. Yahoo ETF/CL=F matched M5
+    # bars, strictly before this Cboe snapshot. NO dated futures / Massive.
+    mapping, mapping_issue = load_chart_continuous_mapping(
+        "USO", st.session_state)
     # SPX gamma_section uses one common min/max with 8% spread margin.
     # Independent of bar presentation: no change to original Cboe Gamma.
     xlim = spx_shared_gamma_bounds(good)
@@ -211,24 +213,20 @@ def render_uso_cboe():
         shared_ticks = shared_ticks[::step]
     axes = chart_price_axes("USO", mapping, ylim, shared_ticks)
     projected = axes["projected"]
+    st.markdown("**NET GAMMA CL CONTINUO · 0DTE / Weekly**")
     if projected:
-        st.markdown("**NET GAMMA USO → CL · 0DTE / Weekly**")
-        st.caption("Gamma originali opzioni USO Cboe; asse prezzi proiettato su CL "
-                   "solo con rapporto ETF/future sincronizzato e bloccato. "
-                   "Stessa fascia prezzi e stessa scala Gamma nei due grafici.")
-        st.caption(f"Scala CL · {mapping['future_tv_symbol']} · rapporto "
-                   f"{axes['price_ratio']:.8f} · prezzi sincronizzati "
-                   f"{mapping['bar_ny']} New York.")
+        st.caption(
+            f"Strike opzioni USO proiettati sul continuo CL con "
+            f"rapporto USO/{mapping['future_yahoo_ticker']} "
+            f"{axes['price_ratio']:.8f} · barra M5 sincronizzata "
+            f"{mapping['bar_ny']} New York. NET GAMMA originali invariati. "
+            "Il continuo Yahoo è un proxy del continuo TradingView, "
+            "che può differire al rollover.")
     else:
-        st.markdown("**NET GAMMA USO · 0DTE / Weekly — STRIKE ETF ORIGINALI**")
-        st.warning("Rapporto USO→CL non verificato: i grafici NET GAMMA sono "
-                   "disponibili sui prezzi originali dell'ETF USO in USD, "
-                   "NON sono livelli CL. La proiezione CL e il Pine "
-                   "su future restano bloccati fino a un rapporto valido. "
-                   + st.session_state.get("uso_ratio_error", ""))
-        st.caption("Dati Cboe USO non modificati. Asse verticale: strike USO, "
-                   "senza conversioni o livelli future presunti. "
-                   "Stessa scala NET GAMMA e stessi strike nei due grafici.")
+        st.caption(
+            "Conversione continua non disponibile per questa fotografia: "
+            "nessun livello CL viene stimato o mostrato. "
+            "Il Pine continuo rimane scaricabile e calcola il rapporto su TradingView.")
     independent_scale = st.checkbox(
         "Ingrandisci ogni profilo con scala indipendente",
         value=False, key="v2_uso_independent_scale",
@@ -264,21 +262,20 @@ def render_uso_cboe():
                 st.caption(f"Estensione grafica: +{extra} strike autentici; "
                            "valori originali invariati.")
             gamma_x = spx_shared_gamma_bounds([shown]) if independent_scale else xlim
-            # Always show a usable original ETF profile, even when Massive
-            # rate-limits the synchronized future price ratio (HTTP 429).
-            fig = _plot(shown, reference, gamma_x, axes["y_range"],
-                        price_ratio=axes["price_ratio"], projected=projected,
-                        title=title, snapshot_label=capture_label,
-                        tick_levels=axes["tick_levels"])
-            st.plotly_chart(fig, use_container_width=True,
-                            key=f"uso_spx_gamma_{title}_{p['expiry']}")
+            # Never display ETF strikes as CL if prices aren't synchronized.
+            if projected:
+                fig = _plot(shown, reference, gamma_x, axes["y_range"],
+                            price_ratio=axes["price_ratio"], projected=True,
+                            title=title, snapshot_label=capture_label,
+                            tick_levels=axes["tick_levels"])
+                st.plotly_chart(fig, use_container_width=True,
+                                key=f"uso_spx_gamma_{title}_{p['expiry']}")
             st.download_button(f"Esporta CSV USO · {title}",
                                data=_to_csv(p["rows"]),
                                file_name=f"USO_CBOE_{p['expiry']}_{title}.csv",
                                mime="text/csv", on_click="ignore")
-    st.caption("I NET GAMMA provengono dalle opzioni USO, NON da opzioni native CL. "
-               "Quando disponibile, la proiezione CL converte solo gli strike "
-               "e non identifica automaticamente Gamma Flip.")
+    st.caption("NET GAMMA originali delle opzioni USO; conversione grafica "
+               "sul continuo CL, non Gamma delle opzioni futures.")
     with st.expander("Approfondimento · Indice di volatilità OVX", expanded=False):
         st.caption("OVX è l'indice Cboe di volatilità implicita a 30 giorni "
                    "delle opzioni USO. Non modifica i Gamma o gli strike dell'ETF.")
