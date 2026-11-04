@@ -14,16 +14,24 @@ Come nella Serafini SPX, produce **un solo Pine statico 0DTE + Weekly**
 e due grafici da un'unica fotografia originale, senza storico comparativo
 e senza dover disporre degli slot 07:30 / 15:50 / 20:30.
 
-**Acquisizione unica, non due pannelli di download.** Aprire
-`ANALISI NET GAMMA → Acquisizione Cboe / importazione manuale` per
-premere Aggiorna fotografia o caricare ZIP / JSON / JSON.GZ. Se il file
-è ZIP, l'importatore accetta **un'unica** catena originale del mercato
-selezionato e rifiuta archivi ambigui. La fotografia validata,
-già usata dai grafici NET GAMMA, viene riutilizzata dal riquadro
-di emergenza: nessun secondo upload, download, login o storage.
-Se è già stata selezionata una fotografia dall'archivio cifrato V2,
-anche quella può essere usata, ma **solo se recente**. L'emergenza
-non interroga l'archivio da sola e non usa Supabase.
+**Stessa interfaccia iniziale della SPX.** Aprire in fondo alla pagina
+`PINE DI EMERGENZA — NET GAMMA CORRENTE`: contiene i due controlli affiancati
+**Scarica CBOE adesso** e **In alternativa importa ZIP / JSON / JSON.GZ**,
+con pulsante **Usa file importato**. All'avvio è vuoto, anche se il
+selettore dell'archivio in ANALISI NET GAMMA ha già caricato un rilevamento:
+**non parte automaticamente alcun Pine di emergenza**.
+Se il file ZIP contiene più fotografie dello stesso simbolo è rifiutato.
+Solo dopo un download/importazione manuale riuscita compaiono
+la fonte, il riferimento/rapporto e, con dati completi, i grafici 0DTE e
+Weekly e il file Pine. Come nella SPX, nessun secondo download avviene
+all'apertura del pannello.
+
+**Un solo punto manuale.** I controlli manuali sono stati tolti da
+ANALISI NET GAMMA: questa sezione conserva il selettore degli snapshot
+automatici, e legge anche il nuovo file manuale appena acquisito
+dall'emergenza. Lo stesso JSON validato alimenta entrambi i motori,
+ma gli snapshot automatici NON attivano da soli il Pine di emergenza.
+Nessuna dipendenza da Supabase e nessun confronto storico.
 
 - **NDX → NQ/MNQ:** differenziale NQ−NDX già calcolato/modificabile.
 - **GLD → GC/MGC:** solo rapporto GLD/future sincronizzato e bloccato.
