@@ -196,7 +196,7 @@ def render_gld_cboe():
                    "selezionata; non vengono inventati strike o Gamma.")
         return
     # Single choice: continuous GC. Yahoo ETF/GC=F matched M5
-    # bars, strictly before this Cboe snapshot. NO dated futures / Massive.
+    # bars, strictly before this Cboe snapshot. Continuous prices only.
     mapping, mapping_issue = load_chart_continuous_mapping(
         "GLD", st.session_state)
     # SPX gamma_section uses one common min/max with 8% spread margin.
