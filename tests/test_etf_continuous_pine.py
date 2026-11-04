@@ -104,7 +104,7 @@ class ContinuousPineTests(unittest.TestCase):
         self.assertIn('continuous=True',view)
         self.assertIn('continuous=True',emergency)
         self.assertIn('projected=result["projected"]',emergency)
-        self.assertIn('NET GAMMA CONTINUO GC1!/CL1!',emergency)
+        self.assertIn('NET GAMMA CONTINUO GC1!/MGC1! o CL1!/MCL1!',emergency)
 
 
 if __name__=="__main__":
