@@ -7,6 +7,35 @@ Report giornaliero AI.
 
 ## Architettura
 
+### PINE GC1! / CL1! — SENZA MASSIVE
+
+Per **Gold** e **Petrolio**, apri **ANALISI NET GAMMA** e scegli la
+fotografia Cboe che contiene 0DTE/Weekly. Nella sezione
+**Esportazione Pine Script v6** compare il pulsante
+**Scarica Pine · COMEX:GC1!** (GLD) o
+**Scarica Pine · NYMEX:CL1!** (USO), anche quando Massive blocca
+il rapporto GLD/GC o USO/CL (es. HTTP 429).
+
+Questo Pine **non ha un rapporto bloccato inventato**: incorpora solo
+gli strike e i Gamma autentici della fotografia e calcola il rapporto
+prezzi **dentro TradingView** usando due barre confermate a 5 minuti
+di ETF e continuo, con gli stessi timestamp. In assenza di una coppia
+valida NON disegna livelli sul future e mostra un avviso.
+Aprilo solo su **COMEX:GC1!** oppure **NYMEX:CL1!**, in timeframe
+**1m o 5m**. Non viene proiettato silenziosamente su contratti
+specifici né sui micro, che possono avere un differente riferimento.
+
+La formula `livello futuro = strike ETF × rapporto continuo` è una
+**proiezione indicativa di prezzo**, non la Gamma delle opzioni native
+COMEX/NYMEX. Il rapporto dinamico può cambiare con nuovi dati, anche
+quando la fotografia Cboe resta fissa; ricreare il Pine dopo una nuova
+fotografia. L'esportazione con rapporto **bloccato** sul contratto
+specifico resta separata e conserva i controlli precedenti.
+
+Lo stesso fallback è disponibile nel riquadro
+**PINE DI EMERGENZA — NET GAMMA CORRENTE** dopo import/download
+manuale della fotografia, se manca un rapporto bloccato.
+
 ### PINE DI EMERGENZA — NET GAMMA CORRENTE (NQ · GC · CL)
 
 È posizionato **in fondo alla pagina V2**, per tutti e tre i mercati.
