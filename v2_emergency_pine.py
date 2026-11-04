@@ -270,8 +270,7 @@ def render(market_key):
         return
     import streamlit as st
     from v2_emergency_acquisition import (
-        STORE_PREFIX, download_current_snapshot, use_uploaded_snapshot,
-        activate_for_analysis)
+        STORE_PREFIX, download_current_snapshot, use_uploaded_snapshot)
 
     symbol, future = MARKET_SYMBOL[market_key]
     store_key = STORE_PREFIX + symbol
@@ -289,7 +288,7 @@ def render(market_key):
                 try:
                     with st.spinner("Scaricamento diretto CBOE (solo manuale)..."):
                         active = download_current_snapshot(symbol)
-                        activate_for_analysis(symbol, active)
+                        st.session_state[f"v2_emergency_pending_activation_{symbol}"] = active
                         st.session_state[store_key] = active
                         st.session_state[f"{store_key}_success"] = (
                             f"Fotografia {symbol} scaricata e validata.")
@@ -309,7 +308,7 @@ def render(market_key):
                 try:
                     active = use_uploaded_snapshot(
                         symbol, uploaded.name, uploaded.getvalue())
-                    activate_for_analysis(symbol, active)
+                    st.session_state[f"v2_emergency_pending_activation_{symbol}"] = active
                     st.session_state[store_key] = active
                     st.session_state[f"{store_key}_success"] = (
                         f"Fotografia {symbol} importata e validata.")
@@ -317,6 +316,10 @@ def render(market_key):
                 except (ValueError, KeyError, TypeError, OSError) as exc:
                     st.error(f"Importazione non valida: {str(exc)[:260]}")
 
+        pending_error = st.session_state.pop(
+            f"v2_emergency_activation_error_{symbol}", None)
+        if pending_error:
+            st.error("Fotografia condivisa non applicabile: " + pending_error)
         active = st.session_state.get(store_key)
         if not active:
             st.info("Scarica una fotografia CBOE oppure importa un file "
