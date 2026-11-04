@@ -7,6 +7,43 @@ Report giornaliero AI.
 
 ## Architettura
 
+## OPERATIVITÀ AGGIORNATA — SOLO FUTURES CONTINUI (04/11/2026)
+
+Per **GLD/Gold** e **USO/Petrolio** la precedente interfaccia di
+conversione Massive/contratti a scadenza è **superata**. Nell'app V2
+sono disponibili soltanto:
+
+- Grafici 0DTE e Weekly sulla scala **GC continuo** o **CL continuo**,
+  se sono reperibili due barre di cinque minuti ETF + continuo Yahoo
+  con timestamp identico, già chiuse PRIMA della fotografia Cboe.
+  Per i grafici: Yahoo `GLD/GC=F` e `USO/CL=F`. **Mai**
+  visualizzare strike ETF spacciati per prezzi GC/CL.
+- Un Pine v6 scaricabile dai profili Cboe autentici e dai Pine per orari
+  (**07:30, 15:50, 20:30**) per **GC1!/MGC1!** o **CL1!/MCL1!**.
+  TradingView ricalcola il rapporto sui prezzi dei suoi continui
+  realmente aperti e sulle barre ETF M5 chiuse con timestamp identico.
+  Il Pine non legge Massive e non presuppone un valore di conversione.
+- Il Pine di emergenza utilizza lo stesso criterio, a seguito di
+  download/importazione esplicita della fotografia originale.
+
+Non ci sono più menu di contratti GCZ/CLZ, né pulsanti di retry Massive,
+né inserimento manuale di rapporti nella UI Gold/Petrolio.
+La presenza di uno storico Cboe completo è distinta dalla disponibilità
+di un prezzo sincronizzato: se questo non esiste, non si inventano
+livelli; **il Pine resta comunque scaricabile**.
+
+**Limite da conoscere:** i continui Yahoo `GC=F` e `CL=F` usati
+per l'anteprima sono proxy dei continui TradingView `GC1!`/`CL1!`
+e possono differire nei rollover e nelle politiche di aggiustamento.
+La conversione è indicativa, non opzioni native CME/NYMEX.
+Tutti i Gamma Cboe sono conservati senza riscalatura.
+
+### Note storiche
+
+Le sezioni precedenti che documentano una conversione bloccata su un
+contratto a scadenza descrivono la **vecchia V2** e NON sono più
+operative nell'interfaccia Gold/Petrolio.
+
 ### PINE GC1! / CL1! — SENZA MASSIVE
 
 Per **Gold** e **Petrolio**, apri **ANALISI NET GAMMA** e scegli la
