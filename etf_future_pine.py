@@ -115,8 +115,8 @@ def make_etf_future_pine(symbol: str, profiles: dict, etf_previous_close: float,
     if continuous:
         # Without a true matched pair, NEVER create fictitious 0-price lines.
         visual_draw = visual_draw.replace(
-            "if barstate.islast and validTicker\\n",
-            "if barstate.islast and validTicker and not na(ratioToDraw)\\n", 1)
+            "if barstate.islast and validTicker\n",
+            "if barstate.islast and validTicker and not na(ratioToDraw)\n", 1)
         visual_draw += """
 var label missingRatioLabel = na
 if barstate.islast and validTicker and na(ratioToDraw)
@@ -127,6 +127,8 @@ else if barstate.islast and not na(missingRatioLabel)
     label.delete(missingRatioLabel)
     missingRatioLabel := na
 """
+    if continuous:
+        visual_draw = visual_draw.replace("@FUT_TV@", future_tv)
     template = """//@version=6
 indicator("Multi-Market NET GAMMA · @SYMBOL@ → @MARKET@ · @DATE@ · @CLOCK@ · @LABEL@", overlay=true, max_lines_count=500, max_labels_count=50)
 // Ora acquisizione fotografia Cboe (Europe/Rome; CET/CEST): @ACQUISITION@. Non e' il timestamp Cboe originale.
