@@ -344,10 +344,40 @@ def render_selected_market(market_key):
         except Exception:
             st.caption('Calendario macro non disponibile: eventuali linee news '
                        'vengono omesse dai Pine. I livelli NET GAMMA non cambiano.')
-    render_timed_pine_exports(
-        'NDX', day, reference, band_pct, basis,
-        extension=show_extension, macro_news=macro_news)
-    st.caption('I Pine utilizzano 0DTE e Weekly reali per ciascuno slot; '
-               'i confronti 15:50 e 20:30 non sono generati se manca '
-               'il precedente rilevamento valido della stessa giornata.')
+    # One current Pine from the EXACT selected Cboe snapshot.
+    # No look-ahead or second 07:30 export in the comparison section.
+    st.markdown("**NET GAMMA corrente · NQ/MNQ · 0DTE + Weekly**")
+    if "0DTE" in visual_profiles and "Weekly" in visual_profiles:
+        try:
+            current_script = make_pine(
+                {"0DTE": visual_profiles["0DTE"],
+                 "Weekly": visual_profiles["Weekly"]},
+                basis, day, "NET GAMMA CORRENTE",
+                acquisition_time=st.session_state.get("ndx_capture_rome_iso"))
+            if macro_news:
+                current_script = append_news(current_script, macro_news)
+            st.download_button(
+                "Scarica Pine NET GAMMA corrente · NQ/MNQ (.pine)",
+                data=current_script.encode("utf-8"),
+                file_name=f"NDX_NET_GAMMA_CORRENTE_{day:%Y%m%d}.pine",
+                mime="text/plain", on_click="ignore",
+                key=f"ndx_current_pine_{day:%Y%m%d}",
+                use_container_width=True)
+            with st.expander("Mostra codice Pine corrente da copiare"):
+                st.code(current_script, language="pine")
+        except (ValueError, TypeError, KeyError, OverflowError) as exc:
+            st.info("Pine corrente non disponibile per la fotografia "
+                    f"selezionata: {str(exc)[:220]}")
+    else:
+        st.info("Per esportare il Pine corrente occorrono sia il profilo "
+                "0DTE sia il Weekly della fotografia selezionata.")
+
+    with st.expander("Confronti orari · 07:30 → 15:50 / 15:50 → 20:30",
+                     expanded=False):
+        render_timed_pine_exports(
+            'NDX', day, reference, band_pct, basis,
+            extension=show_extension, macro_news=macro_news)
+    st.caption('Il Pine corrente usa la fotografia selezionata. I confronti '
+               'richiedono entrambe le fotografie reali della stessa seduta; '
+               'la fotografia 07:30 non viene esportata due volte.')
     
