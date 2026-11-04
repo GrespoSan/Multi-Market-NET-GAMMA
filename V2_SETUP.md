@@ -12,8 +12,8 @@ Report giornaliero AI.
 Per **Gold** e **Petrolio**, apri **ANALISI NET GAMMA** e scegli la
 fotografia Cboe che contiene 0DTE/Weekly. Nella sezione
 **Esportazione Pine Script v6** compare il pulsante
-**Scarica Pine · COMEX:GC1!** (GLD) o
-**Scarica Pine · NYMEX:CL1!** (USO), anche quando Massive blocca
+**Scarica Pine · COMEX:GC1! / COMEX_MINI:MGC1!** (GLD) o
+**Scarica Pine · NYMEX:CL1! / NYMEX:MCL1!** (USO), anche quando Massive blocca
 il rapporto GLD/GC o USO/CL (es. HTTP 429).
 
 Questo Pine **non ha un rapporto bloccato inventato**: incorpora solo
@@ -21,9 +21,12 @@ gli strike e i Gamma autentici della fotografia e calcola il rapporto
 prezzi **dentro TradingView** usando due barre confermate a 5 minuti
 di ETF e continuo, con gli stessi timestamp. In assenza di una coppia
 valida NON disegna livelli sul future e mostra un avviso.
-Aprilo solo su **COMEX:GC1!** oppure **NYMEX:CL1!**, in timeframe
-**1m o 5m**. Non viene proiettato silenziosamente su contratti
-specifici né sui micro, che possono avere un differente riferimento.
+Aprilo su **COMEX:GC1!** oppure **COMEX_MINI:MGC1!** (Gold),
+o su **NYMEX:CL1!** oppure **NYMEX:MCL1!** (Petrolio),
+in timeframe **1m o 5m**. Il rapporto dinamico viene calcolato
+usando il prezzo del continuo effettivamente aperto sul grafico,
+non il prezzo di un contratto diverso. I contratti con scadenza
+esplicita restano esclusi: per quelli è richiesto un rapporto bloccato.
 
 La formula `livello futuro = strike ETF × rapporto continuo` è una
 **proiezione indicativa di prezzo**, non la Gamma delle opzioni native
