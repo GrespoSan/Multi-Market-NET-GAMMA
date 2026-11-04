@@ -102,11 +102,10 @@ def make_pine_comparison_v2(symbol, previous, current, weekly,
             acquisition_time=current_info["rome"])
         previous_level_array = _pine_array(previous["rows"], "strike_index", offset)
     else:
-        mapping = reference_or_mapping
         code = make_etf_future_pine(
             symbol, {"0DTE":current, "Weekly":weekly},
-            etf_previous_close, target, label, mapping,
-            acquisition_time=current_info["rome"])
+            etf_previous_close, target, label, None,
+            acquisition_time=current_info["rome"], continuous=True)
         previous_level_array = _pine_array(previous["rows"], "strike")
 
     # Enforce both actual slot captures in code. Original Cboe timestamp has
@@ -175,7 +174,8 @@ def make_pine_comparison_v2(symbol, previous, current, weekly,
     )
     code=code[:m.start()]+new_scale+code[m.end():]
 
-    marker="if barstate.islast and validTicker\n"
+    marker=("if barstate.islast and validTicker\\n" if symbol == "NDX"
+            else "if barstate.islast and validTicker and not na(ratioToDraw)\\n")
     if code.count(marker) != 1:
         raise ValueError("Blocco disegno Pine non compatibile.")
     start=code.index(marker)
