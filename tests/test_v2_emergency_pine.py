@@ -105,7 +105,9 @@ class EmergencyTests(unittest.TestCase):
         # Missing ratio now explicitly exports a continuous CL1! Pine,
         # never silently injecting a fabricated locked ETF/future mapping.
         dynamic = build_current_pine("USO", original("USO"), DAY, 168., None)
-        self.assertIn('string contractTicker = "NYMEX:CL1!"', dynamic["pine"])
+        self.assertIn('string contractTicker = ticker.standard(syminfo.tickerid)', dynamic["pine"])
+        self.assertIn('ticker.standard(syminfo.tickerid) == "NYMEX:CL1!"', dynamic["pine"])
+        self.assertIn('ticker.standard(syminfo.tickerid) == "NYMEX:MCL1!"', dynamic["pine"])
         self.assertFalse(dynamic["projected"])
         self.assertEqual(dynamic["factor"], 1.0)
         with self.assertRaisesRegex(ValueError, "altro strumento"):
