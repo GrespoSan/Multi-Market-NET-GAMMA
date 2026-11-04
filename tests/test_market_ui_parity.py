@@ -62,7 +62,8 @@ class CommonMarketLayoutTests(unittest.TestCase):
         self.assertIn('st.button("Usa file importato"', emergency)
         self.assertIn('type=["zip", "json", "gz"]', emergency)
         self.assertIn('download_current_snapshot(symbol)', emergency)
-        self.assertIn('activate_for_analysis(symbol, active)', emergency)
+        self.assertIn('v2_emergency_pending_activation_{symbol}', emergency)
+        self.assertIn('activate_for_analysis(symbol_for_market, pending)', source("app.py"))
         for filename, symbol in (("v2_market_engine.py", "NDX"),
                                  ("gld_cboe_view.py", "GLD"),
                                  ("uso_cboe_view.py", "USO")):
