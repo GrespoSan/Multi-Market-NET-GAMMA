@@ -117,6 +117,21 @@ with col_info:
                f"Metodo: {market.basis}")
 st.divider()
 
+# The emergency controls are below the main analysis, so their callbacks
+# cannot modify main widgets after those widgets have been instantiated.
+# Apply pending manual Cboe capture at the START of the next rerun.
+symbol_for_market = {"NASDAQ": "NDX", "GOLD": "GLD", "WTI": "USO"}[market_key]
+activation_key = f"v2_emergency_pending_activation_{symbol_for_market}"
+pending = st.session_state.pop(activation_key, None)
+if pending is not None:
+    try:
+        from v2_emergency_acquisition import activate_for_analysis
+        activate_for_analysis(symbol_for_market, pending)
+    except (ValueError, KeyError, TypeError, OSError) as exc:
+        from v2_emergency_acquisition import STORE_PREFIX
+        st.session_state.pop(STORE_PREFIX + symbol_for_market, None)
+        st.session_state[f"v2_emergency_activation_error_{symbol_for_market}"] = str(exc)[:260]
+
 # Preserve CONTEXTO above NET GAMMA visually, but execute its optional
 # Massive requests AFTER Gamma's reference mapping. A collapsed expander still
 # runs all its code in Streamlit; this ordering prioritizes the trading panel.
