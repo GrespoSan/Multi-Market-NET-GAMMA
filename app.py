@@ -169,6 +169,10 @@ with context_slot.container():
 from v2_emergency_pine import render as render_v2_emergency_pine
 render_v2_emergency_pine(market_key)
 
+# Independent ticker-input CBOE engine; never touches selected market state.
+from v2_universal_cboe import render as render_universal_cboe
+render_universal_cboe()
+
 # No GEX EDGE, REPLAY E CONFRONTO, or REPORT GIORNALIERO AI.
 # Cboe snapshot management stays inside the market-specific gamma analysis
 # via v2_storage_off.archive_panel, not via Supabase.
