@@ -177,30 +177,68 @@ def _chart(group, ticker):
 
 
 def _pine(ticker, groups):
-    """Static native-equity overlay: genuine selected strikes; zero conversion."""
-    rows = [(label, r) for label, group in groups.items() for r in group["rows"]]
-    if len(rows) > 220:
-        raise ValueError("Oltre 220 livelli: riduci la fascia per rispettare il limite linee Pine.")
-    commands = []
-    for label, r in rows:
-        price = repr(float(r["strike"]))
-        value = float(r["net"])
-        color = "color.lime" if value >= 0 else "color.red"
-        weight = 2 if abs(value) >= max((abs(x[1]["net"]) for x in rows), default=0) * .6 else 1
-        commands.append(
-            f'    line.new(bar_index - 1, {price}, bar_index + 30, {price}, '
-            f'xloc=xloc.bar_index, extend=extend.none, color={color}, '
-            f'style=line.style_dashed, width={weight})'
-        )
-    return (
-        "//@version=6\n"
-        f'indicator("NET GAMMA UNIVERSALE {ticker} · CBOE", overlay=true, max_lines_count=500)\n'
-        f'bool tickerOk = syminfo.ticker == "{ticker}"\n'
-        "if tickerOk and barstate.islast\n"
-        "    // Livelli statici della fotografia importata, non dati TradingView live.\n"
-        + "\n".join(commands) + "\n"
-    )
+    """Original CBOE strike/Gamma data with shared Serafini SPX/NDX graphics."""
+    from pine_export import _pine_array, _initial_manual_scale, _top_gamma_rows
+    from pine_spx_visual import spx_inputs, SPX_RENDER_FUNCTIONS, spx_last_bar
 
+    if not groups or len(groups) > 2:
+        raise ValueError("Attesi uno o due profili verificati.")
+    main_name = next((name for name in groups if name != "Weekly"), None)
+    if main_name is None:
+        raise ValueError("Scadenza principale CBOE assente.")
+    main = groups[main_name]
+    weekly = groups.get("Weekly", {"rows": [], "expiry": ""})
+    mr, wr = main["rows"], weekly["rows"]
+    count = len(mr) + len(wr)
+    if not mr or count > 480:
+        raise ValueError(f"Livelli Pine {count}: massimo 480; riduci la fascia.")
+    for group in (main, weekly):
+        for row in group["rows"]:
+            if not all(math.isfinite(float(row[k])) for k in ("strike", "net")):
+                raise ValueError("Strike/NET GAMMA non finito.")
+    is_odte = main_name == "0DTE"
+    tc = _top_gamma_rows(mr, "strike", "net", positive=True) if is_odte else []
+    tp = _top_gamma_rows(mr, "strike", "net", positive=False) if is_odte else []
+    scale, step = _initial_manual_scale([
+        ({"rows": [{"net_gamma": x["net"]} for x in mr]}, 100),
+        ({"rows": [{"net_gamma": x["net"]} for x in wr]}, 200)])
+    n = lambda value: f"{value:.8f}".rstrip("0").rstrip(".")
+    inputs = spx_inputs(n(scale), n(step), tooltip="Scala MANUALE, Gamma originali invariati.")
+    if not is_odte:
+        inputs = inputs.replace('"Mostra 0DTE corrente"', '"Mostra profilo principale"')
+        inputs = inputs.replace(
+            'showTop3Odte = input.bool(true, "Proietta Top 3 Call / Put 0DTE")',
+            'showTop3Odte = false')
+    label = "0DTE" if is_odte else "Principale"
+    main_call = (f'renderProfile(mainLevels, mainValues, bar_index + offsetOdte, '
+                 f'"{label} {main["expiry"]:%d/%m/%Y}", actualScale)')
+    weekly_call = (
+        f'renderProfile(weeklyLevels, weeklyValues, bar_index + weeklyCenter, '
+        f'"Weekly {weekly["expiry"]:%d/%m/%Y}", actualScale)' if wr else "")
+    draw = spx_last_bar(main_call, weekly_call, "mainValues", "weeklyValues",
+                        top3_levels=("topCalls", "topPuts") if is_odte else None)
+    return f'''//@version=6
+indicator("NET GAMMA UNIVERSALE {ticker} · CBOE", overlay=true, max_lines_count=500, max_labels_count=35)
+// Fotografia CBOE statica; rigenerare il Pine per aggiornare.
+// Strike originali {ticker}, nessuna conversione verso futures.
+// Formula: Call (OI+Volume)*Gamma - Put (OI+Volume)*Gamma.
+validTicker = syminfo.type == "stock" and syminfo.ticker == "{ticker}"
+
+{inputs}
+
+var array<line> drawnLines = array.new_line()
+var array<label> drawnLabels = array.new_label()
+var array<float> mainLevels = {_pine_array(mr, "strike")}
+var array<float> mainValues = {_pine_array(mr, "net")}
+var array<float> weeklyLevels = {_pine_array(wr, "strike")}
+var array<float> weeklyValues = {_pine_array(wr, "net")}
+var array<float> topCalls = {_pine_array(tc, "strike")}
+var array<float> topPuts = {_pine_array(tp, "strike")}
+
+{SPX_RENDER_FUNCTIONS}
+
+{draw}
+'''
 
 def render():
     with st.expander("NET GAMMA UNIVERSALE — CBOE", expanded=False):
