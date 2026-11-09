@@ -222,7 +222,7 @@ indicator("NET GAMMA UNIVERSALE {ticker} · CBOE", overlay=true, max_lines_count
 // Fotografia CBOE statica; rigenerare il Pine per aggiornare.
 // Strike originali {ticker}, nessuna conversione verso futures.
 // Formula: Call (OI+Volume)*Gamma - Put (OI+Volume)*Gamma.
-validTicker = syminfo.type == "stock" and syminfo.ticker == "{ticker}"
+validTicker = (syminfo.type == "stock" or syminfo.type == "fund") and syminfo.ticker == "{ticker}"
 
 {inputs}
 
