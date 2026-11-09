@@ -190,7 +190,7 @@ def _current_trading_day(now=None):
 
 
 def _profile_chart(group, *, symbol, title, factor, shift, strike_key, gamma_key,
-                   projected=True):
+                   common_x, projected=True):
     import plotly.graph_objects as go
     rows = group["rows"]
     y = [float(r[strike_key]) * factor + shift for r in rows]
@@ -203,7 +203,7 @@ def _profile_chart(group, *, symbol, title, factor, shift, strike_key, gamma_key
     f.add_vline(x=0, line_color="#9ca3af", line_width=1)
     f.update_layout(title=title, template="plotly_dark", height=680,
                     margin=dict(l=20,r=20,t=55,b=45),
-                    xaxis_title=f"NET GAMMA {symbol}",
+                    xaxis_title=f"NET GAMMA {symbol}", xaxis_range=common_x,
                     yaxis_title=("Prezzo NQ" if symbol == "NDX" else
                                  "Prezzo future equivalente (proiezione ETF)"
                                  if projected else
@@ -399,6 +399,10 @@ def render(market_key):
             f"Weekly {result['expiry_weekly']:%d/%m/%Y}."
         )
         if result["projected"]:
+            from gamma_chart_style import spx_shared_gamma_bounds
+            common_gamma_x = spx_shared_gamma_bounds(
+                result["profiles"].values(), field=result["gamma_key"])
+            st.caption("Scala NET GAMMA comune per 0DTE e Weekly.")
             left_chart, right_chart = st.columns(2, gap="medium")
             with left_chart:
                 st.plotly_chart(
@@ -407,7 +411,8 @@ def render(market_key):
                         symbol=symbol, title="NET GAMMA 0DTE · CONTINUO",
                         factor=result["factor"], shift=result["shift"],
                         strike_key=result["strike_key"],
-                        gamma_key=result["gamma_key"], projected=True),
+                        gamma_key=result["gamma_key"], common_x=common_gamma_x,
+                        projected=True),
                     use_container_width=True,
                     key=f"v2_emergency_{symbol}_odte")
             with right_chart:
@@ -417,7 +422,8 @@ def render(market_key):
                         symbol=symbol, title="NET GAMMA Weekly · CONTINUO",
                         factor=result["factor"], shift=result["shift"],
                         strike_key=result["strike_key"],
-                        gamma_key=result["gamma_key"], projected=True),
+                        gamma_key=result["gamma_key"], common_x=common_gamma_x,
+                        projected=True),
                     use_container_width=True,
                     key=f"v2_emergency_{symbol}_weekly")
         else:
