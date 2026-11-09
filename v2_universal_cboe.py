@@ -202,8 +202,9 @@ def _pine(ticker, groups):
     tp = _top_gamma_rows(mr, "strike", "net", positive=False) if is_odte else []
 
     # One common display scale; preserve magnitude comparisons across maturities.
-    all_gamma = [{"net_gamma": x["net"]} for x in mr + wr]
-    scale, step = _initial_manual_scale([({"rows": all_gamma}, 200)])
+    scale, step = _initial_manual_scale([
+        ({"rows": [{"net_gamma": x["net"]} for x in mr]}, 100),
+        ({"rows": [{"net_gamma": x["net"]} for x in wr]}, 200)])
     n = lambda value: f"{value:.8f}".rstrip("0").rstrip(".")
     inputs = spx_inputs(n(scale), n(step),
                         tooltip="Scala Gamma unica per 0DTE e Weekly, valori invariati.")
