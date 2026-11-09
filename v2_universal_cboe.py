@@ -344,7 +344,7 @@ def render():
         weekly_day = main_exp + timedelta(days=((4 - main_exp.weekday()) % 7 or 7))
         weekly = weekly_day if weekly_day in dates else None
         band = st.number_input("Fascia strike ± % dal close precedente",
-                               min_value=0.5, max_value=25.0, value=3.0, step=0.5,
+                               min_value=0.5, max_value=25.0, value=10.0, step=0.5,
                                key="universal_cboe_band")
         groups = {}
         for name, exp in [(label, main_exp), ("Weekly", weekly)]:
