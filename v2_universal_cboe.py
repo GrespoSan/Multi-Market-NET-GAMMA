@@ -162,7 +162,7 @@ def download_once(ticker):
     return raw
 
 
-def _chart(group, ticker):
+def _chart(group, ticker, common_x):
     rows = group["rows"]
     fig = go.Figure(go.Bar(x=[r["net"] for r in rows],
                            y=[r["strike"] for r in rows], orientation="h",
@@ -171,18 +171,14 @@ def _chart(group, ticker):
     fig.add_vline(x=0, line_color="#94a3b8")
     fig.update_layout(template="plotly_dark", height=600,
                       title=f"{ticker} · {group['expiry']:%d/%m/%Y}",
-                      xaxis_title="NET GAMMA = Call − Put", yaxis_title=f"Strike {ticker}",
+                      xaxis_title="NET GAMMA = Call − Put", xaxis_range=common_x,
+                      yaxis_title=f"Strike {ticker}",
                       margin=dict(l=20, r=20, t=55, b=40), showlegend=False)
     return fig
 
 
 def _pine(ticker, groups):
-    """Same Serafini histogram renderer, independent visual scales by default.
-
-    The application plots 0DTE and Weekly on separate X axes. Thus the
-    original one-scale Pine visually compressed Weekly when 0DTE was larger.
-    Here the Gamma data remain identical; only bars/Gamma differs per column.
-    """
+    """Same Serafini histogram renderer and one common Gamma scale for both profiles."""
     from pine_export import _pine_array, _initial_manual_scale, _top_gamma_rows
     from pine_spx_visual import spx_inputs, SPX_RENDER_FUNCTIONS
 
@@ -205,24 +201,12 @@ def _pine(ticker, groups):
     tc = _top_gamma_rows(mr, "strike", "net", positive=True) if is_odte else []
     tp = _top_gamma_rows(mr, "strike", "net", positive=False) if is_odte else []
 
-    # Different magnitudes can differ by hundreds: calculate one display
-    # recommendation per plot. No changes whatsoever to actual NET GAMMA.
-    def scale_for(rows, center):
-        if not rows:
-            return 0.001, 0.0001
-        return _initial_manual_scale(
-            [({"rows": [{"net_gamma": row["net"]} for row in rows]}, center)])
-    scale_main, step_main = scale_for(mr, 100)
-    scale_weekly, step_weekly = scale_for(wr, 200)
+    # One common display scale; preserve magnitude comparisons across maturities.
+    all_gamma = [{"net_gamma": x["net"]} for x in mr + wr]
+    scale, step = _initial_manual_scale([({"rows": all_gamma}, 200)])
     n = lambda value: f"{value:.8f}".rstrip("0").rstrip(".")
-    inputs = spx_inputs(n(scale_main), n(step_main),
-                        tooltip="Scala grafica 0DTE/Principale. Non modifica il Gamma.")
-    inputs += (
-        '\nweeklyIndependent = input.bool(true, "Scala Weekly indipendente '
-        '(come grafici app)")\n'
-        f'gammaWeeklyPerCandle = input.float({n(scale_weekly)}, '
-        f'"Scala MANUALE · Weekly Gamma/barra", minval=0.000001, '
-        f'step={n(step_weekly)})')
+    inputs = spx_inputs(n(scale), n(step),
+                        tooltip="Scala Gamma unica per 0DTE e Weekly, valori invariati.")
     if not is_odte:
         inputs = inputs.replace('"Mostra 0DTE corrente"', '"Mostra profilo principale"')
         inputs = inputs.replace(
@@ -242,7 +226,7 @@ def _pine(ticker, groups):
     weekly_render = (
         f'            if showCurrentWeekly\n'
         f'                renderProfile(weeklyLevels, weeklyValues, '
-        f'bar_index + weeklyCenter, "{weekly_title}", weeklyActualScale)\n'
+        f'bar_index + weeklyCenter, "{weekly_title}", actualScale)\n'
         if wr else "")
     # Keep exactly the common SPX renderProfile function and line/label
     # cleanup; adapt only the per-column drawing scale and safety check.
@@ -254,12 +238,11 @@ def _pine(ticker, groups):
         label.delete(lb)
     array.clear(drawnLabels)
     float actualScale = gammaPerCandle
-    float weeklyActualScale = weeklyIndependent ? gammaWeeklyPerCandle : gammaPerCandle
     int weeklyCenter = offsetOdte + offsetWeekly
     bool beyondLimit = offsetOdte >= 480 or (showCurrentWeekly and array.size(weeklyValues) > 0 and weeklyCenter >= 480)
     float safeMain = showCurrentOdte ? requiredScale(mainValues, offsetOdte) : 0.0
     float safeWeekly = showCurrentWeekly ? requiredScale(weeklyValues, weeklyCenter) : 0.0
-    bool unsafeScale = (showCurrentOdte and actualScale < safeMain * 0.999999) or (showCurrentWeekly and weeklyActualScale < safeWeekly * 0.999999)
+    bool unsafeScale = actualScale < math.max(safeMain, safeWeekly) * 0.999999
     if beyondLimit
         label warn = label.new(bar_index + 10, close, "Distanza profili oltre +500 barre: riduci gli offset.", style=label.style_label_left, color=color.orange, textcolor=color.black, size=size.small)
         array.push(drawnLabels, warn)
@@ -386,10 +369,13 @@ def render():
         st.caption(f"Close precedente {close:,.2f} · prezzo CBOE "
                    f"{doc['data'].get('current_price', 'N/D')} · Gamma non monetario. "
                    "Il NET totale somma solo i profili visualizzati, non tutta la catena.")
+        from gamma_chart_style import spx_shared_gamma_bounds
+        shared_x = spx_shared_gamma_bounds(groups.values(), field="net")
+        st.caption("Scala NET GAMMA comune per tutte le scadenze: lunghezze confrontabili.")
         columns = st.columns(len(groups))
         for (name, group), col in zip(groups.items(), columns):
             with col:
-                st.plotly_chart(_chart(group, ticker), use_container_width=True,
+                st.plotly_chart(_chart(group, ticker, shared_x), use_container_width=True,
                                 key=f"universal_chart_{ticker}_{name}_{group['expiry']}")
                 st.caption(f"{len(group['rows'])} strike Call/Put · "
                            f"copertura {group['coverage']:.0%} · "
