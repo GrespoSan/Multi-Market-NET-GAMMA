@@ -177,9 +177,14 @@ def _chart(group, ticker):
 
 
 def _pine(ticker, groups):
-    """Original CBOE strike/Gamma data with shared Serafini SPX/NDX graphics."""
+    """Same Serafini histogram renderer, independent visual scales by default.
+
+    The application plots 0DTE and Weekly on separate X axes. Thus the
+    original one-scale Pine visually compressed Weekly when 0DTE was larger.
+    Here the Gamma data remain identical; only bars/Gamma differs per column.
+    """
     from pine_export import _pine_array, _initial_manual_scale, _top_gamma_rows
-    from pine_spx_visual import spx_inputs, SPX_RENDER_FUNCTIONS, spx_last_bar
+    from pine_spx_visual import spx_inputs, SPX_RENDER_FUNCTIONS
 
     if not groups or len(groups) > 2:
         raise ValueError("Attesi uno o due profili verificati.")
@@ -199,29 +204,77 @@ def _pine(ticker, groups):
     is_odte = main_name == "0DTE"
     tc = _top_gamma_rows(mr, "strike", "net", positive=True) if is_odte else []
     tp = _top_gamma_rows(mr, "strike", "net", positive=False) if is_odte else []
-    scale, step = _initial_manual_scale([
-        ({"rows": [{"net_gamma": x["net"]} for x in mr]}, 100),
-        ({"rows": [{"net_gamma": x["net"]} for x in wr]}, 200)])
+
+    # Different magnitudes can differ by hundreds: calculate one display
+    # recommendation per plot. No changes whatsoever to actual NET GAMMA.
+    def scale_for(rows, center):
+        if not rows:
+            return 0.001, 0.0001
+        return _initial_manual_scale(
+            [({"rows": [{"net_gamma": row["net"]} for row in rows]}, center)])
+    scale_main, step_main = scale_for(mr, 100)
+    scale_weekly, step_weekly = scale_for(wr, 200)
     n = lambda value: f"{value:.8f}".rstrip("0").rstrip(".")
-    inputs = spx_inputs(n(scale), n(step), tooltip="Scala MANUALE, Gamma originali invariati.")
+    inputs = spx_inputs(n(scale_main), n(step_main),
+                        tooltip="Scala grafica 0DTE/Principale. Non modifica il Gamma.")
+    inputs += (
+        '\nweeklyIndependent = input.bool(true, "Scala Weekly indipendente '
+        '(come grafici app)")\n'
+        f'gammaWeeklyPerCandle = input.float({n(scale_weekly)}, '
+        f'"Scala MANUALE · Weekly Gamma/barra", minval=0.000001, '
+        f'step={n(step_weekly)})')
     if not is_odte:
         inputs = inputs.replace('"Mostra 0DTE corrente"', '"Mostra profilo principale"')
         inputs = inputs.replace(
             'showTop3Odte = input.bool(true, "Proietta Top 3 Call / Put 0DTE")',
             'showTop3Odte = false')
     label = "0DTE" if is_odte else "Principale"
-    main_call = (f'renderProfile(mainLevels, mainValues, bar_index + offsetOdte, '
-                 f'"{label} {main["expiry"]:%d/%m/%Y}", actualScale)')
-    weekly_call = (
-        f'renderProfile(weeklyLevels, weeklyValues, bar_index + weeklyCenter, '
-        f'"Weekly {weekly["expiry"]:%d/%m/%Y}", actualScale)' if wr else "")
-    draw = spx_last_bar(main_call, weekly_call, "mainValues", "weeklyValues",
-                        top3_levels=("topCalls", "topPuts") if is_odte else None)
+    main_title = f"{label} {main['expiry']:%d/%m/%Y}"
+    weekly_title = (f"Weekly {weekly['expiry']:%d/%m/%Y}" if wr else "")
+    top3_code = (
+        '    if showTop3Odte\n'
+        '        drawOdteTopProjections(topCalls, topPuts)\n'
+        if is_odte else "")
+    main_render = (
+        f'            if showCurrentOdte\n'
+        f'                renderProfile(mainLevels, mainValues, '
+        f'bar_index + offsetOdte, "{main_title}", actualScale)\n')
+    weekly_render = (
+        f'            if showCurrentWeekly\n'
+        f'                renderProfile(weeklyLevels, weeklyValues, '
+        f'bar_index + weeklyCenter, "{weekly_title}", weeklyActualScale)\n'
+        if wr else "")
+    # Keep exactly the common SPX renderProfile function and line/label
+    # cleanup; adapt only the per-column drawing scale and safety check.
+    draw = f'''if barstate.islast and validTicker
+    for ln in drawnLines
+        line.delete(ln)
+    array.clear(drawnLines)
+    for lb in drawnLabels
+        label.delete(lb)
+    array.clear(drawnLabels)
+    float actualScale = gammaPerCandle
+    float weeklyActualScale = weeklyIndependent ? gammaWeeklyPerCandle : gammaPerCandle
+    int weeklyCenter = offsetOdte + offsetWeekly
+    bool beyondLimit = offsetOdte >= 480 or (showCurrentWeekly and array.size(weeklyValues) > 0 and weeklyCenter >= 480)
+    float safeMain = showCurrentOdte ? requiredScale(mainValues, offsetOdte) : 0.0
+    float safeWeekly = showCurrentWeekly ? requiredScale(weeklyValues, weeklyCenter) : 0.0
+    bool unsafeScale = (showCurrentOdte and actualScale < safeMain * 0.999999) or (showCurrentWeekly and weeklyActualScale < safeWeekly * 0.999999)
+    if beyondLimit
+        label warn = label.new(bar_index + 10, close, "Distanza profili oltre +500 barre: riduci gli offset.", style=label.style_label_left, color=color.orange, textcolor=color.black, size=size.small)
+        array.push(drawnLabels, warn)
+    else if unsafeScale
+        label warn = label.new(bar_index + 10, close, "Scala Gamma troppo piccola: aumenta Gamma/barra per il profilo interessato.", style=label.style_label_left, color=color.orange, textcolor=color.black, size=size.small)
+        array.push(drawnLabels, warn)
+    else
+{main_render}{weekly_render}{top3_code}'''
     return f'''//@version=6
 indicator("NET GAMMA UNIVERSALE {ticker} · CBOE", overlay=true, max_lines_count=500, max_labels_count=35)
 // Fotografia CBOE statica; rigenerare il Pine per aggiornare.
 // Strike originali {ticker}, nessuna conversione verso futures.
 // Formula: Call (OI+Volume)*Gamma - Put (OI+Volume)*Gamma.
+// Scala Weekly indipendente: la lunghezza grafica delle barre non e'
+// direttamente confrontabile con 0DTE se usano scale differenti.
 validTicker = (syminfo.type == "stock" or syminfo.type == "fund") and syminfo.ticker == "{ticker}"
 
 {inputs}
@@ -256,33 +309,30 @@ def render():
         if previous and previous["ticker"] != ticker:
             st.session_state.pop("universal_cboe_active", None)
             previous = None
-        left, right = st.columns(2)
-        with left:
-            if st.button("Scarica CBOE e calcola", key="universal_cboe_download",
-                         use_container_width=True):
-                try:
-                    with st.spinner(f"Download manuale {ticker} da CBOE..."):
-                        raw = download_once(ticker)
-                    st.session_state["universal_cboe_active"] = {
-                        "ticker": ticker, "raw": raw, "source": "Download manuale CBOE",
-                        "rome": datetime.now(ROME).isoformat(timespec="seconds")}
-                    st.rerun()
-                except Exception as exc:
-                    st.error(f"Download fallito: {str(exc)[:260]}")
-        with right:
-            uploaded = st.file_uploader("Oppure importa ZIP / JSON / JSON.GZ",
-                                        type=["zip", "json", "gz"],
-                                        key=f"universal_file_{ticker}")
-            if st.button("Usa file importato", key="universal_import",
-                         disabled=uploaded is None, use_container_width=True):
-                try:
-                    raw = import_original(uploaded.name, uploaded.getvalue(), ticker)
-                    st.session_state["universal_cboe_active"] = {
-                        "ticker": ticker, "raw": raw, "source": "Importazione locale",
-                        "rome": None}
-                    st.rerun()
-                except Exception as exc:
-                    st.error(f"Importazione fallita: {str(exc)[:260]}")
+        if st.button("Scarica CBOE e calcola", key="universal_cboe_download",
+                     use_container_width=True):
+            try:
+                with st.spinner(f"Download manuale {ticker} da CBOE..."):
+                    raw = download_once(ticker)
+                st.session_state["universal_cboe_active"] = {
+                    "ticker": ticker, "raw": raw, "source": "Download manuale CBOE",
+                    "rome": datetime.now(ROME).isoformat(timespec="seconds")}
+                st.rerun()
+            except Exception as exc:
+                st.error(f"Download fallito: {str(exc)[:260]}")
+        uploaded = st.file_uploader("Oppure importa ZIP / JSON / JSON.GZ",
+                                    type=["zip", "json", "gz"],
+                                    key=f"universal_file_{ticker}")
+        if st.button("Usa file importato", key="universal_import",
+                     disabled=uploaded is None, use_container_width=True):
+            try:
+                raw = import_original(uploaded.name, uploaded.getvalue(), ticker)
+                st.session_state["universal_cboe_active"] = {
+                    "ticker": ticker, "raw": raw, "source": "Importazione locale",
+                    "rome": None}
+                st.rerun()
+            except Exception as exc:
+                st.error(f"Importazione fallita: {str(exc)[:260]}")
         active = st.session_state.get("universal_cboe_active")
         if not active or active["ticker"] != ticker:
             st.info("Scarica una fotografia CBOE oppure importa il file originale.")
@@ -359,6 +409,8 @@ def render():
                                file_name=f"{ticker}_NET_GAMMA_CBOE.pine",
                                mime="text/plain", key="universal_pine_export",
                                on_click="ignore")
+            with st.expander("Mostra codice Pine da copiare", expanded=False):
+                st.code(pine, language="pine")
             st.caption("Pine statico: strike originali sul grafico del solo ticker inserito. "
                        "Non contiene conversioni né aggiornamento automatico.")
         except ValueError as exc:
