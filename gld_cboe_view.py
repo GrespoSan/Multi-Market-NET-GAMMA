@@ -227,11 +227,7 @@ def render_gld_cboe():
             "Conversione continua non disponibile per questa fotografia: "
             "nessun livello GC viene stimato o mostrato. "
             "Il Pine continuo rimane scaricabile e calcola il rapporto su TradingView.")
-    independent_scale = st.checkbox(
-        "Ingrandisci ogni profilo con scala indipendente",
-        value=False, key="v2_gld_independent_scale",
-        help="Disattivato: medesima scala Gamma dei due grafici 0DTE e Weekly, "
-             "come SPX. Attivato: barre non direttamente confrontabili.")
+    st.caption('Scala NET GAMMA comune a 0DTE e Weekly.')
     cols = st.columns(len(groups), gap="medium")
     for (title, p), col in zip(groups.items(), cols):
         with col:
@@ -261,7 +257,7 @@ def render_gld_cboe():
             if extra:
                 st.caption(f"Estensione grafica: +{extra} strike autentici; "
                            "valori originali invariati.")
-            gamma_x = spx_shared_gamma_bounds([shown]) if independent_scale else xlim
+            gamma_x = xlim
             # Never display ETF strikes as GC if prices aren't synchronized.
             if projected:
                 fig = _plot(shown, reference, gamma_x, axes["y_range"],
