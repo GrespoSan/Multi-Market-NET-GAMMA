@@ -19,6 +19,15 @@ class FakeResponse:
 
 
 class DateSpecificNasdaqBasisTests(unittest.TestCase):
+    def test_basis_field_recovers_verified_result_after_widget_state_loss(self):
+        from pathlib import Path
+        code = (Path(__file__).resolve().parent.parent /
+                "v2_market_engine.py").read_text(encoding="utf-8")
+        self.assertIn("not str(st.session_state.get('ndx_basis_value') or '').strip()", code)
+        self.assertIn("st.session_state['ndx_basis_result']['basis']", code)
+        self.assertIn("on_change=_ndx_basis_edited", code)
+        self.assertIn("st.session_state.pop('ndx_basis_manual_cleared', None)", code)
+
     def test_rollover_december_2026_monday_and_march_2027(self):
         dec=nq_contract_for_date(date(2026,11,2))
         self.assertEqual(dec["ticker"],"NQZ6")
