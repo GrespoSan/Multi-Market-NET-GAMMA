@@ -61,7 +61,7 @@ def list_v2_artifacts(token, session=None):
 
 
 def extract_encrypted_artifact(zip_bytes, symbol):
-    if symbol not in ("NDX", "GLD", "USO"):
+    if symbol not in ("NDX", "RUT", "DJX", "GLD", "USO"):
         raise ValueError("Mercato sconosciuto.")
     matches = []
     with zipfile.ZipFile(io.BytesIO(zip_bytes)) as zf:
