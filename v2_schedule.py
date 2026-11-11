@@ -10,7 +10,7 @@ from zoneinfo import ZoneInfo
 
 ROME = ZoneInfo("Europe/Rome")
 CHICAGO = ZoneInfo("America/Chicago")
-INSTRUMENTS = ("NDX", "GLD", "USO")
+INSTRUMENTS = ("NDX", "RUT", "DJX", "GLD", "USO")
 MAX_LAG_SECONDS = 12 * 60
 
 SLOTS = {
