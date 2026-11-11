@@ -55,7 +55,9 @@ class SPXSnapshotParityTests(unittest.TestCase):
                 self.assertIn("archive_panel",source)
                 self.assertIn("v2_archive_capture_nyday_",source)
                 self.assertIn("v2_archive_capture_rome_",source)
-                self.assertIn("independent_scale",source)
+                # Common scale is now mandatory across 0DTE and Weekly.
+                self.assertNotIn("independent_scale",source)
+                self.assertIn("spx_shared_gamma_bounds",source)
                 self.assertIn("snapshot_placement = st.container()",source)
                 self.assertIn("with snapshot_placement:",source)
                 self.assertNotIn('with st.expander("Acquisizione Cboe / importazione manuale',source)
@@ -88,8 +90,10 @@ class SPXSnapshotParityTests(unittest.TestCase):
         self.assertIn("render_timed_pine_exports(", source)
         self.assertIn("extension=show_extension, macro_news=macro_news", source)
         timed = (ROOT/"v2_pine_timed_exports.py").read_text(encoding="utf-8")
-        self.assertIn("if macro_news and symbol == \"NDX\":", timed)
-        self.assertIn("script = append_news(script, macro_news)", timed)
+        self.assertIn("if macro_news:", timed)
+        self.assertIn('captured_at=now["capture"]["rome"]', timed)
+        self.assertIn("events_for_pine(day)", timed)
+        self.assertIn('captured_at=st.session_state.get("ndx_capture_rome_iso")', source)
         self.assertIn("st.download_button(", timed)
         self.assertIn("07:30 0DTE → 15:50 0DTE + Weekly", timed)
 
