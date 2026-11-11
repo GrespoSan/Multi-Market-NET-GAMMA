@@ -26,6 +26,8 @@ TICKER = re.compile(r"^[A-Z][A-Z0-9.-]{0,14}$")
 CONTRACT = re.compile(r"^([A-Z0-9.-]+)(\d{6})([CP])(\d{8})$")
 NY = ZoneInfo("America/New_York")
 ROME = ZoneInfo("Europe/Rome")
+INDEX_TICKERS = frozenset({"RUT", "DJX"})
+WEEKLY_ROOTS = {"RUT": "RUTW", "DJX": "DJXW"}
 
 
 def validate_ticker(value):
@@ -70,7 +72,7 @@ def read_json(raw, ticker):
 
 def parse_contract(item, ticker):
     m = CONTRACT.fullmatch(str(item.get("option", "")).strip().replace(" ", "").upper())
-    if not m or m.group(1) != ticker:
+    if not m or m.group(1) not in {ticker, WEEKLY_ROOTS.get(ticker, ticker)}:
         return None
     try:
         expiry = date(2000 + int(m.group(2)[:2]), int(m.group(2)[2:4]), int(m.group(2)[4:]))
@@ -145,7 +147,8 @@ def import_original(name, content, ticker):
 
 def download_once(ticker):
     # CBOE can restrict requests from hosted servers; never bypass access restrictions.
-    url = f"https://cdn.cboe.com/api/global/delayed_quotes/options/{ticker}.json"
+    source_symbol = "_" + ticker if ticker in INDEX_TICKERS else ticker
+    url = f"https://cdn.cboe.com/api/global/delayed_quotes/options/{source_symbol}.json"
     with requests.get(url, headers={"Accept": "application/json", "User-Agent": "Mozilla/5.0"},
                       timeout=(8, 55), stream=True) as response:
         if response.status_code in (401, 403, 429):
@@ -257,9 +260,8 @@ indicator("NET GAMMA UNIVERSALE {ticker} · CBOE", overlay=true, max_lines_count
 // Fotografia CBOE statica; rigenerare il Pine per aggiornare.
 // Strike originali {ticker}, nessuna conversione verso futures.
 // Formula: Call (OI+Volume)*Gamma - Put (OI+Volume)*Gamma.
-// Scala Weekly indipendente: la lunghezza grafica delle barre non e'
-// direttamente confrontabile con 0DTE se usano scale differenti.
-validTicker = (syminfo.type == "stock" or syminfo.type == "fund") and syminfo.ticker == "{ticker}"
+// Scala Gamma comune tra scadenze.
+validTicker = syminfo.ticker == "{ticker}"
 
 {inputs}
 
