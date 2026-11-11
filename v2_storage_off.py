@@ -148,16 +148,28 @@ def archive_panel(symbol: str):
                 # was unavailable. Select the newest SUCCESSFUL market capture,
                 # not merely the newest workflow run (without inventing data).
                 packed = filename = chosen_url = None
-                for item in artifacts[:12]:
+                failure_count = 0
+                failures = []
+                # An artifact can contain only run_status.json (or other markets).
+                # Network errors are not proof of missing CBOE data; keep looking.
+                for item in artifacts[:30]:
                     try:
-                        packed, filename = _cached_snapshot(
+                        candidate, candidate_name = _cached_snapshot(
                             item["url"], symbol, github_token, key)
+                        packed, filename = candidate, candidate_name
                         chosen_url = item["url"]
                         break
-                    except ValueError:
+                    except Exception as exc:
+                        failure_count += 1
+                        kind = type(exc).__name__
+                        if kind not in failures:
+                            failures.append(kind)
                         continue
                 if packed is None:
-                    raise ValueError("Nessuna fotografia di questo mercato negli ultimi artifact.")
+                    raise ValueError(
+                        f"Nessuna fotografia {symbol} caricabile tra i primi "
+                        f"{min(30, len(artifacts))} archivi. "
+                        f"Errori incontrati: {', '.join(failures) or 'N/D'}.")
             else:
                 chosen_url = chosen
                 packed, filename = _cached_snapshot(
@@ -178,16 +190,22 @@ def archive_panel(symbol: str):
             slot_label = (slot + " · ACQUISIZIONE RITARDATA"
                           if delayed else slot)
             st.session_state[f"v2_archive_slot_{symbol}"] = slot_label or "Slot non verificabile"
-            st.caption(f"Fotografia archivio V2: {slot_label or 'slot non verificabile'} · "
+            fallback_label = (" · recuperata da un archivio precedente"
+                              if chosen == "ultimo" and artifacts
+                              and chosen_url != artifacts[0]["url"] else "")
+            st.caption(f"Fotografia archivio V2: {slot_label or 'slot non verificabile'}{fallback_label} · "
                        f"acquisita realmente {stamp.astimezone(ROME):%d/%m/%Y %H:%M} Roma · "
                        f"file {filename} · conservata cifrata su GitHub.")
             return packed, filename
-        except Exception:
+        except Exception as exc:
+            # Never print secrets, URLs or server traceback into the UI.
+            category = type(exc).__name__
+            summary = (str(exc)[:260] if isinstance(exc, ValueError)
+                       else "errore tecnico di accesso o decifratura")
             st.warning("Nessuna fotografia cifrata utilizzabile per "
-                       f"{symbol} nel rilevamento selezionato. Controlla "
-                       "il log run_status.json del workflow GitHub (chiave assente, "
-                       "Cboe 401/403/429 oppure dati incompleti). "
-                       "Puoi selezionare una fotografia precedente o quella manuale.")
+                       f"{symbol}. {category}: {summary}. "
+                       "Verifica run_status.json e gli artifact del workflow "
+                       "GitHub; puoi utilizzare un file CBOE manuale.")
 
     if st.session_state.get("v2_role") == "admin":
         with st.expander("Importazione eccezionale di file cifrato (.enc)",
