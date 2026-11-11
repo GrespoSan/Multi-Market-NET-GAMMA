@@ -54,6 +54,11 @@ def render(ticker):
     prefix = f"v2_primary_{ticker.lower()}"
     from v2_storage_off import archive_panel, prefer_manual_source
     archive = archive_panel(ticker)
+    current_choice = st.session_state.get(f"v2_archive_choice_{ticker.lower()}")
+    if current_choice == "manuale":
+        prior = st.session_state.get(f"{prefix}_active")
+        if prior and str(prior.get("origin", "")).startswith("Archivio GitHub"):
+            st.session_state.pop(f"{prefix}_active", None)
     if archive is not None:
         archived_raw, archived_name = archive
         try:
