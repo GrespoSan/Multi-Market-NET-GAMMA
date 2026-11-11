@@ -134,7 +134,8 @@ def archive_panel(symbol: str):
         if st.button("Aggiorna fotografie", key=f"v2_{symbol.lower()}_gh_refresh",
                      use_container_width=True):
             _cached_artifacts.clear()
-            st.session_state[choice_key] = "ultimo" if artifacts else "manuale"
+            # Do not mutate a selectbox key after the widget was created.
+            # Preserve the user's selection; the next rerun refreshes artifacts.
             st.rerun()
 
     if chosen == "manuale":
