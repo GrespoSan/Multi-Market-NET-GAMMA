@@ -81,7 +81,9 @@ class V2FinanceCalendarTests(unittest.TestCase):
         with patch.object(macro_calendar.st, "secrets", {}), \
              patch("bls_calendar.fetch_bls", return_value=[event]):
             result = macro_events.events_for_pine(date(2026, 11, 2))
-        self.assertEqual(result, [event])
+        self.assertEqual(len(result), 1)
+        self.assertEqual({key: result[0][key] for key in event}, event)
+        self.assertIn("FinanceCalendar", result[0]["source_warning"])
 
 
 if __name__ == "__main__":
