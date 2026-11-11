@@ -1,4 +1,4 @@
-"""Calendario macro USA essenziale, con rilevanza per mercati USA (Nasdaq, Gold, Petrolio) e fonte libera.
+"""Calendario macro USA essenziale, con priorita per SPX/ES e fonte libera.
 
 Le date provengono da Finance Calendar (fonte terza, attribuzione richiesta).
 Non influenzano calcoli NET GAMMA, file Cboe o acquisizioni Cloud.
@@ -123,7 +123,8 @@ def _kind(event):
 
 def _rome_time(event):
     """Mai applicare un +6 fisso: DST USA ed europeo cambiano in date diverse."""
-    utc = event.get("time_utc")
+    # v2 FinanceCalendar: release_at_utc è il campo canonico; time_utc alias v1.
+    utc = event.get("release_at_utc") or event.get("time_utc")
     if isinstance(utc, str) and utc.strip():
         try:
             parsed = datetime.fromisoformat(utc.strip().replace("Z", "+00:00"))
@@ -159,7 +160,8 @@ def _rome_time(event):
 
 @st.cache_data(ttl=1800, show_spinner=False, max_entries=10)
 def _fetch(first_day, last_day, api_key):
-    # Credenziale privata Streamlit: mai inserita nella URL o stampata nei log.
+    # FinanceCalendar HTTP 401 richiede una chiave. La chiave proviene
+    # esclusivamente dai Secrets privati di Streamlit, mai dalla URL o dai log.
     if not api_key:
         raise ValueError("Chiave FinanceCalendar mancante")
     params = urlencode({
@@ -168,7 +170,7 @@ def _fetch(first_day, last_day, api_key):
     })
     request = Request(API + "?" + params, headers={
         "Accept": "application/json",
-        "User-Agent": "MultiMarketGammaV2/1.0",
+        "User-Agent": "SerafiniSPXDashboard/1.0",
         "X-API-Key": api_key,
     })
     with urlopen(request, timeout=12) as response:
@@ -217,6 +219,8 @@ def _prepare(raw, today):
             "priority": "ALTA" if kind in HIGH_PRIORITY else "SECONDARIA",
             "status": status,
             "source": _source_link(event, kind),
+            "provider": "FinanceCalendar",
+            "official_schedule": False,
         })
         # La conferenza segue alle 14:30 ET una decisione FOMC ordinaria
         # alle 14:00 ET, come da calendario Fed. Non derivarla per
@@ -241,6 +245,85 @@ def _prepare(raw, today):
     return sorted(result, key=lambda e: (e["day"], e["clock"], e["kind"]))
 
 
+def merge_calendars(finance_events, bls_events, *, finance_ok, bls_ok):
+    """Calendari indipendenti, BLS autorevole su 4 serie.
+
+    Una mancanza FinanceCalendar NON elimina CPI/PPI/NFP/JOLTS.
+    Se gli orari delle due fonti divergono, prevale BLS e viene mostrato
+    il conflitto esplicitamente, senza doppie news Pine.
+    """
+    pairs = {}
+    messages = []
+    for event in finance_events:
+        pairs[(event["day"], event["kind"])] = dict(event)
+    for bls in bls_events:
+        key = (bls["day"], bls["kind"])
+        previous = pairs.get(key)
+        chosen = dict(bls)
+        if previous is not None:
+            chosen["provider"] = "BLS + FinanceCalendar"
+            chosen["finance_source"] = previous.get("source")
+            chosen["status"] = previous.get("status") or "scheduled"
+            if previous["clock"] != bls["clock"]:
+                chosen["source_warning"] = (
+                    "Orario discordante: BLS " + bls["clock"] +
+                    ", FinanceCalendar " + previous["clock"])
+                messages.append(
+                    f"{bls['day']:%d/%m} {bls['kind']}: orari diversi "
+                    f"(BLS {bls['clock']}, FinanceCalendar {previous['clock']}).")
+        elif finance_ok:
+            chosen["source_warning"] = "Assente nel feed FinanceCalendar; confermato BLS"
+            messages.append(
+                f"{bls['day']:%d/%m} {bls['kind']}: presente in BLS, "
+                "assente in FinanceCalendar.")
+        elif not finance_ok:
+            chosen["source_warning"] = "Fonte FinanceCalendar non verificabile"
+        pairs[key] = chosen
+    if not bls_ok:
+        messages.append("Calendario BLS non verificabile: CPI/PPI/NFP/JOLTS senza doppio controllo.")
+    if not finance_ok:
+        messages.append("FinanceCalendar non verificabile: mostrati comunque gli eventi BLS.")
+    return (
+        sorted(pairs.values(), key=lambda e: (e["day"], e["clock"], e["kind"])),
+        messages,
+    )
+
+
+def load_calendar(first_day, last_day):
+    """Fonti separate: se una fallisce, l'altra resta visibile.
+
+    Restituisce eventi e diagnostica. Nessun evento viene ricostruito da
+    stime; l'assenza dei feed non è equiparata a nessuna news.
+    """
+    from bls_calendar import fetch_bls
+    fc, bls = [], []
+    fc_error = bls_error = None
+    try:
+        api_key = str(st.secrets.get("FINANCE_CALENDAR_API_KEY", "")).strip()
+        fc = _prepare(_fetch(first_day.isoformat(), last_day.isoformat(),
+                             api_key), first_day)
+    except Exception as exc:
+        fc_error = type(exc).__name__
+    try:
+        bls = fetch_bls(first_day, last_day)
+    except Exception as exc:
+        bls_error = type(exc).__name__
+    if fc_error and bls_error:
+        raise RuntimeError(
+            "Entrambe le fonti macro non verificabili "
+            f"(FinanceCalendar {fc_error}; BLS {bls_error}).")
+    merged, messages = merge_calendars(
+        fc, bls, finance_ok=fc_error is None, bls_ok=bls_error is None)
+    return merged, {
+        "financecalendar_ok": fc_error is None,
+        "bls_ok": bls_error is None,
+        "financecalendar_error": fc_error,
+        "bls_error": bls_error,
+        "messages": messages,
+        "source_count": {"FinanceCalendar": len(fc), "BLS": len(bls)},
+    }
+
+
 def render():
     now = datetime.now(ROME)
     today = now.date()
@@ -248,25 +331,33 @@ def render():
         '<div style="display:flex;align-items:baseline;gap:1rem;flex-wrap:wrap;'
         'margin:0 0 0.65rem 0">'
         '<h3 style="margin:0;padding:0">Calendario macro USA — eventi da monitorare</h3>'
-        '<span style="font-size:0.82rem;color:#999">Dati: '
+        '<span style="font-size:0.82rem;color:#999">Fonti: '
+        '<a href="https://www.bls.gov/schedule/news_release/" target="_blank" '
+        'rel="noopener noreferrer">Calendario ufficiale BLS</a> · '
         '<a href="https://www.financecalendar.com" target="_blank" '
         'rel="noopener noreferrer">Finance Calendar</a></span>'
         '</div>',
         unsafe_allow_html=True,
     )
     try:
-        # Includiamo ieri UTC/NY per gestire la finestra di cambiamento DST;
-        # date nel UI filtrate invece in Europe/Rome.
-        api_key = str(st.secrets.get("FINANCE_CALENDAR_API_KEY", "")).strip()
-        events = _prepare(_fetch((today - timedelta(days=1)).isoformat(),
-                                 (today + timedelta(days=7)).isoformat(),
-                                 api_key), today)
-    except Exception:
-        st.warning("Calendario macro non verificabile in questo momento. "
-                   "Non interpretare l'assenza di dati come assenza di pubblicazioni.")
-        st.caption("Controlla i calendari ufficiali BLS, BEA e Census prima dell'operatività.")
-        st.link_button("Calendario ufficiale BLS", "https://www.bls.gov/schedule/2026/home.htm")
+        # Solo oggi e prossimi 7 giorni. Per audit di date passate esistono
+        # i test BLS e le fonti, senza una sezione "Ieri" nella dashboard.
+        events, health = load_calendar(today, today + timedelta(days=7))
+    except RuntimeError:
+        st.error("Entrambe le fonti del calendario macro non sono verificabili. "
+                 "Non interpretare il calendario vuoto come assenza di news.")
         return
+    if not health["bls_ok"]:
+        st.warning("BLS non verificabile: gli eventi ufficiali CPI/PPI/NFP/JOLTS "
+                   "non hanno un controllo indipendente.")
+    elif not health["financecalendar_ok"]:
+        st.caption("FinanceCalendar temporaneamente non disponibile · "
+                   "gli eventi BLS sono comunque visibili.")
+    for message in health["messages"]:
+        if message.startswith("Calendario BLS") or message.startswith("FinanceCalendar"):
+            continue
+        if message.startswith(f"{today:%d/%m}"):
+            st.caption("Controllo fonti macro: " + message)
 
     today_events = [e for e in events if e["day"] == today]
     urgent = [e for e in today_events if e["priority"] == "ALTA"]
@@ -330,8 +421,10 @@ def render():
                 )
             else:
                 st.markdown(
-                    '<div class="macro-priority-card">'
-                    'Nessun evento macro USA ad alta priorità previsto oggi.</div>',
+                    ('<div class="macro-priority-card">' +
+                     ('Nessun evento macro USA ad alta priorità confermato oggi.</div>'
+                      if health["bls_ok"] and health["financecalendar_ok"] else
+                      'Nessun evento prioritario verificabile oggi: almeno una fonte non disponibile.</div>')),
                     unsafe_allow_html=True,
                 )
             if secondary:
