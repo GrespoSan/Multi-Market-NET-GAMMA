@@ -257,27 +257,27 @@ def _pine(ticker, groups, *, future_mode=False, future_basis=0.0):
         if transform else ""
     )
     future_arrays = (
-        'var array<float> plotMainLevels = array.new_float()\\n'
-        'var array<float> plotWeeklyLevels = array.new_float()\\n'
-        'var array<float> plotTopCalls = array.new_float()\\n'
+        'var array<float> plotMainLevels = array.new_float()\n'
+        'var array<float> plotWeeklyLevels = array.new_float()\n'
+        'var array<float> plotTopCalls = array.new_float()\n'
         'var array<float> plotTopPuts = array.new_float()'
         if transform else ""
     )
     future_prepare = (
-        '    array.clear(plotMainLevels)\\n'
-        '    array.clear(plotWeeklyLevels)\\n'
-        '    array.clear(plotTopCalls)\\n'
-        '    array.clear(plotTopPuts)\\n'
-        f'    float basisFactor = {factor:.1f}\\n'
-        '    float displayBasis = indexFutureBasis\\n'
-        '    for level in mainLevels\\n'
-        '        array.push(plotMainLevels, level * basisFactor + displayBasis)\\n'
-        '    for level in weeklyLevels\\n'
-        '        array.push(plotWeeklyLevels, level * basisFactor + displayBasis)\\n'
-        '    for level in topCalls\\n'
-        '        array.push(plotTopCalls, level * basisFactor + displayBasis)\\n'
-        '    for level in topPuts\\n'
-        '        array.push(plotTopPuts, level * basisFactor + displayBasis)\\n'
+        '    array.clear(plotMainLevels)\n'
+        '    array.clear(plotWeeklyLevels)\n'
+        '    array.clear(plotTopCalls)\n'
+        '    array.clear(plotTopPuts)\n'
+        f'    float basisFactor = {factor:.1f}\n'
+        '    float displayBasis = indexFutureBasis\n'
+        '    for level in mainLevels\n'
+        '        array.push(plotMainLevels, level * basisFactor + displayBasis)\n'
+        '    for level in weeklyLevels\n'
+        '        array.push(plotWeeklyLevels, level * basisFactor + displayBasis)\n'
+        '    for level in topCalls\n'
+        '        array.push(plotTopCalls, level * basisFactor + displayBasis)\n'
+        '    for level in topPuts\n'
+        '        array.push(plotTopPuts, level * basisFactor + displayBasis)\n'
         if transform else ""
     )
     # RUT index is displayed on RUT, RTY and M2K, DJX index on DJX,
