@@ -52,6 +52,18 @@ def render(ticker):
     future = info["future"]
     factor = info["factor"]
     prefix = f"v2_primary_{ticker.lower()}"
+    from v2_storage_off import archive_panel, prefer_manual_source
+    archive = archive_panel(ticker)
+    if archive is not None:
+        archived_raw, archived_name = archive
+        try:
+            verified = read_json(archived_raw, ticker)
+            st.session_state[f"{prefix}_active"] = {
+                "raw": archived_raw, "origin": f"Archivio GitHub · {archived_name}",
+                "stamp": st.session_state.get(f"v2_archive_capture_rome_{ticker}"),
+            }
+        except Exception as exc:
+            st.error(f"Fotografia archivio {ticker} non valida: {str(exc)[:210]}")
     st.subheader(f"Fotografia opzioni CBOE · {ticker}")
     st.caption(
         f"Opzioni {ticker} originali, visualizzazione sul futuro {future}. "
@@ -62,6 +74,7 @@ def render(ticker):
             try:
                 with st.spinner(f"Acquisizione CBOE {ticker}..."):
                     raw = download_once(ticker)
+                prefer_manual_source(ticker)
                 st.session_state[f"{prefix}_active"] = {
                     "raw": raw, "origin": "Download CBOE manuale",
                     "stamp": datetime.now(ROME).isoformat(timespec="seconds"),
@@ -78,6 +91,7 @@ def render(ticker):
                          disabled=upload is None):
                 try:
                     raw = import_original(upload.name, upload.getvalue(), ticker)
+                    prefer_manual_source(ticker)
                     st.session_state[f"{prefix}_active"] = {
                         "raw": raw, "origin": "Importazione locale", "stamp": None,
                     }
