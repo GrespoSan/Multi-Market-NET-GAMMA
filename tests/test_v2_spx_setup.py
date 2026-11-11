@@ -18,7 +18,7 @@ ROOT = Path(__file__).resolve().parent.parent
 
 def synthetic(symbol):
     root = symbol
-    value = 30000 if symbol == "NDX" else (360 if symbol == "GLD" else 160)
+    value = {"NDX": 30000, "RUT": 2800, "DJX": 520, "GLD": 360, "USO": 160}[symbol]
     options = []
     for strike in (value, value + 1):
         for cp in ("C", "P"):
@@ -27,7 +27,7 @@ def synthetic(symbol):
                 "gamma": .12, "open_interest": 40, "volume": 10
             })
     return json.dumps({
-        "symbol": "_NDX" if symbol == "NDX" else symbol,
+        "symbol": "_" + symbol if symbol in ("NDX", "RUT", "DJX") else symbol,
         "timestamp": "2026-10-29 15:45:00",
         "data": {"options": options, "prev_day_close": value}
     }).encode()
@@ -125,8 +125,8 @@ class V2SPXSetupTests(unittest.TestCase):
             self.assertEqual(r["status"], "TUTTI_ARCHIVIATI_IN_RITARDO")
             self.assertEqual(r["reason"], "GITHUB_SCHEDULE_DELAYED")
             self.assertEqual(r["slot"], "15:50")
-            self.assertEqual(len(calls), 3)
-            self.assertEqual(len(list(Path(tmp).glob("*.enc"))), 3)
+            self.assertEqual(len(calls), 5)
+            self.assertEqual(len(list(Path(tmp).glob("*.enc"))), 5)
             for name, item in r["markets"].items():
                 self.assertIn("20261030T1854", item["file"])
             self.assertEqual(r["download_rome"][11:16], "19:54")
@@ -181,7 +181,7 @@ class V2SPXSetupTests(unittest.TestCase):
             self.assertEqual(result["reason"], "MANUALE")
 
     def test_original_gamma_json_quality_and_root(self):
-        for instrument in ("NDX", "GLD", "USO"):
+        for instrument in ("NDX", "RUT", "DJX", "GLD", "USO"):
             with self.subTest(instrument=instrument):
                 data = validate_options(instrument, synthetic(instrument))
                 self.assertEqual(data["contratti_gamma_completi"], 4)
@@ -208,27 +208,30 @@ class V2SPXSetupTests(unittest.TestCase):
             "V2_AUTHORIZED_FEED_CONFIRMED": "true",
             "V2_ARCHIVE_FERNET_KEY": key,
             **{f"V2_FEED_{m}_URL": f"https://licensed.example.org/{m}"
-               for m in ("NDX","GLD","USO")},
+               for m in ("NDX","RUT","DJX","GLD","USO")},
         }
         with tempfile.TemporaryDirectory() as tmp:
             result = run_capture(
                 now=datetime(2026, 10, 29, 13, 50, tzinfo=timezone.utc),
                 env=env, output=Path(tmp), downloader=mock_download)
             self.assertEqual(result["status"], "TUTTI_ARCHIVIATI")
-            for m in ("NDX", "GLD", "USO"):
+            for m in ("NDX", "RUT", "DJX", "GLD", "USO"):
                 self.assertEqual(result["markets"][m]["status"], "SCARICATO_CIFRATO")
                 encrypted = (Path(tmp) / result["markets"][m]["file"]).read_bytes()
                 self.assertNotIn(b"open_interest", encrypted)
                 original = gzip.decompress(Fernet(key.encode()).decrypt(encrypted))
                 self.assertEqual(json.loads(original)["symbol"],
-                                 "_NDX" if m == "NDX" else m)
+                                 "_" + m if m in ("NDX", "RUT", "DJX") else m)
 
     def test_direct_cboe_urls_match_existing_manual_downloaders(self):
         from data_sources import NDX_URL
         from gld_cboe import GLD_URL
         from uso_cboe import USO_URL
         self.assertEqual(CBOE_PUBLIC_URLS,
-                         {"NDX": NDX_URL, "GLD": GLD_URL, "USO": USO_URL})
+                         {"NDX": NDX_URL,
+                           "RUT": "https://cdn.cboe.com/api/global/delayed_quotes/options/_RUT.json",
+                           "DJX": "https://cdn.cboe.com/api/global/delayed_quotes/options/_DJX.json",
+                           "GLD": GLD_URL, "USO": USO_URL})
         for url in CBOE_PUBLIC_URLS.values():
             self.assertEqual(safe_url(url), url)
         with self.assertRaisesRegex(ValueError, "diverso"):
