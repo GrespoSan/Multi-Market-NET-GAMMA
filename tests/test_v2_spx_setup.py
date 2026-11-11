@@ -167,7 +167,7 @@ class V2SPXSetupTests(unittest.TestCase):
             self.assertEqual(result["status"], "TUTTI_ARCHIVIATI_IN_RITARDO")
             self.assertEqual(result["reason"], "EXTERNAL_DISPATCH_DELAYED")
             self.assertEqual(result["slot"], "15:50")
-            self.assertEqual(len(calls), 3)
+            self.assertEqual(len(calls), 5)
             self.assertEqual(len(list(Path(tmp).glob("*.enc"))), 3)
             self.assertEqual(result["download_rome"][11:16], "17:00")
         with tempfile.TemporaryDirectory() as tmp:
