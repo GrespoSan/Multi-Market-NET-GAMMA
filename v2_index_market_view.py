@@ -8,6 +8,7 @@ from zoneinfo import ZoneInfo
 import io
 import math
 import csv
+import hashlib
 import streamlit as st
 import plotly.graph_objects as go
 
@@ -116,6 +117,11 @@ def render(ticker):
     except (ValueError, TypeError, KeyError) as exc:
         st.error(f"Fotografia non utilizzabile: {exc}")
         return
+    snapshot_digest = hashlib.sha256(active["raw"]).hexdigest()
+    if st.session_state.get(f"{prefix}_snapshot_digest") != snapshot_digest:
+        st.session_state[f"{prefix}_snapshot_digest"] = snapshot_digest
+        for widget_suffix in ("close", "expiry", "weekly"):
+            st.session_state.pop(f"{prefix}_{widget_suffix}", None)
     st.caption(
         f"Fonte: {active['origin']} · CBOE timestamp {doc.get('timestamp', 'non dichiarato')} "
         f"(fuso fonte non certificato) · acquisizione Roma {active['stamp'] or 'non verificabile'}"
