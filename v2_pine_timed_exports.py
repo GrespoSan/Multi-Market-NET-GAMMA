@@ -134,9 +134,13 @@ def produce_timed_scripts(symbol, day, captures, reference, band,
                     export_details=details)
                 if details.get("note"):
                     now["pine_display_note"] = details["note"]
-            if macro_news and symbol == "NDX":
+            if macro_news:
                 from pine_news_overlay import append_news
-                script = append_news(script, macro_news)
+                # Keep only events scheduled AFTER the REAL capture of this
+                # specific slot, as the SPX current/compare Pine exports do.
+                script = append_news(
+                    script, macro_news,
+                    captured_at=now["capture"]["rome"])
             scripts[slot] = script
         except (KeyError, ValueError, TypeError, OverflowError) as exc:
             issues[slot] = str(exc)[:190]
@@ -177,6 +181,14 @@ def render_timed_pine_exports(symbol, day, reference, band, basis_or_mapping,
                 "GitHub. Nessun profilo o confronto viene simulato.")
         return
 
+    if macro_news is None:
+        # NDX already supplies merged news from its main panel. GLD/USO
+        # use the same calendar when producing the three timed Pine files.
+        try:
+            from macro_events import events_for_pine
+            macro_news = events_for_pine(day)
+        except Exception:
+            macro_news = []
     scripts, issues, profiles = produce_timed_scripts(
         symbol, day, state, reference, band, basis_or_mapping,
         extension=extension, macro_news=macro_news)
