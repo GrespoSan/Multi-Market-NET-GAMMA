@@ -103,12 +103,12 @@ with st.sidebar:
     st.caption("V2 indipendente · nessun collegamento Supabase")
 
 st.subheader("01 · MERCATI PRINCIPALI")
-st.caption("NDX / NQ · GLD / GC · USO / CL · 0DTE / Weekly")
+st.caption("NDX / NQ · RUT / RTY · DJX / YM · GLD / GC · USO / CL · 0DTE / Weekly")
 
 # Two independent functional areas. The market selector controls only
 # NDX/GLD/USO panels; the universal CBOE tool has its own ticker input.
 with st.container(border=True):
-    st.caption("Seleziona NDX, GLD o USO. Le analisi e gli export qui sotto riguardano soltanto il mercato scelto.")
+    st.caption("Seleziona il mercato. Analisi, differenziale ed export riguardano solo lo strumento scelto.")
     col_market, col_info = st.columns([1.2, 2.8], gap="medium",
                                       vertical_alignment="bottom")
     with col_market:
@@ -125,9 +125,9 @@ with st.container(border=True):
     # The emergency controls are below the main analysis, so their callbacks
     # cannot modify main widgets after those widgets have been instantiated.
     # Apply pending manual Cboe capture at the START of the next rerun.
-    symbol_for_market = {"NASDAQ": "NDX", "GOLD": "GLD", "WTI": "USO"}[market_key]
+    symbol_for_market = {"NASDAQ": "NDX", "GOLD": "GLD", "WTI": "USO", "RUSSELL": "RUT", "DOW": "DJX"}[market_key]
     activation_key = f"v2_emergency_pending_activation_{symbol_for_market}"
-    pending = st.session_state.pop(activation_key, None)
+    pending = st.session_state.pop(activation_key, None) if market_key in ("NASDAQ", "GOLD", "WTI") else None
     if pending is not None:
         try:
             from v2_emergency_acquisition import activate_for_analysis
@@ -164,15 +164,21 @@ with st.container(border=True):
     # Context is now automatic, as in Serafini SPX. Daily Massive responses are
     # shared by v2_massive_day_cache and expire on the next Rome calendar day.
     with context_slot.container():
-        with st.expander("ANALISI DEL CONTESTO — News · Volatilità · Trend Daily",
+        if market_key in ("RUSSELL", "DOW"):
+            st.caption("Contesto avanzato: integrazione specifica in verifica; nessuna volatilità o trend di un altro mercato è attribuita a questo indice.")
+        else:
+            with st.expander("ANALISI DEL CONTESTO — News · Volatilità · Trend Daily",
                          expanded=context_initial):
             from v2_context import render as render_market_context
             render_market_context(market_key)
     
     # One shared snapshot per market: the emergency export reuses the same
     # session-state photograph; no redundant download/import widgets.
-    from v2_emergency_pine import render as render_v2_emergency_pine
-    render_v2_emergency_pine(market_key)
+    if market_key in ("NASDAQ", "GOLD", "WTI"):
+        from v2_emergency_pine import render as render_v2_emergency_pine
+        render_v2_emergency_pine(market_key)
+    else:
+        st.caption("Pine dedicato Russell/Dow disponibile nella sezione Analisi Net Gamma dopo aver verificato il basis.")
 
 st.write("")
 st.subheader("02 · NET GAMMA UNIVERSALE — CBOE")
