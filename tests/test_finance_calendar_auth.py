@@ -59,10 +59,11 @@ class V2FinanceCalendarTests(unittest.TestCase):
                     module._fetch("2026-11-02", "2026-11-09", "")
                 mock_open.assert_not_called()
 
-    def test_pine_uses_secret_and_converts_utc_to_rome(self):
-        with patch.object(macro_events.st, "secrets",
+    def test_pine_uses_same_dual_source_calendar_and_secret_as_dashboard(self):
+        with patch.object(macro_calendar.st, "secrets",
                           {"FINANCE_CALENDAR_API_KEY": "synthetic-private-key"}), \
-             patch.object(macro_events, "urlopen", return_value=FakeResponse()) as mock_open:
+             patch.object(macro_calendar, "urlopen", return_value=FakeResponse()) as mock_open, \
+             patch("bls_calendar.fetch_bls", return_value=[]):
             result = macro_events.events_for_pine(date(2026, 11, 2))
         self.assertEqual(len(result), 1)
         self.assertEqual(result[0]["kind"], "CPI")
@@ -70,6 +71,17 @@ class V2FinanceCalendarTests(unittest.TestCase):
         request = mock_open.call_args.args[0]
         self.assertEqual({k.lower(): v for k, v in request.header_items()}["x-api-key"],
                          "synthetic-private-key")
+
+    def test_pine_keeps_bls_cpi_even_without_financecalendar(self):
+        event = {
+            "day": date(2026, 11, 2), "clock": "14:30", "kind": "CPI",
+            "priority": "ALTA", "source": "https://www.bls.gov/schedule/news_release/cpi.htm",
+            "provider": "BLS", "official_schedule": True,
+        }
+        with patch.object(macro_calendar.st, "secrets", {}), \
+             patch("bls_calendar.fetch_bls", return_value=[event]):
+            result = macro_events.events_for_pine(date(2026, 11, 2))
+        self.assertEqual(result, [event])
 
 
 if __name__ == "__main__":
