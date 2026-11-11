@@ -47,6 +47,7 @@ class IndexMarketTests(unittest.TestCase):
                      {"strike": 2820.0, "net": -4.0}]
         }}
         pine = _pine("RUT", groups, future_mode=True, future_basis=11.5)
+        self.assertIn('indicator("NET GAMMA UNIVERSALE RTY · CBOE"', pine)
         self.assertIn('syminfo.root == "RTY"', pine)
         self.assertIn('syminfo.root == "M2K"', pine)
         self.assertIn("indexFutureBasis = input.float(11.5000", pine)
@@ -63,6 +64,7 @@ class IndexMarketTests(unittest.TestCase):
                      {"strike": 521.0, "net": -3.0}]
         }}
         pine = _pine("DJX", groups, future_mode=True, future_basis=38.0)
+        self.assertIn('indicator("NET GAMMA UNIVERSALE YM · CBOE"', pine)
         self.assertIn('syminfo.root == "YM"', pine)
         self.assertIn('syminfo.root == "MYM"', pine)
         self.assertIn("float basisFactor = 100.0", pine)
@@ -78,6 +80,7 @@ class IndexMarketTests(unittest.TestCase):
                      {"strike": 521.0, "net": -3.0}]
         }}
         pine = _pine("DJX", groups)
+        self.assertIn('indicator("NET GAMMA UNIVERSALE DJX · CBOE"', pine)
         self.assertIn('validTicker = syminfo.ticker == "DJX"', pine)
         self.assertNotIn("basisFactor", pine)
 
