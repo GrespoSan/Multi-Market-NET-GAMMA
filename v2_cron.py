@@ -40,6 +40,8 @@ class ProviderAccessError(RuntimeError):
 
 CBOE_PUBLIC_URLS = {
     "NDX": "https://cdn.cboe.com/api/global/delayed_quotes/options/_NDX.json",
+    "RUT": "https://cdn.cboe.com/api/global/delayed_quotes/options/_RUT.json",
+    "DJX": "https://cdn.cboe.com/api/global/delayed_quotes/options/_DJX.json",
     "GLD": "https://cdn.cboe.com/api/global/delayed_quotes/options/GLD.json",
     "USO": "https://cdn.cboe.com/api/global/delayed_quotes/options/USO.json",
 }
@@ -50,7 +52,7 @@ def safe_url(url):
     if parts.scheme != "https" or not parts.hostname or parts.username or parts.password:
         raise ValueError("Sorgente HTTPS non valida.")
     if parts.hostname.lower().endswith(".cboe.com"):
-        # Only three known, unmodified public CDN paths are eligible;
+        # Only registered, unmodified public CDN paths are eligible;
         # do not use alternate hosts/paths to evade provider restrictions.
         if url not in CBOE_PUBLIC_URLS.values():
             raise ValueError("Endpoint CDN Cboe diverso dai tre JSON previsti.")
@@ -132,6 +134,11 @@ def validate_options(symbol, raw):
         exp = available_expirations(doc)
         opts = [x for x in doc["data"]["options"]
                 if isinstance(x, dict) and contract_parts(x.get("option"))]
+    elif symbol in ("RUT", "DJX"):
+        from v2_universal_cboe import read_json, expiries
+        doc = read_json(raw, symbol)
+        exp = expiries(doc, symbol)
+        opts = doc["data"]["options"]
     elif symbol == "GLD":
         doc = read_gld(raw)
         exp = expiries_gld(doc)
