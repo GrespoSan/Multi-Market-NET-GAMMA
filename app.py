@@ -174,10 +174,10 @@ with st.container(border=True):
             st.caption("Contesto avanzato: integrazione specifica in verifica; nessuna volatilità o trend di un altro mercato è attribuita a questo indice.")
         else:
             with st.expander("ANALISI DEL CONTESTO — News · Volatilità · Trend Daily",
-                         expanded=context_initial):
-            from v2_context import render as render_market_context
-            render_market_context(market_key)
-    
+                             expanded=context_initial):
+                from v2_context import render as render_market_context
+                render_market_context(market_key)
+
     # One shared snapshot per market: the emergency export reuses the same
     # session-state photograph; no redundant download/import widgets.
     if market_key in ("NASDAQ", "GOLD", "WTI"):
