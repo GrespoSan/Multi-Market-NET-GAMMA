@@ -229,12 +229,12 @@ def _pine(ticker, groups):
         '        drawOdteTopProjections(topCalls, topPuts)\n'
         if is_odte else "")
     main_render = (
-        f'            if showCurrentOdte\n'
-        f'                renderProfile(mainLevels, mainValues, '
+        f'        if showCurrentOdte\n'
+        f'            renderProfile(mainLevels, mainValues, '
         f'bar_index + offsetOdte, "{main_title}", actualScale)\n')
     weekly_render = (
-        f'            if showCurrentWeekly\n'
-        f'                renderProfile(weeklyLevels, weeklyValues, '
+        f'        if showCurrentWeekly\n'
+        f'            renderProfile(weeklyLevels, weeklyValues, '
         f'bar_index + weeklyCenter, "{weekly_title}", actualScale)\n'
         if wr else "")
     # Keep exactly the common SPX renderProfile function and line/label
