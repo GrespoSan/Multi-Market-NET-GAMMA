@@ -237,6 +237,51 @@ def _pine(ticker, groups):
         f'            renderProfile(weeklyLevels, weeklyValues, '
         f'bar_index + weeklyCenter, "{weekly_title}", actualScale)\n'
         if wr else "")
+    # On RTY/M2K the RUT index strikes need an explicit, user-controlled
+    # index-to-future price basis. Gamma values always remain untouched.
+    is_rut = ticker == "RUT"
+    level_main = "plotMainLevels" if is_rut else "mainLevels"
+    level_weekly = "plotWeeklyLevels" if is_rut else "weeklyLevels"
+    level_calls = "plotTopCalls" if is_rut else "topCalls"
+    level_puts = "plotTopPuts" if is_rut else "topPuts"
+    if is_rut:
+        main_render = main_render.replace("renderProfile(mainLevels,", "renderProfile(plotMainLevels,")
+        weekly_render = weekly_render.replace("renderProfile(weeklyLevels,", "renderProfile(plotWeeklyLevels,")
+        top3_code = top3_code.replace("drawOdteTopProjections(topCalls, topPuts)",
+                                      "drawOdteTopProjections(plotTopCalls, plotTopPuts)")
+    rut_inputs = (
+        'rutFutureBasis = input.float(0.0, "Differenziale RTY − RUT (punti)", step=0.1, '
+        'tooltip="Inserisci il differenziale sincronizzato future RTY meno indice RUT. '
+        'Zero mantiene gli strike indice originali, senza correggere il basis.")'
+        if is_rut else ""
+    )
+    rut_arrays = (
+        'var array<float> plotMainLevels = array.new_float()\\n'
+        'var array<float> plotWeeklyLevels = array.new_float()\\n'
+        'var array<float> plotTopCalls = array.new_float()\\n'
+        'var array<float> plotTopPuts = array.new_float()'
+        if is_rut else ""
+    )
+    rut_prepare = (
+        '    array.clear(plotMainLevels)\\n'
+        '    array.clear(plotWeeklyLevels)\\n'
+        '    array.clear(plotTopCalls)\\n'
+        '    array.clear(plotTopPuts)\\n'
+        '    float basis = syminfo.root == "RTY" or syminfo.root == "M2K" ? rutFutureBasis : 0.0\\n'
+        '    for level in mainLevels\\n'
+        '        array.push(plotMainLevels, level + basis)\\n'
+        '    for level in weeklyLevels\\n'
+        '        array.push(plotWeeklyLevels, level + basis)\\n'
+        '    for level in topCalls\\n'
+        '        array.push(plotTopCalls, level + basis)\\n'
+        '    for level in topPuts\\n'
+        '        array.push(plotTopPuts, level + basis)\\n'
+        if is_rut else ""
+    )
+    ticker_guard = (
+        '(syminfo.ticker == "RUT" or syminfo.root == "RTY" or syminfo.root == "M2K")'
+        if is_rut else f'syminfo.ticker == "{ticker}"'
+    )
     # Keep exactly the common SPX renderProfile function and line/label
     # cleanup; adapt only the per-column drawing scale and safety check.
     draw = f'''if barstate.islast and validTicker
@@ -246,7 +291,7 @@ def _pine(ticker, groups):
     for lb in drawnLabels
         label.delete(lb)
     array.clear(drawnLabels)
-    float actualScale = gammaPerCandle
+{rut_prepare}    float actualScale = gammaPerCandle
     int weeklyCenter = offsetOdte + offsetWeekly
     bool beyondLimit = offsetOdte >= 480 or (showCurrentWeekly and array.size(weeklyValues) > 0 and weeklyCenter >= 480)
     float safeMain = showCurrentOdte ? requiredScale(mainValues, offsetOdte) : 0.0
@@ -263,12 +308,13 @@ def _pine(ticker, groups):
     return f'''//@version=6
 indicator("NET GAMMA UNIVERSALE {ticker} · CBOE", overlay=true, max_lines_count=500, max_labels_count=35)
 // Fotografia CBOE statica; rigenerare il Pine per aggiornare.
-// Strike originali {ticker}, nessuna conversione verso futures.
+// Strike originali {ticker}. Su RTY/M2K il basis manuale sposta solo i livelli visualizzati.
 // Formula: Call (OI+Volume)*Gamma - Put (OI+Volume)*Gamma.
 // Scala Gamma comune tra scadenze.
-validTicker = syminfo.ticker == "{ticker}"
+validTicker = {ticker_guard}
 
 {inputs}
+{rut_inputs}
 
 var array<line> drawnLines = array.new_line()
 var array<label> drawnLabels = array.new_label()
@@ -278,6 +324,7 @@ var array<float> weeklyLevels = {_pine_array(wr, "strike")}
 var array<float> weeklyValues = {_pine_array(wr, "net")}
 var array<float> topCalls = {_pine_array(tc, "strike")}
 var array<float> topPuts = {_pine_array(tp, "strike")}
+{rut_arrays}
 
 {SPX_RENDER_FUNCTIONS}
 
