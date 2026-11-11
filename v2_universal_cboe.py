@@ -256,26 +256,26 @@ def _pine(ticker, groups):
         if is_rut else ""
     )
     rut_arrays = (
-        'var array<float> plotMainLevels = array.new_float()\\n'
-        'var array<float> plotWeeklyLevels = array.new_float()\\n'
-        'var array<float> plotTopCalls = array.new_float()\\n'
+        'var array<float> plotMainLevels = array.new_float()\n'
+        'var array<float> plotWeeklyLevels = array.new_float()\n'
+        'var array<float> plotTopCalls = array.new_float()\n'
         'var array<float> plotTopPuts = array.new_float()'
         if is_rut else ""
     )
     rut_prepare = (
-        '    array.clear(plotMainLevels)\\n'
-        '    array.clear(plotWeeklyLevels)\\n'
-        '    array.clear(plotTopCalls)\\n'
-        '    array.clear(plotTopPuts)\\n'
-        '    float basis = syminfo.root == "RTY" or syminfo.root == "M2K" ? rutFutureBasis : 0.0\\n'
-        '    for level in mainLevels\\n'
-        '        array.push(plotMainLevels, level + basis)\\n'
-        '    for level in weeklyLevels\\n'
-        '        array.push(plotWeeklyLevels, level + basis)\\n'
-        '    for level in topCalls\\n'
-        '        array.push(plotTopCalls, level + basis)\\n'
-        '    for level in topPuts\\n'
-        '        array.push(plotTopPuts, level + basis)\\n'
+        '    array.clear(plotMainLevels)\n'
+        '    array.clear(plotWeeklyLevels)\n'
+        '    array.clear(plotTopCalls)\n'
+        '    array.clear(plotTopPuts)\n'
+        '    float basis = syminfo.root == "RTY" or syminfo.root == "M2K" ? rutFutureBasis : 0.0\n'
+        '    for level in mainLevels\n'
+        '        array.push(plotMainLevels, level + basis)\n'
+        '    for level in weeklyLevels\n'
+        '        array.push(plotWeeklyLevels, level + basis)\n'
+        '    for level in topCalls\n'
+        '        array.push(plotTopCalls, level + basis)\n'
+        '    for level in topPuts\n'
+        '        array.push(plotTopPuts, level + basis)\n'
         if is_rut else ""
     )
     ticker_guard = (
