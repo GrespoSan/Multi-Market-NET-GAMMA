@@ -21,7 +21,7 @@ class SPXSnapshotParityTests(unittest.TestCase):
         self.assertEqual(SLOTS["0730"],"Mattina 07:30 Roma")
         self.assertEqual(SLOTS["1550"],"Pomeriggio 08:50 Chicago")
         self.assertEqual(SLOTS["2030"],"Sera 13:30 Chicago")
-        self.assertEqual(AVAILABLE_MARKETS,("NDX","GLD","USO"))
+        self.assertEqual(AVAILABLE_MARKETS,("NDX","RUT","DJX","GLD","USO"))
 
     def test_same_archive_selector_and_manual_override_for_all_markets(self):
         accessor=(ROOT/"v2_storage_off.py").read_text(encoding="utf-8")
