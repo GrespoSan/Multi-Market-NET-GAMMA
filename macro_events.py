@@ -243,11 +243,14 @@ def _prepare(raw, today):
 
 
 def events_for_pine(day):
-    """Seleziona esclusivamente le news del giorno con un orario Roma verificabile."""
-    api_key = str(st.secrets.get("FINANCE_CALENDAR_API_KEY", "")).strip()
-    raw = _fetch((day - timedelta(days=1)).isoformat(), day.isoformat(),
-                 api_key)
-    news = _prepare(raw, day)
+    """Identical news to the SPX dashboard: BLS + FinanceCalendar combined.
+
+    BLS official CPI/PPI/NFP/JOLTS survives FinanceCalendar outages, and
+    the official BLS release time wins any source disagreement. Pine keeps
+    only events of the requested Rome calendar day with verified times.
+    """
+    from macro_calendar import load_calendar
+    news, _health = load_calendar(day, day)
     return [event for event in news if event["day"] == day
-            and re.fullmatch("[0-9]{2}:[0-9]{2}", event["clock"])
+            and re.fullmatch(r"[0-9]{2}:[0-9]{2}", str(event["clock"]))
             and event.get("status") != "cancelled"]
