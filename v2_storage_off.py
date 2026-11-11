@@ -18,7 +18,7 @@ from v2_github_archive import (
 from v2_pine_session import parse_archived_capture, artifact_in_session_window, SLOTS
 
 ROME = ZoneInfo("Europe/Rome")
-AVAILABLE_MARKETS = ("NDX", "GLD", "USO")
+AVAILABLE_MARKETS = ("NDX", "RUT", "DJX", "GLD", "USO")
 SLOTS = {"0730": "Mattina 07:30 Roma",
          "1550": "Pomeriggio 08:50 Chicago",
          "2030": "Sera 13:30 Chicago",
