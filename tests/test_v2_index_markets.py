@@ -13,6 +13,15 @@ ROOT = Path(__file__).resolve().parent.parent
 
 
 class IndexMarketTests(unittest.TestCase):
+    def test_manual_source_switch_happens_before_archive_widget(self):
+        source = (ROOT / "v2_index_market_view.py").read_text(encoding="utf-8")
+        self.assertLess(source.index('st.session_state.pop(pending_key, False)'),
+                        source.index('archive = archive_panel(ticker)'))
+        self.assertIn('st.session_state[pending_key] = True', source)
+        self.assertNotIn('prefer_manual_source(ticker)', source)
+        archive_source = (ROOT / "v2_storage_off.py").read_text(encoding="utf-8")
+        self.assertNotIn('st.session_state[choice_key] = "ultimo" if artifacts else "manuale"\\n            st.rerun()', archive_source)
+
     def test_python_sources_parse(self):
         for module in ("app.py", "markets.py", "v2_index_market_view.py",
                        "v2_index_basis.py", "v2_universal_cboe.py",
