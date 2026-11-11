@@ -334,8 +334,10 @@ def render_selected_market(market_key):
             with st.spinner('Verifica calendario macro USA...'):
                 macro_news=events_for_pine(day)
             st.caption(f"Eventi macro con orario verificato: {len(macro_news)} "
-                       f"per il {day:%d/%m/%Y} · Fonte: [Finance Calendar]({MACRO_CREDITS}). "
-                       "Le linee possono essere disattivate nei parametri Pine.")
+                       f"per il {day:%d/%m/%Y} · Fonti: BLS ufficiale e "
+                       f"[Finance Calendar]({MACRO_CREDITS}). "
+                       "Gli eventi già trascorsi al momento della fotografia "
+                       "non sono disegnati. Linee disattivabili nel Pine.")
         except Exception:
             st.caption('Calendario macro non disponibile: eventuali linee news '
                        'vengono omesse dai Pine. I livelli NET GAMMA non cambiano.')
@@ -350,7 +352,9 @@ def render_selected_market(market_key):
                 basis, day, "NET GAMMA CORRENTE",
                 acquisition_time=st.session_state.get("ndx_capture_rome_iso"))
             if macro_news:
-                current_script = append_news(current_script, macro_news)
+                current_script = append_news(
+                    current_script, macro_news,
+                    captured_at=st.session_state.get("ndx_capture_rome_iso"))
             st.download_button(
                 "Scarica Pine NET GAMMA corrente · NQ/MNQ (.pine)",
                 data=current_script.encode("utf-8"),
