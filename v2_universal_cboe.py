@@ -289,6 +289,10 @@ def _pine(ticker, groups, *, future_mode=False, future_basis=0.0):
         if ticker == "DJX" and future_mode else
         f'syminfo.ticker == "{ticker}"'
     )
+    display_ticker = (
+        "RTY" if future_mode and ticker == "RUT" else
+        "YM" if future_mode and ticker == "DJX" else ticker
+    )
     # Keep exactly the common SPX renderProfile function and line/label
     # cleanup; adapt only the per-column drawing scale and safety check.
     draw = f'''if barstate.islast and validTicker
@@ -313,7 +317,7 @@ def _pine(ticker, groups, *, future_mode=False, future_basis=0.0):
     else
 {main_render}{weekly_render}{top3_code}'''
     return f'''//@version=6
-indicator("NET GAMMA UNIVERSALE {ticker} · CBOE", overlay=true, max_lines_count=500, max_labels_count=35)
+indicator("NET GAMMA UNIVERSALE {display_ticker} · CBOE", overlay=true, max_lines_count=500, max_labels_count=35)
 // Fotografia CBOE statica; rigenerare il Pine per aggiornare.
 // Strike originali {ticker}. Eventuale conversione futura SOLO per coordinate visuali.
 // Formula: Call (OI+Volume)*Gamma - Put (OI+Volume)*Gamma.
