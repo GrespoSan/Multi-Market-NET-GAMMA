@@ -219,7 +219,7 @@ def _pine(ticker, groups, *, future_mode=False, future_basis=0.0):
     if not is_odte:
         inputs = inputs.replace('"Mostra 0DTE corrente"', '"Mostra profilo principale"')
         inputs = inputs.replace(
-            'showTop3Odte = input.bool(true, "Proietta Top 3 Call / Put 0DTE")',
+            'showTop3Odte = input.bool(false, "Proietta Top 3 Call / Put 0DTE")',
             'showTop3Odte = false')
     label = "0DTE" if is_odte else "Principale"
     main_title = f"{label} {main['expiry']:%d/%m/%Y}"
