@@ -101,9 +101,14 @@ def profile(doc, ticker, expiry, close, band=3.0):
         if part is None or part[0] != expiry or not lo - 1e-9 <= part[2] <= hi + 1e-9:
             continue
         _, side, strike = part
-        identifier = (expiry, side, strike)
+        # RUT/RUTW and DJX/DJXW may have separate option contracts
+        # on the same expiry, side and strike. Deduplicate by full OCC
+        # contract identifier, not by the plotted strike; sum distinct
+        # contracts into the same displayed strike/side.
+        identifier = str(o.get("option", "")).strip().replace(" ", "").upper()
         if identifier in seen:
-            raise ValueError("Contratto duplicato nella catena CBOE.")
+            missing["Contratti OCC ripetuti (esclusi)"] += 1
+            continue
         seen.add(identifier)
         matched += 1
         gamma, oi, volume = (_numeric(o.get(k)) for k in ("gamma", "open_interest", "volume"))
@@ -112,7 +117,7 @@ def profile(doc, ticker, expiry, close, band=3.0):
             continue
         complete += 1
         positives += int(gamma > 0)
-        sides[strike][side] = (oi + volume) * gamma
+        sides[strike][side] = sides[strike].get(side, 0.0) + (oi + volume) * gamma
     rows = []
     for strike, pair in sorted(sides.items()):
         if "C" not in pair or "P" not in pair:
