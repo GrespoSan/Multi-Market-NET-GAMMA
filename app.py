@@ -150,6 +150,12 @@ with st.container(border=True):
             if market_key == "NASDAQ":
                 st.caption("Opzioni NDX/NDXP · proiezione indicativa su NQ/MNQ mediante "
                            "differenziale NQ−NDX. Formula Call/Put invariata.")
+            elif market_key in ("RUSSELL", "DOW"):
+                st.caption(
+                    "Opzioni originali " + ("RUT/RUTW" if market_key == "RUSSELL" else "DJX/DJXW") +
+                    " · differenziale future/indice verificato. "
+                    "DJX: conversione strike ×100 prima del differenziale YM−DJIA. "
+                    "NET GAMMA CBOE invariato, non rappresenta opzioni sui futures.")
             else:
                 st.caption("Opzioni ETF " + ("GLD" if market_key == "GOLD" else "USO")
                            + " · profili Gamma sui veri strike dell'ETF. "
