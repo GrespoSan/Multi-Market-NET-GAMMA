@@ -36,6 +36,7 @@ if invalidate_ratio_sessions(st.session_state) or cache_day_changed:
 # Same SPX-style wide interface and reserved access, but separate credentials.
 st.markdown(PAGE_STYLE, unsafe_allow_html=True)
 st.title("Serafini · Multi-Market — NET GAMMA V2")
+st.subheader("01 · MERCATI PRINCIPALI")
 st.caption("NDX / NQ · GLD / GC · USO / CL · 0DTE / Weekly · interfaccia SPX")
 
 def _secret(name):
@@ -106,7 +107,6 @@ with st.sidebar:
 # Two independent functional areas. The market selector controls only
 # NDX/GLD/USO panels; the universal CBOE tool has its own ticker input.
 with st.container(border=True):
-    st.subheader("01 · MERCATI PRINCIPALI")
     st.caption("Seleziona NDX, GLD o USO. Le analisi e gli export qui sotto riguardano soltanto il mercato scelto.")
     col_market, col_info = st.columns([1.2, 2.8], gap="medium",
                                       vertical_alignment="bottom")
