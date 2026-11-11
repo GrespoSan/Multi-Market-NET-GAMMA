@@ -44,7 +44,7 @@ def array_values(code, name):
 
 
 def assert_guides(test, code, left_name, right_name, *, count=6):
-    test.assertIn('showTop3Odte = input.bool(true, "Proietta Top 3 Call / Put 0DTE")', code)
+    test.assertIn('showTop3Odte = input.bool(false, "Proietta Top 3 Call / Put 0DTE")', code)
     test.assertIn("drawOdteTopProjections(array<float> callLevels", code)
     test.assertIn("line.new(bar_index, y, bar_index + 1, y", code)
     test.assertIn("extend=extend.right, color=positiveColor, style=line.style_dashed, width=1", code)
