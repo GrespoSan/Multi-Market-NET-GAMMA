@@ -30,6 +30,10 @@ ROME=ZoneInfo('Europe/Rome')
 
 def render_selected_market(market_key):
     market=MARKETS[market_key]
+    if market_key in ("RUSSELL", "DOW"):
+        from v2_index_market_view import render as render_index_market
+        render_index_market("RUT" if market_key == "RUSSELL" else "DJX")
+        return
     if market_key == 'GOLD':
         from gld_cboe_view import render_gld_cboe
         render_gld_cboe()
