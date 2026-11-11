@@ -185,7 +185,7 @@ def _chart(group, ticker, common_x):
     return fig
 
 
-def _pine(ticker, groups):
+def _pine(ticker, groups, *, future_mode=False, future_basis=0.0):
     """Same Serafini histogram renderer and one common Gamma scale for both profiles."""
     from pine_export import _pine_array, _initial_manual_scale, _top_gamma_rows
     from pine_spx_visual import spx_inputs, SPX_RENDER_FUNCTIONS
@@ -237,50 +237,57 @@ def _pine(ticker, groups):
         f'            renderProfile(weeklyLevels, weeklyValues, '
         f'bar_index + weeklyCenter, "{weekly_title}", actualScale)\n'
         if wr else "")
-    # On RTY/M2K the RUT index strikes need an explicit, user-controlled
-    # index-to-future price basis. Gamma values always remain untouched.
-    is_rut = ticker == "RUT"
-    level_main = "plotMainLevels" if is_rut else "mainLevels"
-    level_weekly = "plotWeeklyLevels" if is_rut else "weeklyLevels"
-    level_calls = "plotTopCalls" if is_rut else "topCalls"
-    level_puts = "plotTopPuts" if is_rut else "topPuts"
-    if is_rut:
+    # Dedicated Russell/Dow market: transform ONLY the plotted price axis.
+    # Universal CBOE remains on original index/stock strikes by default.
+    transform = (ticker == "RUT" and future_mode) or (ticker == "DJX" and future_mode)
+    factor = 100.0 if ticker == "DJX" else 1.0
+    if future_mode and ticker not in ("RUT", "DJX"):
+        raise ValueError("Esportazione future dedicata supportata solo per RUT e DJX")
+    if future_mode and not math.isfinite(float(future_basis)):
+        raise ValueError("Differenziale indice/future non valido")
+    if transform:
         main_render = main_render.replace("renderProfile(mainLevels,", "renderProfile(plotMainLevels,")
         weekly_render = weekly_render.replace("renderProfile(weeklyLevels,", "renderProfile(plotWeeklyLevels,")
         top3_code = top3_code.replace("drawOdteTopProjections(topCalls, topPuts)",
                                       "drawOdteTopProjections(plotTopCalls, plotTopPuts)")
-    rut_inputs = (
-        'rutFutureBasis = input.float(0.0, "Differenziale RTY − RUT (punti)", step=0.1, '
-        'tooltip="Inserisci il differenziale sincronizzato future RTY meno indice RUT. '
-        'Zero mantiene gli strike indice originali, senza correggere il basis.")'
-        if is_rut else ""
+    future_inputs = (
+        f'indexFutureBasis = input.float({float(future_basis):.4f}, "Differenziale futuro − indice (punti)", step=0.1, '
+        'tooltip="Differenziale congelato su barre cash/future sincronizzate. '
+        'Controlla contratto e rollover. Modifica solo livelli visualizzati.")'
+        if transform else ""
     )
-    rut_arrays = (
-        'var array<float> plotMainLevels = array.new_float()\n'
-        'var array<float> plotWeeklyLevels = array.new_float()\n'
-        'var array<float> plotTopCalls = array.new_float()\n'
+    future_arrays = (
+        'var array<float> plotMainLevels = array.new_float()\\n'
+        'var array<float> plotWeeklyLevels = array.new_float()\\n'
+        'var array<float> plotTopCalls = array.new_float()\\n'
         'var array<float> plotTopPuts = array.new_float()'
-        if is_rut else ""
+        if transform else ""
     )
-    rut_prepare = (
-        '    array.clear(plotMainLevels)\n'
-        '    array.clear(plotWeeklyLevels)\n'
-        '    array.clear(plotTopCalls)\n'
-        '    array.clear(plotTopPuts)\n'
-        '    float basis = syminfo.root == "RTY" or syminfo.root == "M2K" ? rutFutureBasis : 0.0\n'
-        '    for level in mainLevels\n'
-        '        array.push(plotMainLevels, level + basis)\n'
-        '    for level in weeklyLevels\n'
-        '        array.push(plotWeeklyLevels, level + basis)\n'
-        '    for level in topCalls\n'
-        '        array.push(plotTopCalls, level + basis)\n'
-        '    for level in topPuts\n'
-        '        array.push(plotTopPuts, level + basis)\n'
-        if is_rut else ""
+    future_prepare = (
+        '    array.clear(plotMainLevels)\\n'
+        '    array.clear(plotWeeklyLevels)\\n'
+        '    array.clear(plotTopCalls)\\n'
+        '    array.clear(plotTopPuts)\\n'
+        f'    float basisFactor = {factor:.1f}\\n'
+        '    float displayBasis = indexFutureBasis\\n'
+        '    for level in mainLevels\\n'
+        '        array.push(plotMainLevels, level * basisFactor + displayBasis)\\n'
+        '    for level in weeklyLevels\\n'
+        '        array.push(plotWeeklyLevels, level * basisFactor + displayBasis)\\n'
+        '    for level in topCalls\\n'
+        '        array.push(plotTopCalls, level * basisFactor + displayBasis)\\n'
+        '    for level in topPuts\\n'
+        '        array.push(plotTopPuts, level * basisFactor + displayBasis)\\n'
+        if transform else ""
     )
+    # RUT index is displayed on RUT, RTY and M2K, DJX index on DJX,
+    # YM and MYM. Futures-only transform is used only in dedicated market.
     ticker_guard = (
-        '(syminfo.ticker == "RUT" or syminfo.root == "RTY" or syminfo.root == "M2K")'
-        if is_rut else f'syminfo.ticker == "{ticker}"'
+        '(syminfo.root == "RTY" or syminfo.root == "M2K")'
+        if ticker == "RUT" and future_mode else
+        '(syminfo.root == "YM" or syminfo.root == "MYM")'
+        if ticker == "DJX" and future_mode else
+        f'syminfo.ticker == "{ticker}"'
     )
     # Keep exactly the common SPX renderProfile function and line/label
     # cleanup; adapt only the per-column drawing scale and safety check.
@@ -291,7 +298,7 @@ def _pine(ticker, groups):
     for lb in drawnLabels
         label.delete(lb)
     array.clear(drawnLabels)
-{rut_prepare}    float actualScale = gammaPerCandle
+{future_prepare}    float actualScale = gammaPerCandle
     int weeklyCenter = offsetOdte + offsetWeekly
     bool beyondLimit = offsetOdte >= 480 or (showCurrentWeekly and array.size(weeklyValues) > 0 and weeklyCenter >= 480)
     float safeMain = showCurrentOdte ? requiredScale(mainValues, offsetOdte) : 0.0
@@ -308,13 +315,13 @@ def _pine(ticker, groups):
     return f'''//@version=6
 indicator("NET GAMMA UNIVERSALE {ticker} · CBOE", overlay=true, max_lines_count=500, max_labels_count=35)
 // Fotografia CBOE statica; rigenerare il Pine per aggiornare.
-// Strike originali {ticker}. Su RTY/M2K il basis manuale sposta solo i livelli visualizzati.
+// Strike originali {ticker}. Eventuale conversione futura SOLO per coordinate visuali.
 // Formula: Call (OI+Volume)*Gamma - Put (OI+Volume)*Gamma.
 // Scala Gamma comune tra scadenze.
 validTicker = {ticker_guard}
 
 {inputs}
-{rut_inputs}
+{future_inputs}
 
 var array<line> drawnLines = array.new_line()
 var array<label> drawnLabels = array.new_label()
@@ -324,7 +331,7 @@ var array<float> weeklyLevels = {_pine_array(wr, "strike")}
 var array<float> weeklyValues = {_pine_array(wr, "net")}
 var array<float> topCalls = {_pine_array(tc, "strike")}
 var array<float> topPuts = {_pine_array(tp, "strike")}
-{rut_arrays}
+{future_arrays}
 
 {SPX_RENDER_FUNCTIONS}
 
