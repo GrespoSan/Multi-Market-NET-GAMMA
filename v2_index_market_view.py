@@ -230,6 +230,88 @@ def render(ticker):
                 st.warning(f"{title}: Gamma insufficienti; copertura {group['coverage']:.0%}.")
         except ValueError as exc:
             st.warning(f"{title}: {exc}")
+    # Audit remains accessible even if the conservative profile is rejected.
+    # It never modifies groups or the Pine and reconciles with profile().
+    with st.expander(
+        "AUDIT STRIKE — contratti CBOE, esclusioni e livelli Pine",
+        expanded=(ticker == "DJX"),
+    ):
+        st.caption(
+            "Verifica in sola lettura sui dati originali CBOE. "
+            "Ogni scadenza viene contata separatamente. I livelli senza coppia "
+            "Call/Put sono candidati diagnostici, NON livelli Pine aggiuntivi."
+        )
+        from v2_index_strike_audit import audit_strikes
+        diagnostic_rows = []
+        selected_expiries = [("0DTE" if day == today else "Principale", day)]
+        if weekly is not None:
+            selected_expiries.append(("Weekly", weekly))
+        else:
+            st.info("Weekly non selezionata: il Pine non contiene un profilo Weekly.")
+        for label, expiry in selected_expiries:
+            try:
+                audited = audit_strikes(doc, ticker, expiry, close, band,
+                                        factor=factor, basis=basis)
+                m = audited["metrics"]
+                st.markdown(f"**{label} · {expiry:%d/%m/%Y}**")
+                c1, c2, c3, c4 = st.columns(4)
+                c1.metric("Contratti nella fascia", m.get("in_band_contracts", 0))
+                c2.metric("Strike nella fascia", m.get("strikes_in_band", 0))
+                c3.metric("Strike con coppia valida", m.get("COPPIA_VALIDA", 0))
+                c4.metric("Livelli Pine", m.get("pine_levels", 0))
+                st.caption(
+                    f"Catena intera: {m.get('raw_records', 0)} record · "
+                    f"scadenza: {m.get('selected_expiry_contracts', 0)} · "
+                    f"fuori fascia: {m.get('outside_band_contracts', 0)} · "
+                    f"duplicati OCC: {m.get('duplicate_occ', 0)} · "
+                    f"Gamma/OI/Volume incompleti: "
+                    f"{m.get('incomplete_greeks_oi_volume', 0)} · "
+                    f"copertura: {m.get('coverage_pct', 0):.1f}%."
+                )
+                st.caption(
+                    f"Strike con un solo lato valido: "
+                    f"{m.get('UN_SOLO_LATO_PRESENTE', 0)} · "
+                    f"altro lato incompleto: "
+                    f"{m.get('ALTRO_LATO_INCOMPLETO', 0)} · "
+                    f"nessun lato valido: {m.get('NESSUN_LATO_VALIDO', 0)} · "
+                    f"coppie NET=0: {m.get('net_zero', 0)} · "
+                    f"barre Pine NET≠0: {m.get('pine_nonzero_bars', 0)}."
+                )
+                if m.get("UN_SOLO_LATO_PRESENTE", 0) or m.get("ALTRO_LATO_INCOMPLETO", 0):
+                    st.warning(
+                        "Esistono strike esclusi dal filtro coppia Call/Put. "
+                        "Sono riportati sotto per l'audit, senza presumere "
+                        "un Gamma pari a zero per il lato non valido."
+                    )
+                if not m.get("profile_usable"):
+                    st.warning(
+                        "Profilo escluso dai controlli originali di qualità: "
+                        "nessun livello Pine generato per questa scadenza."
+                    )
+                for row in audited["rows"]:
+                    diagnostic_rows.append({"scadenza": expiry.isoformat(),
+                                            "profilo": label, **row})
+            except (ValueError, TypeError, KeyError) as exc:
+                st.error(f"Audit {label} non riconciliato: {exc}")
+        if diagnostic_rows:
+            st.dataframe(
+                diagnostic_rows, use_container_width=True,
+                hide_index=True,
+                column_config={
+                    "status": st.column_config.TextColumn("Esito filtro"),
+                    "net_gamma": st.column_config.NumberColumn("NET valido", format="%.6f"),
+                },
+            )
+            audit_csv = io.StringIO()
+            writer = csv.DictWriter(audit_csv, fieldnames=list(diagnostic_rows[0]))
+            writer.writeheader()
+            writer.writerows(diagnostic_rows)
+            st.download_button(
+                f"Scarica audit strike {ticker} (CSV)",
+                audit_csv.getvalue(),
+                file_name=f"{ticker}_audit_strike_{day:%Y%m%d}.csv",
+                mime="text/csv", key=f"{prefix}_audit_csv",
+            )
     if not groups:
         st.error("Nessun profilo CBOE validato: nessun Pine generato.")
         return
