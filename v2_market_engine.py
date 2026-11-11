@@ -120,6 +120,7 @@ def render_selected_market(market_key):
     if st.session_state.get('_ndx_basis_target') != day.isoformat():
         st.session_state['_ndx_basis_target']=day.isoformat()
         st.session_state['ndx_basis_value']=''
+        st.session_state.pop('ndx_basis_manual_cleared', None)
         st.session_state.pop('ndx_basis_result',None)
         st.session_state.pop('ndx_basis_error',None)
         st.session_state.pop('ndx_basis_attempted',None)
@@ -149,6 +150,7 @@ def render_selected_market(market_key):
             result=_cached_basis(day)
             st.session_state['ndx_basis_result']=result
             st.session_state['ndx_basis_value']=f"{result['basis']:.4f}"
+            st.session_state.pop('ndx_basis_manual_cleared', None)
             st.session_state.pop('ndx_basis_error',None)
         except Exception as exc:
             st.session_state.pop('ndx_basis_result',None)
@@ -178,7 +180,20 @@ def render_selected_market(market_key):
                    + st.session_state['ndx_basis_error']
                    + '. Inserisci un valore verificato o usa Ricalcola.')
     
+    # Streamlit can discard a keyed widget after a market/expander switch while
+    # preserving the independent, successfully calculated basis result.
+    # Rehydrate the editable field from that verified result before constructing
+    # the widget; never default to an invented zero.
+    if (st.session_state.get('ndx_basis_result')
+            and not str(st.session_state.get('ndx_basis_value') or '').strip()
+            and not st.session_state.get('ndx_basis_manual_cleared')):
+        st.session_state['ndx_basis_value'] = (
+            f"{st.session_state['ndx_basis_result']['basis']:.4f}")
+    def _ndx_basis_edited():
+        st.session_state['ndx_basis_manual_cleared'] = (
+            not str(st.session_state.get('ndx_basis_value') or '').strip())
     basis_text=st.text_input('Differenziale NQ − NDX (modificabile)',key='ndx_basis_value',
+                            on_change=_ndx_basis_edited,
                             help='Esporta livelli NQ soltanto con differenziale verificato. '
                                  'Contratto NQ trimestrale selezionato in automatico secondo il rollover CME. '
                                  'Calcolo della seduta cash precedente con Massive NQ e Yahoo NDX.')
