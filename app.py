@@ -36,8 +36,6 @@ if invalidate_ratio_sessions(st.session_state) or cache_day_changed:
 # Same SPX-style wide interface and reserved access, but separate credentials.
 st.markdown(PAGE_STYLE, unsafe_allow_html=True)
 st.title("Serafini · Multi-Market — NET GAMMA")
-st.subheader("01 · MERCATI PRINCIPALI")
-st.caption("NDX / NQ · GLD / GC · USO / CL · 0DTE / Weekly · interfaccia SPX")
 
 def _secret(name):
     try:
@@ -103,6 +101,9 @@ with st.sidebar:
         st.session_state.pop("v2_role", None)
         st.rerun()
     st.caption("V2 indipendente · nessun collegamento Supabase")
+
+st.subheader("01 · MERCATI PRINCIPALI")
+st.caption("NDX / NQ · GLD / GC · USO / CL · 0DTE / Weekly")
 
 # Two independent functional areas. The market selector controls only
 # NDX/GLD/USO panels; the universal CBOE tool has its own ticker input.
