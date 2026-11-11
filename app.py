@@ -103,71 +103,79 @@ with st.sidebar:
         st.rerun()
     st.caption("V2 indipendente · nessun collegamento Supabase")
 
-col_market, col_info = st.columns([1.2, 2.8], gap="medium",
-                                  vertical_alignment="bottom")
-with col_market:
-    market_key = st.selectbox(
-        "Sottostante", list(MARKETS),
-        format_func=lambda key: MARKETS[key].label,
-        key="v2_market_selected",
-    )
-with col_info:
-    market = MARKETS[market_key]
-    st.caption(f"Opzioni: {market.options} · Futuro: {market.futures} · "
-               f"Metodo: {market.basis}")
-st.divider()
+# Two independent functional areas. The market selector controls only
+# NDX/GLD/USO panels; the universal CBOE tool has its own ticker input.
+with st.container(border=True):
+    st.subheader("01 · MERCATI PRINCIPALI")
+    st.caption("Seleziona NDX, GLD o USO. Le analisi e gli export qui sotto riguardano soltanto il mercato scelto.")
+    col_market, col_info = st.columns([1.2, 2.8], gap="medium",
+                                      vertical_alignment="bottom")
+    with col_market:
+        market_key = st.selectbox(
+            "Mercato da analizzare", list(MARKETS),
+            format_func=lambda key: MARKETS[key].label,
+            key="v2_market_selected",
+        )
+    with col_info:
+        market = MARKETS[market_key]
+        st.caption(f"Opzioni: {market.options} · Futuro: {market.futures} · "
+                   f"Metodo: {market.basis}")
+    
+    # The emergency controls are below the main analysis, so their callbacks
+    # cannot modify main widgets after those widgets have been instantiated.
+    # Apply pending manual Cboe capture at the START of the next rerun.
+    symbol_for_market = {"NASDAQ": "NDX", "GOLD": "GLD", "WTI": "USO"}[market_key]
+    activation_key = f"v2_emergency_pending_activation_{symbol_for_market}"
+    pending = st.session_state.pop(activation_key, None)
+    if pending is not None:
+        try:
+            from v2_emergency_acquisition import activate_for_analysis
+            activate_for_analysis(symbol_for_market, pending)
+        except (ValueError, KeyError, TypeError, OSError) as exc:
+            from v2_emergency_acquisition import STORE_PREFIX
+            st.session_state.pop(STORE_PREFIX + symbol_for_market, None)
+            st.session_state[f"v2_emergency_activation_error_{symbol_for_market}"] = str(exc)[:260]
+    
+    # Preserve CONTEXTO above NET GAMMA visually, but execute its optional
+    # Massive requests AFTER Gamma's reference mapping. A collapsed expander still
+    # runs all its code in Streamlit; this ordering prioritizes the trading panel.
+    context_slot = st.empty()
+    context_initial = False
+    
+    with st.expander("ANALISI NET GAMMA", expanded=False):
+        st.header("NET GAMMA · formula Serafini")
+        with st.expander("Note metodologiche · differenze rispetto alla SPX",
+                         expanded=False):
+            if market_key == "NASDAQ":
+                st.caption("Opzioni NDX/NDXP · proiezione indicativa su NQ/MNQ mediante "
+                           "differenziale NQ−NDX. Formula Call/Put invariata.")
+            else:
+                st.caption("Opzioni ETF " + ("GLD" if market_key == "GOLD" else "USO")
+                           + " · profili Gamma sui veri strike dell'ETF. "
+                           "La mappatura percentuale su future è indicativa e NON "
+                           "trasforma queste opzioni in opzioni su GC o CL.")
+            st.caption("0DTE e Weekly: stesso criterio grafico della Serafini SPX; "
+                       "Gamma da (OI + Volume) × Gamma, non GEX monetario. "
+                       "Le proporzioni 60%/23% citate per SPX non sono "
+                       "automaticamente valide per NDX, GLD e USO.")
+        render_selected_market(market_key)
+    
+    # Context is now automatic, as in Serafini SPX. Daily Massive responses are
+    # shared by v2_massive_day_cache and expire on the next Rome calendar day.
+    with context_slot.container():
+        with st.expander("ANALISI DEL CONTESTO — News · Volatilità · Trend Daily",
+                         expanded=context_initial):
+            from v2_context import render as render_market_context
+            render_market_context(market_key)
+    
+    # One shared snapshot per market: the emergency export reuses the same
+    # session-state photograph; no redundant download/import widgets.
+    from v2_emergency_pine import render as render_v2_emergency_pine
+    render_v2_emergency_pine(market_key)
 
-# The emergency controls are below the main analysis, so their callbacks
-# cannot modify main widgets after those widgets have been instantiated.
-# Apply pending manual Cboe capture at the START of the next rerun.
-symbol_for_market = {"NASDAQ": "NDX", "GOLD": "GLD", "WTI": "USO"}[market_key]
-activation_key = f"v2_emergency_pending_activation_{symbol_for_market}"
-pending = st.session_state.pop(activation_key, None)
-if pending is not None:
-    try:
-        from v2_emergency_acquisition import activate_for_analysis
-        activate_for_analysis(symbol_for_market, pending)
-    except (ValueError, KeyError, TypeError, OSError) as exc:
-        from v2_emergency_acquisition import STORE_PREFIX
-        st.session_state.pop(STORE_PREFIX + symbol_for_market, None)
-        st.session_state[f"v2_emergency_activation_error_{symbol_for_market}"] = str(exc)[:260]
-
-# Preserve CONTEXTO above NET GAMMA visually, but execute its optional
-# Massive requests AFTER Gamma's reference mapping. A collapsed expander still
-# runs all its code in Streamlit; this ordering prioritizes the trading panel.
-context_slot = st.empty()
-context_initial = False
-
-with st.expander("ANALISI NET GAMMA", expanded=False):
-    st.header("NET GAMMA · formula Serafini")
-    with st.expander("Note metodologiche · differenze rispetto alla SPX",
-                     expanded=False):
-        if market_key == "NASDAQ":
-            st.caption("Opzioni NDX/NDXP · proiezione indicativa su NQ/MNQ mediante "
-                       "differenziale NQ−NDX. Formula Call/Put invariata.")
-        else:
-            st.caption("Opzioni ETF " + ("GLD" if market_key == "GOLD" else "USO")
-                       + " · profili Gamma sui veri strike dell'ETF. "
-                       "La mappatura percentuale su future è indicativa e NON "
-                       "trasforma queste opzioni in opzioni su GC o CL.")
-        st.caption("0DTE e Weekly: stesso criterio grafico della Serafini SPX; "
-                   "Gamma da (OI + Volume) × Gamma, non GEX monetario. "
-                   "Le proporzioni 60%/23% citate per SPX non sono "
-                   "automaticamente valide per NDX, GLD e USO.")
-    render_selected_market(market_key)
-
-# Context is now automatic, as in Serafini SPX. Daily Massive responses are
-# shared by v2_massive_day_cache and expire on the next Rome calendar day.
-with context_slot.container():
-    with st.expander("ANALISI DEL CONTESTO — News · Volatilità · Trend Daily",
-                     expanded=context_initial):
-        from v2_context import render as render_market_context
-        render_market_context(market_key)
-
-# One shared snapshot per market: the emergency export reuses the same
-# session-state photograph; no redundant download/import widgets.
-from v2_emergency_pine import render as render_v2_emergency_pine
-render_v2_emergency_pine(market_key)
+st.write("")
+st.subheader("02 · NET GAMMA UNIVERSALE — CBOE")
+st.caption("Strumento indipendente: inserisci qualsiasi ticker CBOE supportato, senza cambiare il mercato principale.")
 
 # Independent ticker-input CBOE engine; never touches selected market state.
 from v2_universal_cboe import render as render_universal_cboe
