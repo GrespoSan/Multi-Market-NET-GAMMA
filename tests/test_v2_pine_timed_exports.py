@@ -103,6 +103,34 @@ class TimePineTests(unittest.TestCase):
                     self.assertIn("prevGamma",code["1550"])
                     self.assertIn("float lockedRatio =",code["0730"])
 
+    def test_future_news_only_after_each_real_capture_all_three_markets(self):
+        # Cboe snapshots: 07:31 / 15:51 / 20:51 Rome on 02/11.
+        # CPI already released before 15:51 must not reappear on the
+        # 15:50/20:30 Pine; applies equally to NDX, GLD and USO.
+        events = [
+            {"day": DAY, "clock": "06:00", "kind": "PPI", "priority": "ALTA"},
+            {"day": DAY, "clock": "14:00", "kind": "CPI", "priority": "ALTA"},
+            {"day": DAY, "clock": "16:00", "kind": "FOMC", "priority": "ALTA"},
+            {"day": DAY, "clock": "21:00", "kind": "NFP", "priority": "ALTA"},
+        ]
+        for symbol in ("NDX", "GLD", "USO"):
+            with self.subTest(symbol=symbol):
+                group = profiles(symbol)
+                mapped = 140.0 if symbol == "NDX" else mapping(symbol)
+                with patch("v2_pine_timed_exports.build_slot_profiles",
+                           return_value=(group, {})):
+                    scripts, errors, _ = produce_timed_scripts(
+                        symbol, DAY, {}, group["0730"]["close"], 3.0,
+                        mapped, macro_news=events)
+                self.assertEqual(set(scripts), {"0730","1550","2030"}, errors)
+                self.assertIn('showMacroNews = input.bool(true', scripts["0730"])
+                self.assertNotIn('timestamp("Europe/Rome", 2026, 11, 2, 6, 0)', scripts["0730"])
+                self.assertIn('timestamp("Europe/Rome", 2026, 11, 2, 14, 0)', scripts["0730"])
+                self.assertNotIn('timestamp("Europe/Rome", 2026, 11, 2, 14, 0)', scripts["1550"])
+                self.assertIn('timestamp("Europe/Rome", 2026, 11, 2, 16, 0)', scripts["1550"])
+                self.assertNotIn('timestamp("Europe/Rome", 2026, 11, 2, 16, 0)', scripts["2030"])
+                self.assertIn('timestamp("Europe/Rome", 2026, 11, 2, 21, 0)', scripts["2030"])
+
     def test_every_comparison_pine_has_indicator_on_line_two(self):
         """Regression for TradingView CE10243 after pasting 15:50 Pine."""
         from v2_pine_header import normalize_indicator_header
