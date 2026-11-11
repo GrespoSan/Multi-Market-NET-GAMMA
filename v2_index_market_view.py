@@ -53,7 +53,11 @@ def render(ticker):
     future = info["future"]
     factor = info["factor"]
     prefix = f"v2_primary_{ticker.lower()}"
-    from v2_storage_off import archive_panel, prefer_manual_source
+    from v2_storage_off import archive_panel
+    # Streamlit selectbox state may only change before the selectbox is built.
+    pending_key = f"{prefix}_activate_manual"
+    if st.session_state.pop(pending_key, False):
+        st.session_state[f"v2_archive_choice_{ticker.lower()}"] = "manuale"
     archive = archive_panel(ticker)
     current_choice = st.session_state.get(f"v2_archive_choice_{ticker.lower()}")
     if current_choice == "manuale":
@@ -80,7 +84,7 @@ def render(ticker):
             try:
                 with st.spinner(f"Acquisizione CBOE {ticker}..."):
                     raw = download_once(ticker)
-                prefer_manual_source(ticker)
+                st.session_state[pending_key] = True
                 st.session_state[f"{prefix}_active"] = {
                     "raw": raw, "origin": "Download CBOE manuale",
                     "stamp": datetime.now(ROME).isoformat(timespec="seconds"),
@@ -97,7 +101,7 @@ def render(ticker):
                          disabled=upload is None):
                 try:
                     raw = import_original(upload.name, upload.getvalue(), ticker)
-                    prefer_manual_source(ticker)
+                    st.session_state[pending_key] = True
                     st.session_state[f"{prefix}_active"] = {
                         "raw": raw, "origin": "Importazione locale", "stamp": None,
                     }
