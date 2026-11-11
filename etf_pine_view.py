@@ -44,6 +44,24 @@ def render_etf_pine_exports(symbol, calculated, reference, day,
         st.caption(f"Pine non generabile da questa fotografia: {str(exc)[:210]}")
         return
 
+    # SPX parity: same verified BLS+FinanceCalendar news, only after
+    # the actual Cboe capture. Manually imported files have no verified
+    # acquisition instant and must NOT acquire fictitious future-only news.
+    source = str(st.session_state.get(f"{symbol.lower()}_cboe_source") or "")
+    captured = st.session_state.get(f"{symbol.lower()}_cboe_import_rome")
+    if ("Archivio privato" in source or "Acquisizione diretta" in source):
+        try:
+            from macro_events import events_for_pine
+            from pine_news_overlay import append_news
+            from v2_pine_capture import pine_capture_clock
+            if pine_capture_clock(captured)["verified"]:
+                script = append_news(script, events_for_pine(day),
+                                     captured_at=captured)
+        except Exception:
+            # News source outage never changes validated Gamma levels.
+            st.caption("News macro non verificabili: Pine senza linee news; "
+                       "i livelli NET GAMMA rimangono invariati.")
+
     st.download_button(
         f"Scarica Pine NET GAMMA · {label} (.pine)",
         script.encode("utf-8"),
