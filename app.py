@@ -35,7 +35,7 @@ if invalidate_ratio_sessions(st.session_state) or cache_day_changed:
 
 # Same SPX-style wide interface and reserved access, but separate credentials.
 st.markdown(PAGE_STYLE, unsafe_allow_html=True)
-st.title("Serafini · Multi-Market — NET GAMMA V2")
+st.title("Serafini · Multi-Market — NET GAMMA")
 st.subheader("01 · MERCATI PRINCIPALI")
 st.caption("NDX / NQ · GLD / GC · USO / CL · 0DTE / Weekly · interfaccia SPX")
 
