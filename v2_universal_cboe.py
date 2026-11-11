@@ -289,7 +289,7 @@ def render():
         st.caption("Ticker libero · un solo download manuale CBOE · Gamma originali · "
                    "nessuna conversione, Supabase, replay o cron. Formula: "
                    "(OI+Volume)×Gamma Call − (OI+Volume)×Gamma Put.")
-        ticker_text = st.text_input("Ticker CBOE (es. AAPL)", value="AAPL",
+        ticker_text = st.text_input("Ticker CBOE (es. AAPL - RUT - DJX)", value="AAPL",
                                     key="universal_cboe_ticker").strip().upper()
         try:
             ticker = validate_ticker(ticker_text)
