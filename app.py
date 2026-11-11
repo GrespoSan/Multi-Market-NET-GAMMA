@@ -136,7 +136,7 @@ if pending is not None:
 # Massive requests AFTER Gamma's reference mapping. A collapsed expander still
 # runs all its code in Streamlit; this ordering prioritizes the trading panel.
 context_slot = st.empty()
-context_initial = datetime.now(ZoneInfo("Europe/Rome")).hour < 13
+context_initial = False
 
 with st.expander("ANALISI NET GAMMA", expanded=False):
     st.header("NET GAMMA · formula Serafini")
