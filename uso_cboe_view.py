@@ -115,7 +115,7 @@ def render_uso_cboe():
     first = (acquisition_day if acquisition_day in available
              else future[0] if future else available[-1])
     base_day = st.selectbox(
-        "Scadenza 0DTE della fotografia selezionata (ora New York)",
+        "Scadenza principale della fotografia selezionata (ora New York)",
         available, index=available.index(first),
         format_func=lambda d: d.strftime("%d/%m/%Y"), key="uso_cboe_day")
     is_0dte = base_day == acquisition_day
@@ -212,7 +212,7 @@ def render_uso_cboe():
         shared_ticks = shared_ticks[::step]
     axes = chart_price_axes("USO", mapping, ylim, shared_ticks)
     projected = axes["projected"]
-    st.markdown("**NET GAMMA CL CONTINUO · 0DTE / Weekly**")
+    st.markdown("**NET GAMMA CL CONTINUO · " + ("0DTE" if is_0dte else "Principale (non 0DTE)") + " / Weekly**")
     if projected:
         st.caption(
             f"Strike opzioni USO proiettati sul continuo CL con "
