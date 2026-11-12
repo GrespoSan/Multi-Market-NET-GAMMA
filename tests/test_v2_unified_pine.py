@@ -39,6 +39,20 @@ class UnifiedPineTests(unittest.TestCase):
         self.assertNotIn("@ARRAYS@", source)
         self.assertIn("renderProfile(", source)
 
+    def test_gc_cl_on_15m_use_synchronized_confirmed_intrabar_pairs(self):
+        src = build_unified_pine(
+            date(2026, 11, 12), {name: record(name) for name in MARKETS})
+        self.assertIn('request.security_lower_tf(etfTicker, "5", [close[1], time[1]]', src)
+        self.assertIn('request.security_lower_tf(futureTicker, "5", [close[1], time[1]]', src)
+        self.assertIn('if timeframe.in_seconds() <= 300', src)
+        self.assertIn('while i >= 0 and j >= 0', src)
+        self.assertIn('et > lastMatchedTime', src)
+        self.assertIn('ep > 0 and fp > 0', src)
+        self.assertIn('timeframe.isintraday and not na(ratioToDraw)', src)
+        self.assertNotIn('timeframe.in_seconds() <= 300 and not na(ratioToDraw)', src)
+        self.assertIn('string etfTicker = isGC ? "AMEX:GLD" : "AMEX:USO"', src)
+        self.assertIn('string futureTicker = ticker.standard(syminfo.tickerid)', src)
+
     def test_missing_market_not_silently_filled(self):
         source = build_unified_pine(date(2026, 11, 12), {"NDX": record("NDX")})
         self.assertIn("var array<float> USOLevels = array.new_float()", source)
