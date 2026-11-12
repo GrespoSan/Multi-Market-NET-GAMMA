@@ -202,7 +202,7 @@ def render(ticker):
     )
     band = st.number_input(
         "Fascia strike ± % dal close precedente (comune)",
-        min_value=0.5, max_value=25.0, value=10.0, step=0.5,
+        min_value=0.5, max_value=25.0, value=5.0, step=0.5,
         key=f"{prefix}_band",
     )
     from v2_index_weekly import choose_weekly, weekly_candidates
@@ -247,11 +247,15 @@ def render(ticker):
     )
     result_key = f"{prefix}_basis_result"
     value_key = f"{prefix}_basis_value"
+    # Streamlit deletes widget keys when their market is not rendered.
+    # Persist the user's editable value separately from the widget lifecycle.
+    saved_key = f"{prefix}_basis_saved"
     attempted_key = f"{prefix}_basis_attempted"
     target_key = f"{prefix}_basis_target"
     if st.session_state.get(target_key) != day.isoformat():
         st.session_state[target_key] = day.isoformat()
         st.session_state.pop(result_key, None)
+        st.session_state.pop(saved_key, None)
         st.session_state[value_key] = ""
         st.session_state.pop(attempted_key, None)
     def recalc():
@@ -259,7 +263,9 @@ def render(ticker):
             api = str(st.secrets.get("MASSIVE_API_KEY", "")).strip()
             result = _basis_cached(ticker, day, api)
             st.session_state[result_key] = result
-            st.session_state[value_key] = f"{result['basis']:.4f}"
+            verified_text = f"{result['basis']:.4f}"
+            st.session_state[saved_key] = verified_text
+            st.session_state[value_key] = verified_text
             st.session_state.pop(f"{prefix}_basis_error", None)
         except Exception as exc:
             st.session_state.pop(result_key, None)
@@ -273,9 +279,21 @@ def render(ticker):
     if st.session_state.get(f"{prefix}_basis_error"):
         st.warning("Differenziale automatico non disponibile: " +
                    st.session_state[f"{prefix}_basis_error"])
+    # Rehydrate the widget on return from another market. A deliberately
+    # cleared manual value remains cleared; never fabricate a zero basis.
+    if value_key not in st.session_state:
+        if saved_key in st.session_state:
+            st.session_state[value_key] = st.session_state[saved_key]
+        elif isinstance(st.session_state.get(result_key), dict):
+            # Migrate existing sessions created before this persistence fix.
+            recovered = f"{st.session_state[result_key]['basis']:.4f}"
+            st.session_state[value_key] = recovered
+            st.session_state[saved_key] = recovered
+    def _basis_edited():
+        st.session_state[saved_key] = st.session_state.get(value_key, "")
     st.text_input(
         f"Differenziale {future} meno indice (punti future, modificabile)",
-        key=value_key,
+        key=value_key, on_change=_basis_edited,
         help="Inserisci un basis verificato per il contratto future selezionato. "
              "Un campo vuoto blocca l'esportazione Pine: mai assumere zero.",
     )
