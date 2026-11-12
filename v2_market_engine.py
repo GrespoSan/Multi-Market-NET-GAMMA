@@ -21,6 +21,7 @@ from ndx_engine import (unpack_snapshot, available_expirations, close_from_paylo
 from ndx_basis import fetch_basis
 from pine_export import make_pine
 from v2_pine_timed_exports import render_timed_pine_exports
+from v2_pine_session import LABELS, slots_for_day
 from macro_events import events_for_pine
 from pine_news_overlay import append_news
 from nq_price_panel import load_nq_candles, chart_compare_nq
@@ -359,10 +360,11 @@ def render_selected_market(market_key):
 
     # Gli export per slot sono la sezione principale. Il Pine corrente
     # si trova solo nell'apposito strumento di emergenza separato.
-    st.markdown("**Pine per orari · 07:30 / 15:50 / 20:30**")
+    last_label = LABELS[slots_for_day(day)[-1]]
+    st.markdown(f"**Pine per orari · 07:30 / 15:50 / {last_label}**")
     render_timed_pine_exports(
         'NDX', day, reference, band_pct, basis,
         extension=show_extension, macro_news=macro_news)
     st.caption("07:30: 0DTE + Weekly · 15:50: confronto 07:30→15:50 · "
-               "20:30: confronto 15:50→20:30. "
+               f"{last_label}: confronto 15:50→{last_label}. "
                "Solo fotografie archiviate reali; disponibilità indicata per slot.")
