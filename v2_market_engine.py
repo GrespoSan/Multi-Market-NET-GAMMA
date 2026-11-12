@@ -264,6 +264,9 @@ def render_selected_market(market_key):
                           max(band_high, max(shown_strikes)) + price_shift]
     
     st.subheader(f'NET GAMMA — NDX → NQ · fascia ±{band_pct:g}%')
+    from v2_gamma_summary import render_gamma_summary
+    render_gamma_summary(visual_profiles.values(), net_key="net_gamma",
+                         call_key="call_gamma", put_key="put_gamma")
     st.caption('Formula invariata: NET = [(OI+Volume)×Gamma] Call − [(OI+Volume)×Gamma] Put. '
                'Tutti gli strike Cboe disponibili tra '
                f'**{band_low:,.2f} e {band_high:,.2f} NDX** (±{band_pct:g}% dal close precedente). '
