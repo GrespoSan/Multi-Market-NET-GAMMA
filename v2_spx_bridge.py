@@ -197,16 +197,7 @@ def _auto_basis(day):
 
 
 def spx_basis(day):
-    key = f"mm_unified_spx_basis_manual_{day.isoformat()}"
-    manual = str(st.session_state.get(key) or "").strip()
-    if manual:
-        try:
-            value = float(manual.replace(",", "."))
-        except ValueError:
-            raise ValueError("Differenziale ES−SPX manuale non numerico.")
-        if not math.isfinite(value):
-            raise ValueError("Differenziale ES−SPX non finito.")
-        return value, "impostazione manuale — confrontare con Serafini SPX"
+    """Same automatic ES−SPX basis as Serafini SPX; no extra UI controls."""
     value, reference_date, source = _auto_basis(day)
     return value, f"automatico · {source} · seduta {reference_date}"
 
