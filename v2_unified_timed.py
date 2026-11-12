@@ -333,22 +333,23 @@ def prepare_slot(day, slot):
 
 
 def _slot_has_occurred(day, slot, now=None):
-    """Do not advertise future snapshot slots as historical CBOE data."""
+    """Use EXACT scheduler clocks; archive labels are not Rome wall times."""
     from datetime import time
     from zoneinfo import ZoneInfo
+    from v2_schedule import SLOTS, HISTORICAL_2030
 
     if now is None:
         now = datetime.now(ZoneInfo("Europe/Rome"))
     if now.tzinfo is None:
         raise ValueError("Orario locale non verificabile.")
-    if slot in ("0730", "1700"):
-        tz = ZoneInfo("Europe/Rome")
-        hour, minute = (7, 30) if slot == "0730" else (17, 0)
-    elif slot in ("1550", "2030"):
-        tz = ZoneInfo("America/Chicago")
-        hour, minute = (8, 50) if slot == "1550" else (13, 30)
+    if slot == "2030":
+        zone, hour, minute, _ = HISTORICAL_2030
     else:
-        raise ValueError("Fascia oraria sconosciuta.")
+        label = LABELS.get(slot)
+        if label not in SLOTS:
+            raise ValueError("Fascia oraria sconosciuta.")
+        zone, hour, minute, _ = SLOTS[label]
+    tz = ZoneInfo(zone)
     expected = datetime.combine(day, time(hour, minute), tzinfo=tz)
     return now.astimezone(tz) >= expected
 
