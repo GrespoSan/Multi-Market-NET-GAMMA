@@ -1,4 +1,4 @@
-"""EXPERIMENTAL one-chart / one Pine 07:30 exporter for NDX RUT DJX GLD USO.
+"""One-chart unified Pine engine for NDX RUT DJX GLD USO.
 
 Original individual exporters remain untouched. For each supported futures root
 the same original Cboe rows are embedded, and only that root is rendered.
@@ -210,7 +210,7 @@ def build_unified_pine(day, market_data):
     bases = scalar("basis", "0.0", _num)
     output = '''//@version=6
 indicator("Serafini Multi-Market · UNICO 07:30 · @DAY@", overlay=true, max_lines_count=500, max_labels_count=60)
-// SPERIMENTALE: 5 mercati, 1 unico motore grafico. Dati originali CBOE.
+// Cinque mercati, un unico motore grafico; dati originali CBOE.
 // Un mercato senza fotografia/basis valido NON viene disegnato.
 // ETF GLD/USO: Gamma ETF originale, livello future solo proiezione dinamica.
 // Opzioni future native GC/CL NON sono disponibili da questi profili.
@@ -405,101 +405,6 @@ if barstate.islast and validTicker
 
 
 def render():
-    """Independent opt-in panel: no mutations to individual market exporters."""
-    with st.expander("PINE MULTI-MARKET UNICO · 07:30 — SPERIMENTALE",
-                     expanded=False):
-        st.caption("Un indicatore TradingView per NQ/MNQ, RTY/M2K, YM/MYM, "
-                   "GC/MGC e CL/MCL. Usa solo le fotografie reali delle 07:30 "
-                   "della stessa seduta NY. La 20:30 storica rimane indipendente. "
-                   "I Pine singoli sono mantenuti.")
-        market_day = st.date_input(
-            "Seduta delle fotografie 07:30 (New York)",
-            value=datetime.now(NY).date(), key="mm_unified_0730_day")
-        if not isinstance(market_day, date):
-            st.warning("Seleziona una sola seduta.")
-            return
-        if not st.button("Prepara Pine unico 07:30",
-                         key="mm_build_unified_0730", type="primary"):
-            return
-        reports = {}
-        data = {}
-        # Obtain missing, date-verified index/futures bases once. No guessed
-        # offsets or arbitrary future contracts, and never use a stale session
-        # value from a different market day.
-        for index_symbol in ("NDX", "RUT", "DJX"):
-            if _session_basis(index_symbol, market_day) is not None:
-                continue
-            try:
-                key = str(st.secrets.get("MASSIVE_API_KEY", "")).strip()
-                if not key:
-                    raise ValueError("MASSIVE_API_KEY non configurata.")
-                if index_symbol == "NDX":
-                    from ndx_basis import fetch_basis
-                    result = fetch_basis(market_day, key)
-                else:
-                    from v2_index_basis import compute_basis
-                    result = compute_basis(index_symbol, market_day, key)
-                basis = float(result["basis"])
-                if not isfinite(basis):
-                    raise ValueError("Differenziale non finito.")
-                st.session_state[f"mm_unified_basis_{index_symbol}"] = {
-                    "analysis_day": market_day.isoformat(),
-                    "basis": basis,
-                    "source": result.get("source", ""),
-                    "reference_date": str(result.get("reference_date", "")),
-                }
-            except (ValueError, TypeError, KeyError, OSError) as exc:
-                st.caption(f"{index_symbol} · Differenziale automatico non disponibile: "
-                           f"{str(exc)[:130]}. Nessun valore stimato.")
-        # No invented defaults for index futures basis; use a session-scoped
-        # value only if it was verified for this SAME analysis day.
-        for symbol in MARKETS:
-            try:
-                captures = load_pine_slot_captures(symbol, market_day)
-                capture = captures.get("0730")
-                if capture is None:
-                    raise ValueError("Nessuna fotografia reale 07:30 per la seduta.")
-                band = st.session_state.get(
-                    f"v2_primary_{symbol.lower()}_band" if symbol in ("RUT", "DJX")
-                    else f"{symbol.lower()}_cboe_band", 3.0)
-                if symbol == "NDX":
-                    band = st.session_state.get("ndx_band_pct", 3.0)
-                band = float(band)
-                extension = bool(st.session_state.get(
-                    f"v2_{symbol.lower()}_visual_extension", True))
-                record = _from_capture(symbol, capture, market_day,
-                                       band=band, extension=extension)
-                if symbol not in ETF:
-                    basis = _session_basis(symbol, market_day)
-                    if basis is None:
-                        raise ValueError("Differenziale future/indice non verificato "
-                                         "per questa seduta. Calcolalo nella "
-                                         "sezione specifica dello strumento.")
-                    record["basis"] = basis
-                else:
-                    record["basis"] = 0.0
-                data[symbol] = record
-                reports[symbol] = (
-                    f"OK · {record['main_label']} "
-                    f"{record['main_expiry']:%d/%m} · "
-                    f"Weekly {record['weekly_expiry']:%d/%m} · "
-                    f"{len(record['main']) + len(record['weekly'])} strike")
-            except (ValueError, KeyError, TypeError, OverflowError, OSError) as exc:
-                reports[symbol] = f"N/D · {str(exc)[:160]}"
-        for symbol in MARKETS:
-            st.caption(f"{symbol} → {', '.join(ROOTS[symbol])}: {reports[symbol]}")
-        if not data:
-            st.error("Nessun mercato verificato; non genero un Pine vuoto.")
-            return
-        code = build_unified_pine(market_day, data)
-        st.warning("Prototipo: verifica in TradingView compilazione, "
-                   "allineamento degli strike e rapporto ETF/future prima "
-                   "di sostituire i Pine singoli.")
-        st.download_button(
-            "Scarica Pine Multi-Market 07:30 · sperimentale",
-            code.encode("utf-8"),
-            file_name=f"Serafini_MultiMarket_UNICO_0730_{market_day:%Y%m%d}.pine",
-            mime="text/plain", key="mm_unified_0730_dl",
-            on_click="ignore", use_container_width=True)
-        with st.expander("Mostra codice Pine unico da copiare"):
-            st.code(code, language="pine")
+    """Three unified downloads; individual market exporters stay unchanged."""
+    from v2_unified_timed import render as render_unified_timed
+    render_unified_timed()
