@@ -157,8 +157,6 @@ array<float> previousGamma = switch activeMarket
 """
     script = script.replace("@PREV@", LABELS[prev_slot]).replace("@CUR@", LABELS[slot])
     script = script.replace("UNICO 07:30 ·", f"UNICO {LABELS[slot]} ·", 1)
-    script = script.replace("// SPERIMENTALE: 5 mercati, 1 unico motore grafico. Dati originali CBOE.",
-                            "// Cinque mercati, tre fotografie reali per mercato, un unico disegno.")
     return script
 
 
