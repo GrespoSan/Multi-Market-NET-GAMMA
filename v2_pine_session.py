@@ -10,8 +10,8 @@ import re
 
 NY = ZoneInfo("America/New_York")
 ROME = ZoneInfo("Europe/Rome")
-# Cambio prospettico dal 13 novembre 2026: non rietichettare vecchi archivi.
-CHANGEOVER = date(2026, 11, 13)
+# Cambio prospettico dal 12 novembre 2026: non rietichettare vecchi archivi.
+CHANGEOVER = date(2026, 11, 12)
 SLOTS = ("0730", "1550", "1700")
 LEGACY_SLOTS = ("0730", "1550", "2030")
 ALL_SLOTS = ("0730", "1550", "1700", "2030")
