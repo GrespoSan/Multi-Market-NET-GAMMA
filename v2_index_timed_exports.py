@@ -94,10 +94,8 @@ def _comparison_pine(ticker, prev, cur, weekly, basis, prev_info, cur_info,
     replacement = (
         f'gammaPerCandle = input.float({n(scale)}, '
         f'"Scala MANUALE · Gamma/barra", minval=0.000001, step={n(step)}, '
-        '"Scala unica tra tutte le tre fotografie; Gamma invariato.")'
+        'tooltip="Scala unica tra tutte le tre fotografie; Gamma invariato.")'
     )
-    # The last argument must be a named tooltip, compatible with Pine v6.
-    replacement = replacement.replace('", "Scala unica', '", tooltip="Scala unica')
     code = code[:match.start()] + replacement + code[match.end():]
     marker = "if barstate.islast and validTicker\n"
     if code.count(marker) != 1:
