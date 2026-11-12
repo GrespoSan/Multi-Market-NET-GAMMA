@@ -15,13 +15,14 @@ from v2_github_archive import (
     list_v2_artifacts, fetch_artifact_snapshot, decrypt_encrypted,
 )
 
-from v2_pine_session import parse_archived_capture, artifact_in_session_window, SLOTS
+from v2_pine_session import parse_archived_capture, artifact_in_session_window, slots_for_day
 
 ROME = ZoneInfo("Europe/Rome")
 AVAILABLE_MARKETS = ("NDX", "RUT", "DJX", "GLD", "USO")
 SLOTS = {"0730": "Mattina 07:30 Roma",
          "1550": "Pomeriggio 08:50 Chicago",
-         "2030": "Sera 13:30 Chicago",
+         "1700": "Pomeriggio 17:00 Roma",
+         "2030": "Storico 20:30 Roma",
          "manuale": "Rilevamento manuale"}
 
 
@@ -33,6 +34,7 @@ def _late_capture(slot_code, instant):
     """
     clocks = {"0730": (ROME, 7, 30),
               "1550": (ZoneInfo("America/Chicago"), 8, 50),
+              "1700": (ROME, 17, 0),
               "2030": (ZoneInfo("America/Chicago"), 13, 30)}
     if slot_code not in clocks:
         return False
@@ -228,7 +230,7 @@ def archive_panel(symbol: str):
 
 
 def load_pine_slot_captures(symbol, market_day, *, max_candidates=30):
-    """Read only actual same-NY-date encrypted captures for 07:30/15:50/20:30.
+    """Read only real archived captures for active slots (17:00 new, 20:30 historical).
 
     Reuses the existing GitHub artifact and snapshot Streamlit caches. Calls
     do not touch Massive, Cboe live endpoints, or Supabase. Missing data remain
@@ -249,9 +251,10 @@ def load_pine_slot_captures(symbol, market_day, *, max_candidates=30):
     artifacts = _cached_artifacts(token)
     candidates = [x for x in artifacts
                   if artifact_in_session_window(x.get("created_at"), market_day)]
+    required_slots = slots_for_day(market_day)
     result = {}
     for artifact in candidates[:max_candidates]:
-        if len(result) == len(SLOTS):
+        if len(result) == len(required_slots):
             break
         try:
             raw, filename = _cached_snapshot(
@@ -260,6 +263,8 @@ def load_pine_slot_captures(symbol, market_day, *, max_candidates=30):
         except (ValueError, KeyError, TypeError, OSError):
             continue
         slot = info["slot"]
+        if slot not in required_slots:
+            continue
         if slot not in result or info["utc"] > result[slot]["utc"]:
             result[slot] = {**info, "raw": raw}
     return result
