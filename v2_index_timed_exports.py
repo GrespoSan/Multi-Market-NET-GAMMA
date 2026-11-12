@@ -70,7 +70,7 @@ def _comparison_pine(ticker, prev, cur, weekly, basis, prev_info, cur_info,
         raise ValueError("Template Pine 0DTE non compatibile.")
     code = code.replace(
         previous_toggle,
-        'showPrevious = input.bool(true, "Mostra 0DTE precedente")\n'
+        'showPrevious = input.bool(false, "Mostra 0DTE precedente")\n'
         + previous_toggle, 1)
     anchor = 'showTitles = input.bool(true, "Mostra intestazioni")'
     if code.count(anchor) != 1:
