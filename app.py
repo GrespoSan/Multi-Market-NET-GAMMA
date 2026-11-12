@@ -192,6 +192,11 @@ with st.container(border=True):
         st.caption("Pine dedicato Russell/Dow disponibile nella sezione Analisi Net Gamma dopo aver verificato il basis.")
 
 st.write("")
+# Independent 07:30 experimental unified export. No changes to the
+# five existing per-market Pine export sections or gamma engines.
+from v2_unified_pine import render as render_unified_0730
+render_unified_0730()
+
 st.subheader("02 · NET GAMMA UNIVERSALE — CBOE")
 st.caption("Strumento indipendente: inserisci qualsiasi ticker CBOE supportato, senza cambiare il mercato principale.")
 
