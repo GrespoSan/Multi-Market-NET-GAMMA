@@ -66,6 +66,18 @@ class UnifiedPineTests(unittest.TestCase):
         self.assertIn('=> "Principale (non 0DTE)"', source)
         self.assertIn('showTop3Odte and mainKind == "0DTE"', source)
 
+    def test_direct_download_without_prepare_step(self):
+        timed = (Path(__file__).resolve().parents[1] / "v2_unified_timed.py").read_text()
+        self.assertNotIn('st.button(f"Prepara Pine', timed)
+        self.assertIn('f"Scarica Pine · {label}"', timed)
+        self.assertIn('st.download_button(', timed)
+        self.assertIn('st.button(f"Pine · {label} · non disponibile"', timed)
+        self.assertIn('disabled=True', timed)
+        self.assertIn('"mm_unified_prepared_by_slot"', timed)
+        self.assertIn('if refresh or prepared is None or stale_missing:', timed)
+        self.assertIn('st.button("Aggiorna Pine per orari"', timed)
+        self.assertIn('on_click="ignore"', timed)
+
     def test_deployed_view_is_opt_in(self):
         app = (Path(__file__).resolve().parents[1] / "app.py").read_text()
         self.assertIn("render_unified_0730()", app)
