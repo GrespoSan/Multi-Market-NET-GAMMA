@@ -83,9 +83,12 @@ class SPXArchiveReadOnly:
 
 
 def _secrets():
-    url = str(st.secrets.get("SPX_SUPABASE_URL", "")).strip()
-    token = str(st.secrets.get("SPX_SUPABASE_READ_KEY", "")).strip()
-    bucket = str(st.secrets.get("SPX_SUPABASE_BUCKET", "spx-snapshots")).strip()
+    try:
+        url = str(st.secrets.get("SPX_SUPABASE_URL", "")).strip()
+        token = str(st.secrets.get("SPX_SUPABASE_READ_KEY", "")).strip()
+        bucket = str(st.secrets.get("SPX_SUPABASE_BUCKET", "spx-snapshots")).strip()
+    except Exception:
+        url, token, bucket = "", "", "spx-snapshots"
     if not url or not token:
         raise ValueError("Accesso SPX non configurato: aggiungi nei Secrets "
                          "di Multi-Market SPX_SUPABASE_URL e "
