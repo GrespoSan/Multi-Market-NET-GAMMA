@@ -51,7 +51,7 @@ def _checked_comparison(previous, current, symbol):
     return dict(current)
 
 
-def build_unified_comparison_pine(day, current, previous, slot):
+def build_unified_comparison_pine(day, current, previous, slot, reports=None):
     """Upgrade the SAME unified Pine renderer to three verified columns."""
     if not isinstance(day, date) or slot not in slots_for_day(day)[1:]:
         raise ValueError("Fascia di confronto non prevista per la seduta.")
@@ -110,17 +110,38 @@ array<float> previousGamma = switch activeMarket
     anchor = "if barstate.islast and validTicker\n"
     if script.count(anchor) != 1:
         raise ValueError("Template unico: guardia disegno non compatibile.")
-    script = script[:script.index(anchor)] + """if barstate.islast and validTicker
+    # Exact reasons from archive checks; do not misdiagnose basis errors.
+    reasons = reports or {}
+    def _pine_reason(symbol):
+        msg = str(reasons.get(symbol, "Fotografia corrente non disponibile"))
+        if msg.startswith("N/D · "):
+            msg = msg[6:]
+        return msg.replace('"', "'").replace("\n", " ")[:135]
+    unavailable_switch = "\n".join(
+        f'    "{symbol}" => "{_pine_reason(symbol)}"' for symbol in MARKETS
+    ) + '\n    => "Mercato non supportato"'
+    anchor = "if barstate.islast and validTicker\n"
+    script = script[:script.index(anchor)] + """
+// Scala dei soli istogrammi: NET GAMMA originali e strike invariati.
+unifiedReadableScale(array<float> values, float maxBars) =>
+    float peak = 0.0
+    for g in values
+        peak := math.max(peak, math.abs(g))
+    peak / math.max(1.0, maxBars)
+
+string missingReason = switch activeMarket
+@MISSING@
+if barstate.islast and validTicker
     for ln in drawnLines
         line.delete(ln)
     array.clear(drawnLines)
     for lb in drawnLabels
         label.delete(lb)
     array.clear(drawnLabels)
-    bool haveData = array.size(previousLevels) > 0 and array.size(mainLevels) > 0 and array.size(weekLevels) > 0
+    bool haveData = array.size(mainLevels) > 0 and array.size(weekLevels) > 0
     bool ratioValid = not isETF or (timeframe.isintraday and not na(ratioToDraw))
     if not haveData
-        label info = label.new(bar_index, close, "Confronto non disponibile per " + activeMarket + ": fotografia 0DTE assente.", style=label.style_label_left, color=color.orange, textcolor=color.black)
+        label info = label.new(bar_index + 10, close, "Profilo @CUR@ " + activeMarket + " N/D: " + missingReason, style=label.style_label_left, color=color.orange, textcolor=color.black)
         array.push(drawnLabels, info)
     else if not ratioValid
         label warn = label.new(bar_index, close, "ETF/future: nessuna coppia 5m chiusa e sincronizzata; nessun livello simulato.", style=label.style_label_left, color=color.orange, textcolor=color.black)
@@ -133,28 +154,40 @@ array<float> previousGamma = switch activeMarket
         array<float> drawWeek = mapMarket(weekLevels, factor, shift)
         array<float> drawCalls = mapMarket(callLevels, factor, shift)
         array<float> drawPuts = mapMarket(putLevels, factor, shift)
+        bool previousVisible = showPrevious and array.size(previousLevels) > 0
         int previousCenter = offsetOdte
-        int currentCenter = previousCenter + (showPrevious ? offsetCompare : 0)
+        int currentCenter = previousCenter + (previousVisible ? offsetCompare : 0)
         int weeklyCenter = currentCenter + offsetWeekly
         float safe = math.max(
-            showPrevious ? requiredScale(previousGamma, previousCenter) : 0.0,
+            previousVisible ? requiredScale(previousGamma, previousCenter) : 0.0,
             showCurrentOdte ? requiredScale(mainGamma, currentCenter) : 0.0)
         safe := math.max(safe,
             showCurrentWeekly ? requiredScale(weekGamma, weeklyCenter) : 0.0)
-        bool far = (showPrevious and previousCenter >= 480) or (showCurrentOdte and currentCenter >= 480) or (showCurrentWeekly and weeklyCenter >= 480)
-        if far or actualScale < safe * 0.999999
-            label warning = label.new(bar_index + 10, close, "Scala/distanza non valida: aumenta scala o riduci offset.", style=label.style_label_left, color=color.orange, textcolor=color.black)
+        float barsCurrent = previousVisible ? 42.0 : 78.0
+        float readable = math.max(
+            previousVisible ? unifiedReadableScale(previousGamma, 42.0) : 0.0,
+            showCurrentOdte ? unifiedReadableScale(mainGamma, barsCurrent) : 0.0)
+        readable := math.max(readable,
+            showCurrentWeekly ? unifiedReadableScale(weekGamma, 78.0) : 0.0)
+        float effectiveScale = math.max(actualScale, math.max(safe * 1.001, readable))
+        bool far = (previousVisible and previousCenter >= 480) or (showCurrentOdte and currentCenter >= 480) or (showCurrentWeekly and weeklyCenter >= 480)
+        if far
+            label warning = label.new(bar_index + 10, close, "Distanza profili oltre +480 barre: riduci gli offset.", style=label.style_label_left, color=color.orange, textcolor=color.black)
             array.push(drawnLabels, warning)
         else
-            if showPrevious
-                renderProfile(prevMapped, previousGamma, previousCenter + bar_index, "0DTE @PREV@ · precedente · " + activeMarket, actualScale)
+            if previousVisible
+                renderProfile(prevMapped, previousGamma, previousCenter + bar_index, mainKind + " @PREV@ · precedente · " + primaryExpiry, effectiveScale)
             if showCurrentOdte
-                renderProfile(drawMain, mainGamma, currentCenter + bar_index, "0DTE @CUR@ · corrente · " + snapshotClock, actualScale)
+                renderProfile(drawMain, mainGamma, currentCenter + bar_index, mainKind + " @CUR@ · corrente · " + snapshotClock, effectiveScale)
             if showCurrentWeekly
-                renderProfile(drawWeek, weekGamma, weeklyCenter + bar_index, "Weekly " + weeklyExpiry + " · " + snapshotClock, actualScale)
+                renderProfile(drawWeek, weekGamma, weeklyCenter + bar_index, "Weekly " + weeklyExpiry + " · " + snapshotClock, effectiveScale)
+            if showPrevious and not previousVisible
+                label noPrior = label.new(bar_index + currentCenter, close, "Precedente @PREV@ non disponibile", style=label.style_label_left, color=color.gray, textcolor=color.white, size=size.tiny)
+                array.push(drawnLabels, noPrior)
             if showTop3Odte and mainKind == "0DTE"
                 drawOdteTopProjections(drawCalls, drawPuts)
-"""
+""".replace("@MISSING@", unavailable_switch)
+
     script = script.replace("@PREV@", LABELS[prev_slot]).replace("@CUR@", LABELS[slot])
     script = script.replace("UNICO 07:30 ·", f"UNICO {LABELS[slot]} ·", 1)
     return script
@@ -292,7 +325,7 @@ def render():
                         script = (
                             build_unified_pine(day, current) if slot == "0730"
                             else build_unified_comparison_pine(
-                                day, current, previous, slot)
+                                day, current, previous, slot, reports=reports)
                         ) if current else None
                         prepared = {
                             "script": script, "reports": reports,
