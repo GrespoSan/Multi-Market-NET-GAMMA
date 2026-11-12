@@ -71,7 +71,6 @@ def render_selected_market(market_key):
                 st.session_state['ndx_download_rome']=(
                     st.session_state['ndx_capture_rome_iso']
                     or 'Archivio privato · ora acquisizione non verificabile')
-                st.success('Fotografia programmata NDX validata e caricata.')
             except Exception as exc:
                 st.error(f'Archivio NDX non valido: {str(exc)[:230]}')
     
