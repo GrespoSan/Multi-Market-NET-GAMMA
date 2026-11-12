@@ -1,4 +1,4 @@
-"""Unified experimental Pine: no artificial 0DTE or Gamma normalization."""
+"""Unified Pine: no artificial 0DTE or Gamma normalization."""
 import unittest
 from datetime import date
 from pathlib import Path
@@ -70,8 +70,12 @@ class UnifiedPineTests(unittest.TestCase):
         app = (Path(__file__).resolve().parents[1] / "app.py").read_text()
         self.assertIn("render_unified_0730()", app)
         src = (Path(__file__).resolve().parents[1] / "v2_unified_pine.py").read_text()
-        self.assertIn('expanded=False', src)
-        self.assertIn('load_pine_slot_captures(symbol, market_day)', src)
+        timed = (Path(__file__).resolve().parents[1] / "v2_unified_timed.py").read_text()
+        self.assertIn("render_unified_timed()", src)
+        self.assertIn('expanded=False', timed)
+        self.assertIn('load_pine_slot_captures(symbol, day)', timed)
+        self.assertIn('st.columns(3, gap="small")', timed)
+        self.assertNotIn("SPERIMENTALE", timed)
 
 
 if __name__ == "__main__":
