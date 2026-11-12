@@ -25,12 +25,15 @@ NY = ZoneInfo("America/New_York")
 
 
 def _checked_comparison(previous, current, symbol):
-    """No comparison of unequal expiries or a non-0DTE ETF principal."""
-    if previous["main_label"] != "0DTE" or current["main_label"] != "0DTE":
-        raise ValueError(f"{symbol}: confronto 0DTE non disponibile; "
-                         "la scadenza principale non coincide con la seduta.")
+    """Verify same real expiry. Never mislabel a future principal as 0DTE."""
+    kind = current["main_label"]
+    if previous["main_label"] != kind:
+        raise ValueError(f"{symbol}: tipo di profilo differente tra le due fotografie.")
+    if kind != "0DTE" and not (
+            symbol in ETF and kind == "Principale (non 0DTE)"):
+        raise ValueError(f"{symbol}: tipo principale non confrontabile.")
     if previous["main_expiry"] != current["main_expiry"]:
-        raise ValueError(f"{symbol}: scadenze 0DTE precedenti/correnti differenti.")
+        raise ValueError(f"{symbol}: scadenze principali precedenti/correnti differenti.")
     size = len(previous["main"]) + len(current["main"]) + len(current["weekly"])
     if size > GAMMA_LIMIT:
         raise ValueError(f"{symbol}: confronto con {size} strike oltre il limite "
@@ -42,35 +45,31 @@ def _checked_comparison(previous, current, symbol):
     if not all(isfinite(float(x[value])) and isfinite(float(x[field]))
                for x in previous["main"]):
         raise ValueError(f"{symbol}: Gamma precedente non valido.")
-    # One scale for all three photographic columns for this instrument only.
-    scale, _ = _initial_manual_scale([
-        ({"rows": [{"net_gamma": r[value]} for r in group]}, center)
-        for group, center in ((previous["main"], 100),
-                              (current["main"], 195),
-                              (current["weekly"], 295))
-    ])
-    checked = dict(current)
-    checked["scale"] = scale
-    return checked
+    # The PREVIOUS profile is OFF by default. Derive the recommended scale
+    # from CURRENT and WEEKLY only, exactly as in the 07:30 Pine.
+    # When previous is enabled Pine automatically checks its own size.
+    return dict(current)
 
 
 def build_unified_comparison_pine(day, current, previous, slot):
     """Upgrade the SAME unified Pine renderer to three verified columns."""
     if not isinstance(day, date) or slot not in slots_for_day(day)[1:]:
         raise ValueError("Fascia di confronto non prevista per la seduta.")
-    if not current or set(current) != set(previous):
-        raise ValueError("Confronto: fotografie precedenti/correnti non accoppiate.")
-    for symbol in current:
-        _checked_comparison(previous[symbol], current[symbol], symbol)
-    valid = {symbol: _checked_comparison(previous[symbol], current[symbol], symbol)
-             for symbol in current}
+    if not current:
+        raise ValueError("Nessun profilo corrente reale disponibile.")
+    if set(previous) - set(current):
+        raise ValueError("Fotografie precedenti senza mercato corrente.")
+    valid = {}
+    for symbol, item in current.items():
+        valid[symbol] = (_checked_comparison(previous[symbol], item, symbol)
+                         if symbol in previous else dict(item))
     script = build_unified_pine(day, valid)
     prev_slot = "0730" if slot == "1550" else "1550"
     marker = 'offsetOdte = input.int(100, "Distanza profilo principale", minval=45, maxval=250)'
     if script.count(marker) != 1:
         raise ValueError("Template unico: offset profili assente.")
     script = script.replace(marker,
-        marker + '\nshowPrevious = input.bool(true, "Mostra 0DTE precedente")'
+        marker + '\nshowPrevious = input.bool(false, "Mostra 0DTE precedente")'
         '\noffsetCompare = input.int(95, "Distanza corrente dalla precedente",'
         ' minval=20, maxval=200)', 1)
     # Immutable original strike and original Gamma arrays of previous snapshots.
