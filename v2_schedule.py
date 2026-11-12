@@ -26,6 +26,12 @@ def decision(now: datetime, requested=None, event_cron=None, manual=False, exter
         raise ValueError("Il timestamp di esecuzione deve avere un fuso orario.")
     roma = now.astimezone(ROME)
     chicago = now.astimezone(CHICAGO)
+    # cron-job.org may still dispatch its previously configured 20:30 job.
+    # Skip it without producing new captures or falsifying the archive.
+    if requested == "20:30" and roma.date() >= CHANGEOVER and not manual:
+        return {"run": False, "reason": "SLOT_2030_DISMESSO",
+                "slot": requested, "rome": roma, "chicago": chicago,
+                "time_zone": "America/Chicago"}
     if requested and requested not in SLOTS:
         raise ValueError("Slot logico non riconosciuto.")
     if external and (manual or event_cron or not requested):
