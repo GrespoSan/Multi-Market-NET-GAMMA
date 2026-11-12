@@ -81,6 +81,11 @@ def render_etf_pine_exports(symbol, calculated, reference, day,
             except (ValueError, TypeError, KeyError, OverflowError) as exc:
                 st.warning("Pine del profilo principale non disponibile: "
                            + str(exc)[:220])
+        # Tre confronti 0DTE inesistenti non vanno visualizzati come
+        # semplici download mancanti: manca la scadenza, non l'archivio.
+        st.caption("I tre Pine orari 0DTE riappariranno quando la catena "
+                   "avrà una scadenza coincidente con la data della fotografia.")
+        return
 
     st.markdown("**Pine per orari · 07:30 / 15:50 / 20:30**")
     render_timed_pine_exports(
