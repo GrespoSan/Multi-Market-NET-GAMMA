@@ -125,7 +125,7 @@ def make_pine_comparison_v2(symbol, previous, current, weekly,
         raise ValueError("Template Pine SPX non compatibile con confronto.")
     code = code.replace(
         current_toggle,
-        'showPrevious = input.bool(true, "Mostra 0DTE precedente")\n'
+        'showPrevious = input.bool(false, "Mostra 0DTE precedente")\n'
         + current_toggle, 1)
     setting = 'showTitles = input.bool(true, "Mostra intestazioni")'
     if code.count(setting) != 1:
