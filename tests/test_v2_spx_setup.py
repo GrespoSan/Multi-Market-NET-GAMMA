@@ -70,13 +70,13 @@ class V2SPXSetupTests(unittest.TestCase):
         ]
         for now, cron, logical, zone, rome_time in cases:
             with self.subTest(now=now, cron=cron):
-                d = decision(now, event_cron=cron)
+                d = decision(now, requested=logical, external=True)
                 self.assertTrue(d["run"])
                 self.assertEqual(d["slot"], logical)
                 self.assertEqual(d["time_zone"], zone)
                 self.assertEqual(d["rome"].strftime("%H:%M"), rome_time)
 
-    def test_delayed_github_schedules_run_at_actual_time_without_backdating(self):
+    def test_delayed_external_dispatches_run_at_actual_time_without_backdating(self):
         # Real runs 30/10/2026: +5h after the afternoon slot,
         # +4h after the evening slot. Both had been rejected as FUORI_FINESTRA.
         for now, cron, label in (
@@ -86,9 +86,9 @@ class V2SPXSetupTests(unittest.TestCase):
              "30 13 * * 1-5", "20:30"),
         ):
             with self.subTest(now=now):
-                result = decision(now, event_cron=cron)
+                result = decision(now, requested=label, external=True)
                 self.assertTrue(result["run"])
-                self.assertEqual(result["reason"], "GITHUB_SCHEDULE_DELAYED")
+                self.assertEqual(result["reason"], "EXTERNAL_DISPATCH_DELAYED")
                 self.assertEqual(result["slot"], label)
                 self.assertGreater(result["lag_seconds"], 12*60)
                 self.assertEqual(result["rome"], now.astimezone(
@@ -101,12 +101,17 @@ class V2SPXSetupTests(unittest.TestCase):
         # A GitHub run BEFORE its scheduled clock is not backdated.
         early = decision(datetime(2026, 10, 30, 13, 40,
                                   tzinfo=timezone.utc),
-                         event_cron="50 8 * * 1-5")
+                         requested="15:50", external=True)
         self.assertFalse(early["run"])
         manual = decision(datetime(2026, 10, 31, 15, 20,
                                    tzinfo=timezone.utc),
                           requested="20:30", manual=True)
         self.assertEqual(manual["slot"], "manuale")
+
+    def test_native_github_schedule_is_disabled(self):
+        with self.assertRaisesRegex(ValueError, "Cron GitHub disabilitato"):
+            decision(datetime(2026, 11, 12, 16, 0, tzinfo=timezone.utc),
+                     event_cron="0 16 * * 1-5")
 
     def test_actual_late_run_produces_encrypted_files_and_late_label(self):
         key = Fernet.generate_key().decode()
@@ -120,10 +125,12 @@ class V2SPXSetupTests(unittest.TestCase):
             r = run_capture(
                 now=datetime(2026, 10, 30, 18, 54, tzinfo=timezone.utc),
                 env={"V2_ARCHIVE_FERNET_KEY": key,
-                     "V2_EVENT_CRON": "50 8 * * 1-5"},
+                     "V2_REQUESTED_SLOT": "15:50",
+                     "V2_EXTERNAL_CRONJOB": "true",
+                     "V2_MANUAL_RUN": "false"},
                 output=Path(tmp), downloader=source)
             self.assertEqual(r["status"], "TUTTI_ARCHIVIATI_IN_RITARDO")
-            self.assertEqual(r["reason"], "GITHUB_SCHEDULE_DELAYED")
+            self.assertEqual(r["reason"], "EXTERNAL_DISPATCH_DELAYED")
             self.assertEqual(r["slot"], "15:50")
             self.assertEqual(len(calls), 5)
             self.assertEqual(len(list(Path(tmp).glob("*.enc"))), 5)
