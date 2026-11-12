@@ -145,7 +145,8 @@ def render(ticker):
                 st.rerun()
             except Exception as exc:
                 st.error(f"Download non riuscito: {str(exc)[:260]}")
-        with st.expander("Oppure importa ZIP / JSON / JSON.GZ", expanded=False):
+        st.caption("Oppure importa ZIP / JSON / JSON.GZ")
+        with st.container():
             upload = st.file_uploader(
                 f"Carica fotografia originale {ticker}", type=["zip", "json", "gz"],
                 key=f"{prefix}_upload",
