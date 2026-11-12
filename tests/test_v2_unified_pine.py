@@ -74,8 +74,11 @@ class UnifiedPineTests(unittest.TestCase):
         self.assertIn('st.button(f"Pine · {label} · non disponibile"', timed)
         self.assertIn('disabled=True', timed)
         self.assertIn('"mm_unified_prepared_by_slot"', timed)
-        self.assertIn('if refresh or prepared is None or stale_missing:', timed)
-        self.assertIn('st.button("Aggiorna Pine per orari"', timed)
+        self.assertIn('if prepared is None or stale_incomplete:', timed)
+        self.assertIn('@st.fragment(run_every=180)', timed)
+        self.assertNotIn('st.button("Aggiorna Pine per orari"', timed)
+        self.assertNotIn('mm_unified_spx_basis_manual_', timed)
+        self.assertNotIn('st.checkbox(', timed)
         self.assertIn('on_click="ignore"', timed)
 
     def test_deployed_view_is_opt_in(self):
