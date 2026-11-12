@@ -204,15 +204,6 @@ st.caption("Strumento indipendente: inserisci qualsiasi ticker CBOE supportato, 
 from v2_universal_cboe import render as render_universal_cboe
 render_universal_cboe()
 
-# Shared public US macro calendar is useful for any free CBOE ticker.
-# It never alters ticker selection, strike lists or NET GAMMA calculations.
-with st.expander("ANALISI DEL CONTESTO — News macro USA · Ticker universale",
-                 expanded=False):
-    from macro_calendar import render as render_macro_calendar
-    render_macro_calendar()
-    st.caption("Calendario macro USA generale: nessuna attribuzione automatica "
-               "di volatilità o trend allo specifico ticker CBOE.")
-
 # No GEX EDGE, REPLAY E CONFRONTO, or REPORT GIORNALIERO AI.
 # Cboe snapshot management stays inside the market-specific gamma analysis
 # via v2_storage_off.archive_panel, not via Supabase.
