@@ -30,6 +30,12 @@ INDEX_TICKERS = frozenset({"RUT", "DJX"})
 WEEKLY_ROOTS = {"RUT": "RUTW", "DJX": "DJXW"}
 
 
+def format_gamma_it(value, signed=False):
+    """Italian thousands/decimal separators; NET signed, Call/Put as contributions."""
+    formatted = f"{float(value):+,.2f}" if signed else f"{float(value):,.2f}"
+    return formatted.replace(",", "_").replace(".", ",").replace("_", ".")
+
+
 def validate_ticker(value):
     symbol = str(value or "").strip().upper()
     if not TICKER.fullmatch(symbol):
@@ -428,9 +434,9 @@ def render():
         calls = sum(r["call"] for r in allrows)
         puts = sum(r["put"] for r in allrows)
         a, b, c = st.columns(3)
-        a.metric("NET GAMMA · scadenze selezionate", f"{net:+,.2f}")
-        b.metric("CALL GAMMA", f"{calls:,.2f}")
-        c.metric("PUT GAMMA", f"{puts:,.2f}")
+        a.metric("NET GAMMA · Call − Put", format_gamma_it(net, signed=True))
+        b.metric("GAMMA CALL (+)", format_gamma_it(calls, signed=True))
+        c.metric("GAMMA PUT (−)", "−" + format_gamma_it(puts))
         st.caption(f"Close precedente {close:,.2f} · prezzo CBOE "
                    f"{doc['data'].get('current_price', 'N/D')} · Gamma non monetario. "
                    "Il NET totale somma solo i profili visualizzati, non tutta la catena.")
