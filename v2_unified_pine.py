@@ -144,6 +144,10 @@ def _from_capture(symbol, capture, day, band=3.0, extension=True):
 
 
 def _session_basis(symbol, day):
+    saved = st.session_state.get(f"mm_unified_basis_{symbol}")
+    if (isinstance(saved, dict) and saved.get("analysis_day") == day.isoformat()
+            and isfinite(float(saved.get("basis", float("nan"))))):
+        return float(saved["basis"])
     if symbol == "NDX":
         result = st.session_state.get("ndx_basis_result")
     else:
@@ -385,6 +389,34 @@ def render():
             return
         reports = {}
         data = {}
+        # Obtain missing, date-verified index/futures bases once. No guessed
+        # offsets or arbitrary future contracts, and never use a stale session
+        # value from a different market day.
+        for index_symbol in ("NDX", "RUT", "DJX"):
+            if _session_basis(index_symbol, market_day) is not None:
+                continue
+            try:
+                key = str(st.secrets.get("MASSIVE_API_KEY", "")).strip()
+                if not key:
+                    raise ValueError("MASSIVE_API_KEY non configurata.")
+                if index_symbol == "NDX":
+                    from ndx_basis import fetch_basis
+                    result = fetch_basis(market_day, key)
+                else:
+                    from v2_index_basis import compute_basis
+                    result = compute_basis(index_symbol, market_day, key)
+                basis = float(result["basis"])
+                if not isfinite(basis):
+                    raise ValueError("Differenziale non finito.")
+                st.session_state[f"mm_unified_basis_{index_symbol}"] = {
+                    "analysis_day": market_day.isoformat(),
+                    "basis": basis,
+                    "source": result.get("source", ""),
+                    "reference_date": str(result.get("reference_date", "")),
+                }
+            except (ValueError, TypeError, KeyError, OSError) as exc:
+                st.caption(f"{index_symbol} · Differenziale automatico non disponibile: "
+                           f"{str(exc)[:130]}. Nessun valore stimato.")
         # No invented defaults for index futures basis; use a session-scoped
         # value only if it was verified for this SAME analysis day.
         for symbol in MARKETS:
