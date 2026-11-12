@@ -171,7 +171,12 @@ with st.container(border=True):
     # shared by v2_massive_day_cache and expire on the next Rome calendar day.
     with context_slot.container():
         if market_key in ("RUSSELL", "DOW"):
-            st.caption("Contesto avanzato: integrazione specifica in verifica; nessuna volatilità o trend di un altro mercato è attribuita a questo indice.")
+            with st.expander("ANALISI DEL CONTESTO — News macro USA",
+                             expanded=context_initial):
+                from macro_calendar import render as render_macro_calendar
+                render_macro_calendar()
+                st.caption("Trend e volatilità specifici di Russell/Dow non ancora verificati; "
+                           "nessun dato di un altro mercato viene attribuito a questi indici.")
         else:
             with st.expander("ANALISI DEL CONTESTO — News · Volatilità · Trend Daily",
                              expanded=context_initial):
