@@ -466,6 +466,6 @@ def render():
             code.encode("utf-8"),
             file_name=f"Serafini_MultiMarket_UNICO_0730_{market_day:%Y%m%d}.pine",
             mime="text/plain", key="mm_unified_0730_dl",
-            use_container_width=True)
+            on_click="ignore", use_container_width=True)
         with st.expander("Mostra codice Pine unico da copiare"):
             st.code(code, language="pine")
