@@ -211,16 +211,24 @@ def render(ticker):
         doc, ticker, day, close, 
         float(band), dates)
     weekly_key = f"{prefix}_weekly"
-    # Never initialize to None when a validated Weekly is available.
-    # Reset a stale selection after date/band changes, but allow explicit None.
-    weekly_context = (snapshot_digest, day, float(close),
-                      float(band))
+    weekly_saved_key = f"{prefix}_weekly_saved"
+    # Streamlit removes widget keys when a different market is selected.
+    # Keep the explicit user's choice outside the selectbox lifecycle, like
+    # the persisted basis. None is meaningful ONLY when chosen explicitly.
+    weekly_context = (snapshot_digest, day, float(close), float(band))
+    allowed_weeklies = [None] + following_fridays
     if st.session_state.get(f"{prefix}_weekly_context") != weekly_context:
         st.session_state[f"{prefix}_weekly_context"] = weekly_context
+        st.session_state[weekly_saved_key] = preferred_weekly
         st.session_state[weekly_key] = preferred_weekly
-    allowed_weeklies = [None] + following_fridays
-    if st.session_state.get(weekly_key) not in allowed_weeklies:
+    elif weekly_key not in st.session_state:
+        st.session_state[weekly_key] = st.session_state.get(
+            weekly_saved_key, preferred_weekly)
+    if st.session_state[weekly_key] not in allowed_weeklies:
         st.session_state[weekly_key] = preferred_weekly
+        st.session_state[weekly_saved_key] = preferred_weekly
+    def _weekly_edited():
+        st.session_state[weekly_saved_key] = st.session_state[weekly_key]
     weekly = st.selectbox(
         "Weekly (scadenza CBOE effettivamente presente)",
         allowed_weeklies,
@@ -228,7 +236,7 @@ def render(ticker):
                                d.strftime("%d/%m/%Y") +
                                ("" if weekly_diagnostics.get(d, {}).get("usable")
                                 else " · Gamma insufficienti")),
-        key=weekly_key,
+        key=weekly_key, on_change=_weekly_edited,
         help="Preselezionata la prima scadenza di venerdì con profilo Call/Put "
              "e copertura Gamma realmente utilizzabili. Non genera scadenze fittizie.",
     )
