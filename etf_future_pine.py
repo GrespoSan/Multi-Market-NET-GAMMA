@@ -158,15 +158,43 @@ validTicker = @VALID_TICKER_EXPR@
 @RATIO_LOCKED_LINE@
 @SPX_INPUTS@
 
-// Coppie CHIUSE a 5 minuti. Il time-key viene dall'inizio della barra:
-// solo stesso timestamp, mai prezzi di sessioni diverse o ETF fermo dopo le 16 NY.
-[etfLast, etfTime] = request.security(etfTicker, "5", [close[1], time[1]], gaps=barmerge.gaps_on, lookahead=barmerge.lookahead_on, ignore_invalid_symbol=true)
-[futLast, futTime] = request.security(contractTicker, "5", [close[1], time[1]], gaps=barmerge.gaps_on, lookahead=barmerge.lookahead_on, ignore_invalid_symbol=true)
+// Solo barre ETF/future 5m CHIUSE e con lo stesso timestamp.
 var float lastDynamicRatio = na
 var int lastMatchedTime = na
-if timeframe.isintraday and timeframe.in_seconds() <= 300 and not na(etfLast) and not na(futLast) and etfLast > 0 and futLast > 0 and not na(etfTime) and etfTime == futTime and (na(lastMatchedTime) or etfTime > lastMatchedTime)
-    lastDynamicRatio := futLast / etfLast
-    lastMatchedTime := etfTime
+if timeframe.isintraday
+    if timeframe.in_seconds() <= 300
+        [etfLast, etfTime] = request.security(etfTicker, "5", [close[1], time[1]], gaps=barmerge.gaps_on, lookahead=barmerge.lookahead_on, ignore_invalid_symbol=true)
+        [futLast, futTime] = request.security(contractTicker, "5", [close[1], time[1]], gaps=barmerge.gaps_on, lookahead=barmerge.lookahead_on, ignore_invalid_symbol=true)
+        if not na(etfLast) and not na(futLast) and etfLast > 0 and futLast > 0 and not na(etfTime) and etfTime == futTime and (na(lastMatchedTime) or etfTime > lastMatchedTime)
+            lastDynamicRatio := futLast / etfLast
+            lastMatchedTime := etfTime
+    else
+        // Su 15m/30m/60m esamina le barre interne reali, non un valore
+        // aggregato arbitrario. [1] esclude la barra 5m ancora in formazione.
+        [etfCloses, etfTimes] = request.security_lower_tf(etfTicker, "5", [close[1], time[1]], ignore_invalid_symbol=true)
+        [futCloses, futTimes] = request.security_lower_tf(contractTicker, "5", [close[1], time[1]], ignore_invalid_symbol=true)
+        int i = array.size(etfTimes) - 1
+        int j = array.size(futTimes) - 1
+        while i >= 0 and j >= 0
+            int et = array.get(etfTimes, i)
+            int ft = array.get(futTimes, j)
+            if na(et)
+                i -= 1
+            else if na(ft)
+                j -= 1
+            else if et > ft
+                i -= 1
+            else if ft > et
+                j -= 1
+            else
+                float ep = array.get(etfCloses, i)
+                float fp = array.get(futCloses, j)
+                if not na(ep) and not na(fp) and ep > 0 and fp > 0 and (na(lastMatchedTime) or et > lastMatchedTime)
+                    lastDynamicRatio := fp / ep
+                    lastMatchedTime := et
+                    break
+                i -= 1
+                j -= 1
 bool dynamicAvailable = modeRatio == "Dinamico" and not na(lastDynamicRatio)
 float ratioToDraw = @RATIO_SELECTION@
 plot(ratioToDraw, title="Rapporto ETF/future", display=display.data_window)
