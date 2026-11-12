@@ -1,89 +1,58 @@
-"""V2 FinanceCalendar API-key regression for context and Pine exports.
-
-No real FinanceCalendar or Streamlit credentials needed.
-"""
-import json
+"""Free official macro calendar regression tests, no paid FinanceCalendar API."""
 import unittest
 from datetime import date
+from pathlib import Path
 from unittest.mock import patch
-
 import macro_calendar
 import macro_events
 
 
-class FakeResponse:
-    def __enter__(self):
-        return self
-
-    def __exit__(self, *_):
-        return False
-
-    def read(self, size):
-        return json.dumps({
-            "events": [{
-                "date": "2026-11-02",
-                "series_code": "us-cpi",
-                "series_name": "US CPI",
-                "time_utc": "2026-11-02T13:30:00Z",
-                "country": "US",
-                "status": "scheduled",
-            }],
-            "total": 1,
-        }).encode("utf-8")
+DAY = date(2026, 11, 12)
+EVENT = {"day": DAY, "clock": "14:30", "kind": "Jobless Claims",
+         "status": "scheduled", "priority": "ALTA",
+         "provider": "FRED / DOL", "source": "https://fred.stlouisfed.org/"}
 
 
-class V2FinanceCalendarTests(unittest.TestCase):
-    def setUp(self):
-        macro_calendar._fetch.clear()
-        macro_events._fetch.clear()
+class V2FreeMacroCalendarTests(unittest.TestCase):
+    def test_paid_calendar_removed_from_live_modules(self):
+        root = Path(__file__).resolve().parents[1]
+        for path in ("macro_calendar.py", "macro_events.py"):
+            code = (root / path).read_text(encoding="utf-8").lower()
+            self.assertNotIn("financecalendar.com", code)
+            self.assertNotIn("finance_calendar_api_key", code)
 
-    def test_both_sources_send_key_in_header_only(self):
-        for module in (macro_calendar, macro_events):
-            with self.subTest(module=module.__name__), patch.object(
-                    module, "urlopen", return_value=FakeResponse()) as mock_open:
-                rows = module._fetch("2026-11-02", "2026-11-09",
-                                     "mock-secret-key-not-real")
-                self.assertEqual(len(rows), 1)
-                request = mock_open.call_args.args[0]
-                self.assertIn("country=US", request.full_url)
-                self.assertNotIn("mock-secret-key-not-real", request.full_url)
-                headers = {name.lower(): value for name, value
-                           in request.header_items()}
-                self.assertEqual(headers["x-api-key"], "mock-secret-key-not-real")
+    def test_official_free_sources_available(self):
+        self.assertEqual(
+            set(macro_calendar.SOURCES),
+            {"BLS", "BEA", "Census", "Fed", "ISM", "Jobless Claims"})
 
-    def test_missing_key_does_not_call_financecalendar(self):
-        for module in (macro_calendar, macro_events):
-            with self.subTest(module=module.__name__), patch.object(
-                    module, "urlopen") as mock_open:
-                with self.assertRaisesRegex(ValueError, "Chiave FinanceCalendar mancante"):
-                    module._fetch("2026-11-02", "2026-11-09", "")
-                mock_open.assert_not_called()
+    def test_pine_reuses_same_calendar_and_rome_time(self):
+        with patch("macro_events.load_calendar",
+                   return_value=([EVENT], {"healthy": ["Jobless Claims"]})):
+            output = macro_events.events_for_pine(DAY)
+        self.assertEqual(output, [EVENT])
 
-    def test_pine_uses_same_dual_source_calendar_and_secret_as_dashboard(self):
-        with patch.object(macro_calendar.st, "secrets",
-                          {"FINANCE_CALENDAR_API_KEY": "synthetic-private-key"}), \
-             patch.object(macro_calendar, "urlopen", return_value=FakeResponse()) as mock_open, \
-             patch("bls_calendar.fetch_bls", return_value=[]):
-            result = macro_events.events_for_pine(date(2026, 11, 2))
-        self.assertEqual(len(result), 1)
-        self.assertEqual(result[0]["kind"], "CPI")
-        self.assertEqual(result[0]["clock"], "14:30")
-        request = mock_open.call_args.args[0]
-        self.assertEqual({k.lower(): v for k, v in request.header_items()}["x-api-key"],
-                         "synthetic-private-key")
+    def test_pine_rejects_unverified_clock_and_other_day(self):
+        incomplete = [
+            dict(EVENT, clock="Orario da verificare"),
+            dict(EVENT, day=date(2026, 11, 13)),
+            dict(EVENT),
+        ]
+        with patch("macro_events.load_calendar",
+                   return_value=(incomplete, {})):
+            self.assertEqual(macro_events.events_for_pine(DAY), [EVENT])
 
-    def test_pine_keeps_bls_cpi_even_without_financecalendar(self):
-        event = {
-            "day": date(2026, 11, 2), "clock": "14:30", "kind": "CPI",
-            "priority": "ALTA", "source": "https://www.bls.gov/schedule/news_release/cpi.htm",
-            "provider": "BLS", "official_schedule": True,
-        }
-        with patch.object(macro_calendar.st, "secrets", {}), \
-             patch("bls_calendar.fetch_bls", return_value=[event]):
-            result = macro_events.events_for_pine(date(2026, 11, 2))
-        self.assertEqual(len(result), 1)
-        self.assertEqual({key: result[0][key] for key in event}, event)
-        self.assertIn("FinanceCalendar", result[0]["source_warning"])
+    def test_blS_still_available_when_other_providers_fail(self):
+        with patch("bls_calendar.fetch_bls", return_value=[EVENT]), \
+             patch("macro_calendar._bea_events", side_effect=OSError()), \
+             patch("macro_calendar._census_events", side_effect=OSError()), \
+             patch("macro_calendar._fed_events", side_effect=OSError()), \
+             patch("macro_calendar._ism_events", side_effect=OSError()), \
+             patch("macro_calendar._claims_events", side_effect=OSError()):
+            events, state = macro_calendar.load_calendar.__wrapped__(DAY, DAY)
+        self.assertEqual(events, [EVENT])
+        self.assertIn("BLS", state["healthy"])
+        self.assertFalse(state["complete"])
 
 
 if __name__ == "__main__":
