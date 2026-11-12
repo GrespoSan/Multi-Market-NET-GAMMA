@@ -87,9 +87,25 @@ class UnifiedReadinessTests(TestCase):
         self.assertEqual(set(reports), set(MARKETS))
         self.assertTrue(all(reports[m].startswith("N/D") for m in MARKETS))
 
+    def test_shared_snapshot_reads_once_for_three_slots(self):
+        """Each original archive is reused across slots in one UI render."""
+        snapshots_by_market, spx_by_day = {}, {}
+        with patch("v2_spx_bridge.load_official_spx", return_value={}) as spx_load, \
+             patch("v2_unified_timed.load_pine_slot_captures", return_value={}) as market_load:
+            for slot in ("0730", "1550", "1700"):
+                prepare_slot(DAY, slot,
+                             snapshots_by_market=snapshots_by_market,
+                             spx_by_day=spx_by_day)
+        self.assertEqual(spx_load.call_count, 1)
+        self.assertEqual(market_load.call_count, len(MARKETS) - 1)
+
     def test_ui_cannot_download_partial_pine_and_auto_refreshes(self):
         source = (Path(__file__).resolve().parents[1] /
                   "v2_unified_timed.py").read_text(encoding="utf-8")
+        self.assertIn('if not st.toggle(', source)
+        self.assertIn('key=f"mm_unified_enabled_{day.isoformat()}"', source)
+        self.assertIn('snapshots_by_market=snapshots_by_market', source)
+        self.assertIn('spx_by_day=spx_by_day', source)
         self.assertIn('if not _slot_has_occurred(day, slot):', source)
         self.assertIn('missing = _missing_unified_markets(current, reports)', source)
         self.assertIn('if not missing:', source)
