@@ -146,7 +146,7 @@ class MultiMarketTop3(unittest.TestCase):
                     self.assertIn('modeRatio = "Dinamico"', pine)
 
     def test_timed_comparison_projects_current_not_previous_or_weekly(self):
-        from v2_pine_timed_exports import SLOTS
+        from v2_pine_session import slots_for_day
         for sym in ("NDX", "GLD", "USO"):
             with self.subTest(symbol=sym):
                 captures = {}
@@ -167,8 +167,8 @@ class MultiMarketTop3(unittest.TestCase):
                     scripts, errors, _ = produce_timed_scripts(
                         sym, DAY, captures, frames["0730"]["close"],
                         3., 140. if sym == "NDX" else None)
-                self.assertEqual(set(scripts), set(SLOTS), errors)
-                for slot in SLOTS:
+                self.assertEqual(set(scripts), set(slots_for_day(DAY)), errors)
+                for slot in slots_for_day(DAY):
                     code = scripts[slot]
                     self.assertEqual(code.count("if showTop3Odte"), 1)
                     self.assertEqual(code.count("drawOdteTopProjections("), 2)
