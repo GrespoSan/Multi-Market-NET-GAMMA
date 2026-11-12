@@ -30,9 +30,12 @@ calcolate con il codice SPX originale copiato in moduli isolati
 (`v2_spx_reference_gamma.py`, `v2_spx_reference_basis.py`):
 **25+25 strike SPX originali**, eventuale estensione solo grafica, formula
 NET GAMMA non modificata. In Pine sono proiettati su ES tramite basis ES−SPX:
-per impostazione predefinita lo stesso metodo SPX (barre Yahoo 15m sincronizzate
-della precedente seduta cash e arrotondamento all'intero); è possibile inserire
-il basis verificato nell'app SPX per riprodurre esattamente il suo valore.
+sempre lo stesso metodo automatico SPX (barre Yahoo 15m sincronizzate
+della precedente seduta cash e arrotondamento all'intero); nell'interfaccia
+del Pine unico non compare alcun campo manuale per il basis.
+Le estensioni grafiche originali SPX sono sempre attive e i tre download
+sono automatici; gli slot incompleti vengono ricontrollati ogni 180 secondi
+mentre il pannello è aperto, senza premere «Aggiorna».
 Confronto precedente OFF di default. Scadenza e Gamma precedenti non vengono
 inventati. Per giorni storici lo slot 20:30 mantiene l'etichetta originale.
 
