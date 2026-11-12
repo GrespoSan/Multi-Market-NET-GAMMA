@@ -227,19 +227,28 @@ def _market_band(symbol):
     return float(st.session_state.get(f"{symbol.lower()}_cboe_band", 3.0))
 
 
-def prepare_slot(day, slot):
-    """Read 5 independent CBOE archives plus official SPX; no look-ahead."""
+def prepare_slot(day, slot, *, snapshots_by_market=None, spx_by_day=None):
+    """Read 5 original CBOE archives plus official SPX, without look-ahead.
+
+    Optional short-lived dictionaries share data ONLY among the three clock
+    slots of one UI render, not across sessions or refresh cycles.
+    """
     if slot not in slots_for_day(day):
         raise ValueError("Orario non previsto per la seduta selezionata.")
     prev_slot = "0730" if slot == "1550" else "1550"
     records, previous, reports = {}, {}, {}
     # Read-only SPX bridge. Failed auth must NEVER disable the other 5 assets.
-    try:
-        from v2_spx_bridge import load_official_spx, spx_record, spx_basis
-        spx_frames = load_official_spx(day, slots_for_day(day))
-        spx_problem = None
-    except (ValueError, OSError, TypeError, KeyError) as exc:
-        spx_frames, spx_problem = {}, str(exc)[:170]
+    from v2_spx_bridge import load_official_spx, spx_record, spx_basis
+    if spx_by_day is not None and day in spx_by_day:
+        spx_frames, spx_problem = spx_by_day[day]
+    else:
+        try:
+            spx_frames = load_official_spx(day, slots_for_day(day))
+            spx_problem = None
+        except (ValueError, OSError, TypeError, KeyError) as exc:
+            spx_frames, spx_problem = {}, str(exc)[:170]
+        if spx_by_day is not None:
+            spx_by_day[day] = (spx_frames, spx_problem)
 
     for symbol in MARKETS:
         try:
@@ -284,7 +293,13 @@ def prepare_slot(day, slot):
                 )
                 continue
 
-            captures = load_pine_slot_captures(symbol, day)
+            snapshot_key = (symbol, day)
+            if snapshots_by_market is not None and snapshot_key in snapshots_by_market:
+                captures = snapshots_by_market[snapshot_key]
+            else:
+                captures = load_pine_slot_captures(symbol, day)
+                if snapshots_by_market is not None:
+                    snapshots_by_market[snapshot_key] = captures
             current_capture = captures.get(slot)
             if current_capture is None:
                 raise ValueError(f"Fotografia corrente {LABELS[slot]} non trovata "
@@ -387,15 +402,29 @@ def render():
                        "URL del progetto SPX già configurato; nessuna "
                        "modifica a Serafini SPX. Gli altri cinque mercati "
                        "continuano a funzionare.")
+        if not st.toggle(
+                "Attiva preparazione Pine unico (6 mercati)",
+                key=f"mm_unified_enabled_{day.isoformat()}",
+                value=False,
+                help="Avvia la lettura delle fotografie solo quando vuoi usare il Pine unico. "
+                     "Spegni per interrompere i controlli automatici ogni 3 minuti."):
+            st.caption("Pine unico in pausa: nessuna lettura dei sei mercati "
+                       "finché non attivi la preparazione.")
+            return
         _render_automatic_downloads(day, slots)
 
 
 @st.fragment(run_every=180)
 def _render_automatic_downloads(day, slots):
-    """Three direct downloads. Recheck incomplete slots without manual buttons."""
+    """Three direct downloads; check incomplete slots every 3 minutes.
+
+    The fragment exists only after explicit activation by the user.
+    """
     cache_key = "mm_unified_prepared_by_slot"
     saved = st.session_state.setdefault(cache_key, {})
-    # Refresh partial/missing slots automatically at most every 3 minutes.
+    # One 5-market archive scan and one SPX bridge scan per UI refresh,
+    # instead of repeating both for each of the three time slots.
+    snapshots_by_market, spx_by_day = {}, {}
     # Completed exports are stable and never repeatedly fetched.
     cols = st.columns(3, gap="small")
     for col, slot in zip(cols, slots):
@@ -423,7 +452,9 @@ def _render_automatic_downloads(day, slots):
             )
             if prepared is None or stale_incomplete:
                 try:
-                    current, previous, reports = prepare_slot(day, slot)
+                    current, previous, reports = prepare_slot(
+                        day, slot, snapshots_by_market=snapshots_by_market,
+                        spx_by_day=spx_by_day)
                     missing = _missing_unified_markets(current, reports)
                     # Fail closed: a real six-market Pine must contain SIX
                     # verified markets, not 1/6 with orange Pine placeholders.
