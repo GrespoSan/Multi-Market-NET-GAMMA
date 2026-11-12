@@ -252,18 +252,50 @@ float basisIndex = switch activeMarket
 float priceFactor = isYM ? 100.0 : 1.0
 float actualScale = math.max(0.000001, suggestedScale * scaleFactor)
 
-// Only real-time matched *closed* 5m ETF/future bars. Never substitute a
-// stale spot price, another future or a synthetic ratio.
+// Only CLOSED, TIME-MATCHED 5m bars may update the ETF/future ratio.
+// On 1m/5m use the confirmed 5m feed. On 15m and higher use true lower
+// timeframe intrabars, not a single barmerge sample of a 5m series.
+// Both symbols are paired by actual 5m open timestamp; never invent a ratio.
 string etfTicker = isGC ? "AMEX:GLD" : "AMEX:USO"
 string futureTicker = ticker.standard(syminfo.tickerid)
 var float lastDynamicRatio = na
 var int lastMatchedTime = na
-if isETF
-    [etfLast, etfTime] = request.security(etfTicker, "5", [close[1], time[1]], gaps=barmerge.gaps_on, lookahead=barmerge.lookahead_on, ignore_invalid_symbol=true)
-    [futLast, futTime] = request.security(futureTicker, "5", [close[1], time[1]], gaps=barmerge.gaps_on, lookahead=barmerge.lookahead_on, ignore_invalid_symbol=true)
-    if timeframe.isintraday and timeframe.in_seconds() <= 300 and not na(etfLast) and not na(futLast) and etfLast > 0 and futLast > 0 and not na(etfTime) and etfTime == futTime and (na(lastMatchedTime) or etfTime > lastMatchedTime)
-        lastDynamicRatio := futLast / etfLast
-        lastMatchedTime := etfTime
+if isETF and timeframe.isintraday
+    if timeframe.in_seconds() <= 300
+        [etfLast, etfTime] = request.security(etfTicker, "5", [close[1], time[1]], gaps=barmerge.gaps_on, lookahead=barmerge.lookahead_on, ignore_invalid_symbol=true)
+        [futLast, futTime] = request.security(futureTicker, "5", [close[1], time[1]], gaps=barmerge.gaps_on, lookahead=barmerge.lookahead_on, ignore_invalid_symbol=true)
+        if not na(etfLast) and not na(futLast) and etfLast > 0 and futLast > 0 and not na(etfTime) and etfTime == futTime and (na(lastMatchedTime) or etfTime > lastMatchedTime)
+            lastDynamicRatio := futLast / etfLast
+            lastMatchedTime := etfTime
+    else
+        // [1] forces the prior confirmed 5m candle even when the last
+        // intrabar of the current chart candle is still developing.
+        [etfCloses, etfTimes] = request.security_lower_tf(etfTicker, "5", [close[1], time[1]], ignore_invalid_symbol=true)
+        [futCloses, futTimes] = request.security_lower_tf(futureTicker, "5", [close[1], time[1]], ignore_invalid_symbol=true)
+        int i = array.size(etfTimes) - 1
+        int j = array.size(futTimes) - 1
+        // Both arrays are time-ordered; walk backwards to the most recent
+        // identical closed-bar timestamp without a cross-session proxy.
+        while i >= 0 and j >= 0
+            int et = array.get(etfTimes, i)
+            int ft = array.get(futTimes, j)
+            if na(et)
+                i -= 1
+            else if na(ft)
+                j -= 1
+            else if et > ft
+                i -= 1
+            else if ft > et
+                j -= 1
+            else
+                float ep = array.get(etfCloses, i)
+                float fp = array.get(futCloses, j)
+                if not na(ep) and not na(fp) and ep > 0 and fp > 0 and (na(lastMatchedTime) or et > lastMatchedTime)
+                    lastDynamicRatio := fp / ep
+                    lastMatchedTime := et
+                    break
+                i -= 1
+                j -= 1
 float ratioToDraw = isETF ? lastDynamicRatio : 1.0
 plot(isETF ? ratioToDraw : na, "Rapporto ETF/future sincronizzato", display=display.data_window)
 
@@ -333,7 +365,7 @@ if barstate.islast and validTicker
         label.delete(lb)
     array.clear(drawnLabels)
     bool haveData = array.size(mainLevels) > 0 and array.size(weekLevels) > 0
-    bool ratioValid = not isETF or (timeframe.isintraday and timeframe.in_seconds() <= 300 and not na(ratioToDraw))
+    bool ratioValid = not isETF or (timeframe.isintraday and not na(ratioToDraw))
     if not haveData
         label info = label.new(bar_index, close, "Fotografia/basis non disponibile per " + activeMarket, style=label.style_label_left, color=color.orange, textcolor=color.black)
         array.push(drawnLabels, info)
