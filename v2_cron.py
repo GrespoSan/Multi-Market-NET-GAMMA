@@ -6,9 +6,10 @@ authentication, access denials, CAPTCHAs or other technical controls.
 One bounded HTTPS GET per market per scheduled run; on HTTP 401/403/429
 the market is marked failed with no retry or workaround.
 
-Three schedules: 07:30 Rome / 08:50 Chicago / 17:00 Rome. Each successfully
-validated original JSON is gzip-compressed and Fernet-encrypted inside
-GitHub Actions artifacts, never written as plaintext or to Supabase.
+Three schedules: 07:30 Rome / 08:50 Chicago / 10:00 Chicago (logical
+slot 17:00). Each successfully validated original JSON is gzip-compressed
+and Fernet-encrypted inside GitHub Actions artifacts, never written as
+plaintext or to Supabase. All three schedules dispatch via cron-job.org.
 V2_ARCHIVE_FERNET_KEY is required for a durable archived capture.
 """
 from datetime import datetime, timezone
@@ -247,8 +248,7 @@ def run_capture(now=None, env=None, output=None, downloader=None):
             x["status"] == "SCARICATO_CIFRATO" for x in report["markets"].values())
         report["status"] = (
             "TUTTI_ARCHIVIATI_IN_RITARDO"
-            if fully_archived and slot["reason"] in
-            ("GITHUB_SCHEDULE_DELAYED", "EXTERNAL_DISPATCH_DELAYED")
+            if fully_archived and slot["reason"] == "EXTERNAL_DISPATCH_DELAYED"
             else "TUTTI_ARCHIVIATI" if fully_archived
             else "PARZIALE_O_NON_CONFIGURATO")
     (output/"run_status.json").write_text(
