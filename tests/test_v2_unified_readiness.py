@@ -40,6 +40,30 @@ class UnifiedReadinessTests(TestCase):
         self.assertFalse(_slot_has_occurred(DAY, "1550", at_rome_1545))
         self.assertTrue(_slot_has_occurred(DAY, "1550", at_rome_1555))
 
+    def test_spring_dst_mismatch_10_chicago_available_at_16_rome(self):
+        day = date(2027, 3, 15)
+        early = datetime(2027, 3, 15, 15, 57, tzinfo=ROME)
+        due = datetime(2027, 3, 15, 16, 1, tzinfo=ROME)
+        self.assertFalse(_slot_has_occurred(day, "1700", early))
+        self.assertTrue(_slot_has_occurred(day, "1700", due))
+        self.assertTrue(_slot_has_occurred(day, "1550", due))
+        self.assertTrue(_slot_has_occurred(day, "0730", due))
+
+    def test_1550_mismatch_respects_0850_chicago_not_1550_rome(self):
+        day = date(2027, 3, 15)
+        early = datetime(2027, 3, 15, 14, 47, tzinfo=ROME)
+        due = datetime(2027, 3, 15, 14, 51, tzinfo=ROME)
+        self.assertFalse(_slot_has_occurred(day, "1550", early))
+        self.assertTrue(_slot_has_occurred(day, "1550", due))
+        self.assertFalse(_slot_has_occurred(day, "1700", due))
+
+    def test_original_0730_always_stays_rome(self):
+        day = date(2027, 3, 15)
+        before = datetime(2027, 3, 15, 7, 29, tzinfo=ROME)
+        after = datetime(2027, 3, 15, 7, 30, tzinfo=ROME)
+        self.assertFalse(_slot_has_occurred(day, "0730", before))
+        self.assertTrue(_slot_has_occurred(day, "0730", after))
+
     def test_missing_five_markets_is_not_six_market_export(self):
         self.assertEqual(len(MARKETS), 6)
         missing = _missing_unified_markets(
