@@ -200,13 +200,45 @@ def render(ticker):
         format_func=lambda d: d.strftime("%d/%m/%Y"),
         key=f"{prefix}_expiry",
     )
-    following_fridays = [d for d in dates if d > day and d.weekday() == 4]
+    band = st.number_input(
+        "Fascia strike ± % dal close precedente (comune)",
+        min_value=0.5, max_value=25.0, value=10.0, step=0.5,
+        key=f"{prefix}_band",
+    )
+    from v2_index_weekly import choose_weekly, weekly_candidates
+    following_fridays = weekly_candidates(dates, day)
+    preferred_weekly, _preferred_profile, weekly_diagnostics = choose_weekly(
+        doc, ticker, day, close, 
+        float(band), dates)
+    weekly_key = f"{prefix}_weekly"
+    # Never initialize to None when a validated Weekly is available.
+    # Reset a stale selection after date/band changes, but allow explicit None.
+    weekly_context = (snapshot_digest, day, float(close),
+                      float(band))
+    if st.session_state.get(f"{prefix}_weekly_context") != weekly_context:
+        st.session_state[f"{prefix}_weekly_context"] = weekly_context
+        st.session_state[weekly_key] = preferred_weekly
+    allowed_weeklies = [None] + following_fridays
+    if st.session_state.get(weekly_key) not in allowed_weeklies:
+        st.session_state[weekly_key] = preferred_weekly
     weekly = st.selectbox(
         "Weekly (scadenza CBOE effettivamente presente)",
-        [None] + following_fridays,
-        format_func=lambda d: "Non disponibile" if d is None else d.strftime("%d/%m/%Y"),
-        key=f"{prefix}_weekly",
+        allowed_weeklies,
+        format_func=lambda d: ("Non disponibile" if d is None else
+                               d.strftime("%d/%m/%Y") +
+                               ("" if weekly_diagnostics.get(d, {}).get("usable")
+                                else " · Gamma insufficienti")),
+        key=weekly_key,
+        help="Preselezionata la prima scadenza di venerdì con profilo Call/Put "
+             "e copertura Gamma realmente utilizzabili. Non genera scadenze fittizie.",
     )
+    if not following_fridays:
+        st.info(f"{ticker}: nessuna scadenza di venerdì successiva nel file CBOE.")
+    elif preferred_weekly is None:
+        st.warning(f"{ticker}: presenti scadenze di venerdì, ma nessun profilo "
+                   "Weekly utilizzabile con la fascia strike corrente.")
+    elif weekly is None:
+        st.caption("Weekly disattivata manualmente: nessun profilo Weekly visualizzato.")
     st.subheader(f"Differenziale {future} − {'RUT' if ticker == 'RUT' else 'Dow Jones'}")
     st.caption(
         "Calcolo automatico sulla seduta cash precedente: barre chiuse 15m Massive "
@@ -268,11 +300,6 @@ def render(ticker):
                 "Sul future YM/MYM: strike DJX × 100 + differenziale YM−DJIA.")
     else:
         st.caption("Sul future RTY/M2K: strike RUT + differenziale RTY−RUT.")
-    band = st.number_input(
-        "Fascia strike ± % dal close precedente (comune)",
-        min_value=0.5, max_value=25.0, value=10.0, step=0.5,
-        key=f"{prefix}_band",
-    )
     groups = {}
     for title, expiry in (("0DTE" if day == today else "Principale", day),
                           ("Weekly", weekly)):
