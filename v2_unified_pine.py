@@ -65,10 +65,12 @@ def _from_capture(symbol, capture, day, band=3.0, extension=True):
         main_date = day
         if main_date not in expiries:
             raise ValueError(f"{symbol}: vera 0DTE della seduta assente.")
-        fridays = [d for d in expiries if d > main_date and d.weekday() == 4]
-        if not fridays:
-            raise ValueError(f"{symbol}: Weekly successiva assente.")
-        week = fridays[0]
+        from v2_index_weekly import choose_weekly
+        week, checked_weekly, _ = choose_weekly(
+            doc, symbol, main_date, reference, band, expiries)
+        if week is None or checked_weekly is None:
+            raise ValueError(f"{symbol}: nessuna Weekly reale utilizzabile "
+                             "nella fotografia 07:30.")
         make = lambda expiry, width: profile(doc, symbol, expiry, reference, width)
         field_level, field_gamma = "strike", "net"
     else:
