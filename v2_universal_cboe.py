@@ -461,7 +461,9 @@ def render():
                            file_name=f"{ticker}_NET_GAMMA.csv", mime="text/csv",
                            key="universal_csv_export", on_click="ignore")
         try:
-            pine = _pine(ticker, groups)
+            # Solo sezione Universale: nessun differenziale ETF/indice/future.
+            # Non modificare _pine: il ramo future_mode serve a Russell/Dow.
+            pine = _pine(ticker, groups, future_mode=False)
             st.download_button(f"Scarica Pine {ticker} (.pine)", pine,
                                file_name=f"{ticker}_NET_GAMMA_CBOE.pine",
                                mime="text/plain", key="universal_pine_export",
