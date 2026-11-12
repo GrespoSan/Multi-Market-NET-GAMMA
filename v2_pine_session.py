@@ -13,7 +13,7 @@ ROME = ZoneInfo("Europe/Rome")
 SLOTS = ("0730", "1550", "2030")
 LABELS = {"0730": "07:30", "1550": "15:50", "2030": "20:30"}
 FILE = re.compile(
-    r"^(NDX|GLD|USO)_(\d{8}T\d{6}Z)_(0730|1550|2030)_([0-9a-f]{12})\.json\.gz$"
+    r"^(NDX|RUT|DJX|GLD|USO)_(\d{8}T\d{6}Z)_(0730|1550|2030)_([0-9a-f]{12})\.json\.gz$"
 )
 
 
