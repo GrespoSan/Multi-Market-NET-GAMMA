@@ -187,6 +187,33 @@ class V2SPXSetupTests(unittest.TestCase):
             self.assertEqual(result["slot"], "manuale")
             self.assertEqual(result["reason"], "MANUALE")
 
+    def test_external_1700_chicago_dispatch_stores_five_real_slot_ids(self):
+        key = Fernet.generate_key().decode()
+        calls = []
+        def source(url, token):
+            calls.append(url)
+            market = next(m for m, link in CBOE_PUBLIC_URLS.items()
+                          if url == link)
+            return synthetic(market)
+        with tempfile.TemporaryDirectory() as tmp:
+            result = run_capture(
+                now=datetime(2026, 11, 13, 16, 2, tzinfo=timezone.utc),
+                env={"V2_ARCHIVE_FERNET_KEY": key,
+                     "V2_EXTERNAL_CRONJOB": "true",
+                     "V2_REQUESTED_SLOT": "17:00",
+                     "V2_MANUAL_RUN": "false"},
+                output=Path(tmp), downloader=source)
+            self.assertEqual(result["status"], "TUTTI_ARCHIVIATI")
+            self.assertEqual(result["slot"], "17:00")
+            self.assertEqual(result["reason"], "IN_WINDOW")
+            self.assertEqual(result["schedule_reference"], "America/Chicago")
+            self.assertIn("T10:00:00", result["scheduled_local"])
+            self.assertEqual(result["download_rome"][11:16], "17:02")
+            self.assertEqual(len(calls), 5)
+            self.assertEqual(len(list(Path(tmp).glob("*_1700_*.enc"))), 5)
+            self.assertTrue(all(item["status"] == "SCARICATO_CIFRATO"
+                                for item in result["markets"].values()))
+
     def test_original_gamma_json_quality_and_root(self):
         for instrument in ("NDX", "RUT", "DJX", "GLD", "USO"):
             with self.subTest(instrument=instrument):
