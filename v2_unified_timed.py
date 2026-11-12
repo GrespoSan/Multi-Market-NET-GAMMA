@@ -1,4 +1,4 @@
-"""Timed unified 5-market exporter: 07:30 / 15:50 / 17:00 (legacy 20:30).
+"""Timed unified 6-market exporter: 07:30 / 15:50 / 17:00 (legacy 20:30).
 
 Comparisons are based ONLY on validated same-day Cboe snapshots. They draw
 the preceding real 0DTE plus current 0DTE and current Weekly. This module
@@ -228,13 +228,62 @@ def _market_band(symbol):
 
 
 def prepare_slot(day, slot):
-    """Current snapshot is primary. Prior is OPTIONAL and never guessed."""
+    """Read 5 independent CBOE archives plus official SPX; no look-ahead."""
     if slot not in slots_for_day(day):
         raise ValueError("Orario non previsto per la seduta selezionata.")
     prev_slot = "0730" if slot == "1550" else "1550"
     records, previous, reports = {}, {}, {}
+    # Read-only SPX bridge. Failed auth must NEVER disable the other 5 assets.
+    try:
+        from v2_spx_bridge import load_official_spx, spx_record, spx_basis
+        spx_frames = load_official_spx(day, slots_for_day(day))
+        spx_problem = None
+    except (ValueError, OSError, TypeError, KeyError) as exc:
+        spx_frames, spx_problem = {}, str(exc)[:170]
+
     for symbol in MARKETS:
         try:
+            if symbol == "SPX":
+                if spx_problem:
+                    raise ValueError(spx_problem)
+                current_frame = spx_frames.get(slot)
+                if current_frame is None:
+                    raise ValueError(f"SPX: fotografia ufficiale {LABELS[slot]} "
+                                     "non verificata nell'archivio Serafini SPX.")
+                basis, basis_source = spx_basis(day)
+                extension = bool(st.session_state.get("mm_unified_spx_extension", True))
+                now = spx_record(current_frame, day, basis, extension=extension)
+                prior_note = ""
+                old = None
+                if slot != "0730":
+                    earlier = spx_frames.get(prev_slot)
+                    if earlier is not None:
+                        try:
+                            old_time = datetime.fromisoformat(earlier["download_rome"])
+                            now_time = datetime.fromisoformat(current_frame["download_rome"])
+                            if old_time >= now_time:
+                                raise ValueError("timestamp precedenti non cronologici.")
+                            candidate = spx_record(
+                                earlier, day, basis, extension=extension)
+                            _checked_comparison(candidate, now, symbol)
+                            old = candidate
+                        except (ValueError, TypeError, KeyError) as exc:
+                            prior_note = " · precedente SPX N/D: " + str(exc)[:95]
+                    else:
+                        prior_note = f" · precedente SPX {LABELS[prev_slot]} non verificato"
+                records[symbol] = now
+                if old is not None:
+                    previous[symbol] = old
+                count = len(now["main"]) + len(now["weekly"])
+                if old is not None:
+                    count += len(old["main"])
+                reports[symbol] = (
+                    f"OK · SPX UFFICIALE · {LABELS[slot]} · "
+                    f"{count} strike · 25+25 originali per profilo · "
+                    f"ES−SPX {basis:+.2f} ({basis_source})" + prior_note
+                )
+                continue
+
             captures = load_pine_slot_captures(symbol, day)
             current_capture = captures.get(slot)
             if current_capture is None:
@@ -250,8 +299,6 @@ def prepare_slot(day, slot):
                 now["basis"] = _verified_basis(symbol, day)
             else:
                 now["basis"] = 0.0
-            # Keep verified CURRENT and WEEKLY even when the former slot
-            # cannot be compared (absent, other expiry or line budget).
             old = None
             prior_note = ""
             if slot != "0730":
@@ -289,10 +336,10 @@ def render():
     """One panel, three independently prepared and downloadable time slots."""
     with st.expander("PINE MULTI-MARKET UNICO · 07:30 / 15:50 / 17:00",
                      expanded=False):
-        st.caption("Un Pine per fascia oraria con NQ/MNQ · RTY/M2K · YM/MYM · "
+        st.caption("Un Pine per fascia oraria con ES/MES · NQ/MNQ · RTY/M2K · YM/MYM · "
                    "GC/MGC · CL/MCL. I confronti mostrano 0DTE precedente, "
                    "0DTE corrente e Weekly corrente, soltanto da archivi reali. "
-                   "I cinque Pine individuali restano disponibili.")
+                   "I Pine individuali restano disponibili; Serafini SPX è in sola lettura.")
         day = st.date_input("Seduta New York", value=datetime.now(NY).date(),
                             key="mm_unified_day")
         if not isinstance(day, date):
@@ -301,6 +348,38 @@ def render():
         slots = slots_for_day(day)
         st.caption("Per le sedute precedenti al cambio d'orario rimane "
                    "il terzo slot storico delle 20:30.")
+        # SPX original data stay in the separate, private official archive.
+        # A manual verified ES-SPX basis may override SPX's identical Yahoo
+        # previous-session methodology. Never overwrite a manual input.
+        def _invalidate_spx_scripts():
+            saved_items = st.session_state.get("mm_unified_prepared_by_slot", {})
+            for cached_key in list(saved_items):
+                if cached_key[0] == day.isoformat():
+                    saved_items.pop(cached_key, None)
+
+        st.text_input(
+            "SPX → ES/MES · differenziale ES−SPX (facoltativo, punti)",
+            key=f"mm_unified_spx_basis_manual_{day.isoformat()}",
+            placeholder="Vuoto = calcolo automatico come in Serafini SPX",
+            on_change=_invalidate_spx_scripts,
+            help="Compilare solo con il valore verificato per questa seduta "
+                 "nell'app SPX. Se vuoto, usa la medesima media ES=F−^GSPC "
+                 "delle barre 15m della sessione cash precedente, arrotondata "
+                 "all'intero come nell'app SPX."
+        )
+        st.checkbox(
+            "SPX · estensione grafica originale (25+25 sempre conservati)",
+            value=True, key="mm_unified_spx_extension",
+            on_change=_invalidate_spx_scripts
+        )
+        missing_spx = [key for key in ("SPX_SUPABASE_URL", "SPX_SUPABASE_READ_KEY")
+                       if not str(st.secrets.get(key, "")).strip()]
+        if missing_spx:
+            st.caption("SPX/ES: archivio privato non ancora collegato. "
+                       "Configura nei Secrets di Multi-Market "
+                       + ", ".join(missing_spx) +
+                       " con accesso Storage in sola lettura. "
+                       "I cinque mercati già presenti restano disponibili.")
         cache_key = "mm_unified_prepared_by_slot"
         saved = st.session_state.setdefault(cache_key, {})
         # Populate on first visit, then reuse the same immutable snapshot for
@@ -351,7 +430,7 @@ def render():
                     count = sum(
                         x.startswith("OK")
                         for x in prepared["reports"].values())
-                    st.caption(f"{count}/5 mercati verificati")
+                    st.caption(f"{count}/{len(MARKETS)} mercati verificati")
                 else:
                     st.button(f"Pine · {label} · non disponibile",
                               disabled=True, use_container_width=True,
@@ -382,7 +461,7 @@ def render():
         n = sum(chosen["reports"][symbol].startswith("OK")
                 for symbol in MARKETS)
         if n < len(MARKETS):
-            st.warning(f"Copertura {n}/5 mercati: gli strumenti senza dati "
+            st.warning(f"Copertura {n}/{len(MARKETS)} mercati: gli strumenti senza dati "
                        "verificati non mostrano alcun profilo.")
         with st.expander("Mostra codice Pine unico da copiare"):
             st.code(chosen["script"], language="pine")
