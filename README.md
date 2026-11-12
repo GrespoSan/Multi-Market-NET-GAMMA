@@ -1,5 +1,25 @@
 # Multi-Market NET GAMMA — prototype 0.1
 
+## Programmazione delle acquisizioni V2 (dal 12 novembre 2026)
+
+Tutti e tre gli avvii automatici provengono da **cron-job.org**; il workflow
+`.github/workflows/v2-spx-snapshots.yml` in **main** espone soltanto
+`workflow_dispatch` e legge il codice del ramo **v2-spx**. Le acquisizioni
+reali sono sempre timestampate e i nomi storici degli slot non cambiano.
+
+| ID logico archivio/Pine | Ora che comanda la cattura | Fuso cron-job.org |
+| --- | --- | --- |
+| 07:30 | 07:30 | Europe/Rome |
+| 15:50 | 08:50 | America/Chicago |
+| 17:00 | 10:00 | America/Chicago |
+
+Nei periodi brevi in cui il cambio ora legale USA/UE non coincide, lo slot
+**15:50** avviene alle **14:50 Roma** e lo slot **17:00** alle **16:00 Roma**.
+L'ID del file resta 1550/1700 per compatibilità, mentre l'ora acquisita
+indica sempre l'istante reale. Gli archivi storici 20:30 restano leggibili.
+La condizione di disponibilità del Pine unico segue gli stessi fusi del job.
+Serafini SPX è indipendente e non viene modificato.
+
 ## SPX/ES nei tre Pine UNICI — collegamento di sola lettura (novembre 2026)
 
 Il Pine Multi-Market UNICO ora include **sei mercati**: ES/MES da SPX, NQ/MNQ da NDX,
