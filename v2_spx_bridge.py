@@ -4,7 +4,7 @@ Uses original SPX 25+25 core and original visual extension code (local
 reference copies from SPX Dashboard). Never writes to SPX, never infers a
 download time from the timezone-less Cboe timestamp, never synthesizes data.
 Requires a *server-side*, Storage-read-authorized JWT in Streamlit Secrets:
-SPX_SUPABASE_URL, SPX_SUPABASE_READ_KEY, optional SPX_SUPABASE_BUCKET.
+SPX_SUPABASE_READ_KEY; SPX_SUPABASE_URL and SPX_SUPABASE_BUCKET optional.
 Do NOT put privileged keys in public client code or GitHub commits.
 """
 import json
@@ -24,6 +24,8 @@ from v2_spx_reference_gamma import read_snapshot, profile, visual_profile
 from v2_spx_reference_basis import download_and_calculate
 
 ROME = ZoneInfo("Europe/Rome")
+# Verified owner project URL: public endpoint identifier, NEVER an API secret.
+DEFAULT_SPX_URL = "https://rnpnibdxuqlmuqmcixsd.supabase.co"
 SLOT_CRONS = {
     "0730": "30 7 * * 1-5",
     "1550": "50 15 * * 1-5",
@@ -84,15 +86,15 @@ class SPXArchiveReadOnly:
 
 def _secrets():
     try:
-        url = str(st.secrets.get("SPX_SUPABASE_URL", "")).strip()
+        url = str(st.secrets.get("SPX_SUPABASE_URL", DEFAULT_SPX_URL)).strip()
         token = str(st.secrets.get("SPX_SUPABASE_READ_KEY", "")).strip()
         bucket = str(st.secrets.get("SPX_SUPABASE_BUCKET", "spx-snapshots")).strip()
     except Exception:
-        url, token, bucket = "", "", "spx-snapshots"
+        url, token, bucket = DEFAULT_SPX_URL, "", "spx-snapshots"
     if not url or not token:
         raise ValueError("Accesso SPX non configurato: aggiungi nei Secrets "
-                         "di Multi-Market SPX_SUPABASE_URL e "
-                         "SPX_SUPABASE_READ_KEY (lettura Storage autorizzata).")
+                         "di Multi-Market SPX_SUPABASE_READ_KEY "
+                         "(credenziale server-side autorizzata alla lettura Storage).")
     return url, token, bucket
 
 
