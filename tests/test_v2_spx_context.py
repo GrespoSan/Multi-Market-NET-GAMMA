@@ -28,8 +28,8 @@ class SPXContextV2Tests(unittest.TestCase):
             with self.subTest(name=name):
                 self.assertIn(name, context)
 
-    def test_context_automatic_with_gamma_api_priority_and_daily_cache(self):
-        """Display CONTEXTO first; run its Massive calls after NET GAMMA."""
+    def test_context_lazy_with_gamma_api_priority_and_daily_cache(self):
+        """Show CONTEXTO first; defer its external calls until enabled."""
         import ast
         app = (ROOT / "app.py").read_text(encoding="utf-8")
         tree = ast.parse(app)
@@ -39,8 +39,10 @@ class SPXContextV2Tests(unittest.TestCase):
             and node.func.id == "render_market_context"
         ]
         self.assertEqual(len(calls), 1)
-        self.assertNotIn("v2_context_enabled", app)
-        self.assertNotIn("if context_enabled:", app)
+        self.assertIn("v2_context_requested_", app)
+        self.assertIn('if st.toggle("Carica News · Volatilità · Trend Daily"', app)
+        self.assertIn('if st.toggle("Carica calendario macro USA"', app)
+        self.assertIn("Contesto in pausa", app)
         self.assertIn("context_slot = st.empty()", app)
         self.assertIn("with context_slot.container():", app)
         # Gamma fetches before the more expensive Daily+curve context,
