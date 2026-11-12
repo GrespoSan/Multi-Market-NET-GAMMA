@@ -1,12 +1,9 @@
-name: Multi-Market V2 · 07:30 Roma · 08:50 Chicago · 17:00 Roma
+name: Multi-Market V2 · 07:30 Roma · 08:50 Chicago · 10:00 Chicago
 
-# Existing 07:30 and 15:50 dispatches continue via cron-job.org.
-# Third slot 17:00 Europe/Rome uses GitHub Actions native UTC schedule
-# at 15:00 (CEST) or 16:00 (CET), gated by v2_schedule.py DST checks.
+# All three scheduled dispatches are handled by cron-job.org.
+# The logical 15:50 and 17:00 archive labels are retained for compatibility.
+# Native GitHub schedules are disabled to prevent duplicate acquisitions.
 on:
-  schedule:
-    - cron: "0 15 * * 1-5"
-    - cron: "0 16 * * 1-5"
   workflow_dispatch:
     inputs:
       slot:
@@ -36,9 +33,8 @@ concurrency:
 
 jobs:
   capture_v2:
-    # 07:30 and 15:50 may use cron-job.org. The third 17:00 uses native
-    # GitHub cron with DST checking; former external 20:30 is rejected.
-    # The historical V2_USE_EXTERNAL_CRONJOB variable is now unnecessary.
+    # All 07:30 Rome, 08:50 Chicago and 10:00 Chicago captures are
+    # initiated through cron-job.org. External 20:30 is rejected.
     # Five NDX, RUT, DJX, GLD and USO captures per successful dispatch.
     # Hard-wire public URLs in v2_cron.py, no legacy feed-secret overrides
     # can hijack these scheduled captures.
