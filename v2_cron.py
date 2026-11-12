@@ -6,7 +6,7 @@ authentication, access denials, CAPTCHAs or other technical controls.
 One bounded HTTPS GET per market per scheduled run; on HTTP 401/403/429
 the market is marked failed with no retry or workaround.
 
-Three schedules: 07:30 Rome / 08:50 and 13:30 Chicago. Each successfully
+Three schedules: 07:30 Rome / 08:50 Chicago / 17:00 Rome. Each successfully
 validated original JSON is gzip-compressed and Fernet-encrypted inside
 GitHub Actions artifacts, never written as plaintext or to Supabase.
 V2_ARCHIVE_FERNET_KEY is required for a durable archived capture.
