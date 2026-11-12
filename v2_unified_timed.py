@@ -242,60 +242,74 @@ def prepare_slot(day, slot):
 
 
 def render():
-    """One panel, three downloads with their own verified real snapshots."""
+    """One panel, three independently prepared and downloadable time slots."""
     with st.expander("PINE MULTI-MARKET UNICO · 07:30 / 15:50 / 17:00",
                      expanded=False):
         st.caption("Un Pine per fascia oraria con NQ/MNQ · RTY/M2K · YM/MYM · "
-                   "GC/MGC · CL/MCL. I confronti usano 0DTE precedenti e "
-                   "correnti reali più la Weekly corrente. Nessuna fotografia "
-                   "o scadenza mancante viene ricostruita.")
+                   "GC/MGC · CL/MCL. I confronti mostrano 0DTE precedente, "
+                   "0DTE corrente e Weekly corrente, soltanto da archivi reali. "
+                   "I cinque Pine individuali restano disponibili.")
         day = st.date_input("Seduta New York", value=datetime.now(NY).date(),
                             key="mm_unified_day")
         if not isinstance(day, date):
             st.warning("Seleziona una seduta.")
             return
         slots = slots_for_day(day)
-        st.caption("Terza acquisizione storica: 20:30 per le sedute precedenti "
-                   "al cambio 17:00.")
+        st.caption("Per le sedute precedenti al cambio d'orario rimane "
+                   "il terzo slot storico delle 20:30.")
+        cache_key = "mm_unified_prepared_by_slot"
+        saved = st.session_state.setdefault(cache_key, {})
         cols = st.columns(3, gap="small")
         for col, slot in zip(cols, slots):
             with col:
                 label = LABELS[slot]
-                if st.button(f"Prepara Pine unico {label}",
+                if st.button(f"Prepara Pine · {label}",
                              key=f"mm_unified_build_{day}_{slot}",
                              use_container_width=True):
-                    with st.spinner(f"Verifica delle cinque catene Cboe · {label}..."):
+                    with st.spinner(f"Verifica delle fotografie Cboe · {label}..."):
                         current, previous, reports = prepare_slot(day, slot)
                         if current:
                             script = (build_unified_pine(day, current)
                                       if slot == "0730" else
                                       build_unified_comparison_pine(
                                           day, current, previous, slot))
-                            st.session_state["mm_unified_prepared"] = {
-                                "day": day, "slot": slot, "script": script,
-                                "reports": reports,
+                            saved[(day.isoformat(), slot)] = {
+                                "script": script, "reports": reports,
                             }
                         else:
-                            st.session_state.pop("mm_unified_prepared", None)
+                            saved.pop((day.isoformat(), slot), None)
                             st.warning(f"{label}: nessun mercato verificato.")
-        prepared = st.session_state.get("mm_unified_prepared", {})
-        if prepared.get("day") != day or prepared.get("slot") not in slots:
+                prepared = saved.get((day.isoformat(), slot))
+                if prepared:
+                    st.download_button(
+                        f"Scarica Pine · {label}",
+                        data=prepared["script"].encode("utf-8"),
+                        file_name=f"Serafini_MultiMarket_UNICO_{slot}_{day:%Y%m%d}.pine",
+                        mime="text/plain", on_click="ignore",
+                        use_container_width=True,
+                        key=f"mm_unified_download_{day}_{slot}")
+                    count = sum(
+                        x.startswith("OK")
+                        for x in prepared["reports"].values())
+                    st.caption(f"{count}/5 mercati verificati")
+                else:
+                    st.caption("Da preparare: richiede fotografie reali.")
+        available = [s for s in slots if (day.isoformat(), s) in saved]
+        if not available:
             return
-        st.markdown(f"**Pine Multi-Market unico · {LABELS[prepared['slot']]}**")
+        selected = st.selectbox(
+            "Visualizza report e codice Pine",
+            available, format_func=lambda s: LABELS[s],
+            key=f"mm_unified_view_slot_{day}")
+        chosen = saved[(day.isoformat(), selected)]
+        st.markdown(f"**Pine Multi-Market unico · {LABELS[selected]}**")
         for symbol in MARKETS:
             st.caption(f"{symbol} → {', '.join(ROOTS[symbol])}: "
-                       f"{prepared['reports'][symbol]}")
-        present = sum(prepared["reports"][symbol].startswith("OK")
-                      for symbol in MARKETS)
-        if present < len(MARKETS):
-            st.warning(f"Pine con {present}/5 mercati verificati. I mercati "
-                       "assenti non disegnano profili né sostituiscono dati.")
-        st.download_button(
-            f"Scarica Pine unico · {LABELS[prepared['slot']]}",
-            data=prepared["script"].encode("utf-8"),
-            file_name=f"Serafini_MultiMarket_UNICO_{prepared['slot']}_{day:%Y%m%d}.pine",
-            mime="text/plain", on_click="ignore",
-            use_container_width=True,
-            key=f"mm_unified_download_{day}_{prepared['slot']}")
+                       f"{chosen['reports'][symbol]}")
+        n = sum(chosen["reports"][symbol].startswith("OK")
+                for symbol in MARKETS)
+        if n < len(MARKETS):
+            st.warning(f"Copertura {n}/5 mercati: gli strumenti senza dati "
+                       "verificati non mostrano alcun profilo.")
         with st.expander("Mostra codice Pine unico da copiare"):
-            st.code(prepared["script"], language="pine")
+            st.code(chosen["script"], language="pine")
