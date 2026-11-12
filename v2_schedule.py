@@ -11,7 +11,7 @@ ROME = ZoneInfo("Europe/Rome")
 CHICAGO = ZoneInfo("America/Chicago")
 INSTRUMENTS = ("NDX", "RUT", "DJX", "GLD", "USO")
 MAX_LAG_SECONDS = 12 * 60
-CHANGEOVER = date(2026, 11, 13)
+CHANGEOVER = date(2026, 11, 12)
 
 SLOTS = {
     "07:30": ("Europe/Rome", 7, 30, "30 7 * * 1-5"),
