@@ -213,6 +213,8 @@ def render_gld_cboe():
     axes = chart_price_axes("GLD", mapping, ylim, shared_ticks)
     projected = axes["projected"]
     st.markdown("**NET GAMMA GC CONTINUO · " + ("0DTE" if is_0dte else "Principale (non 0DTE)") + " / Weekly**")
+    from v2_gamma_summary import render_gamma_summary
+    render_gamma_summary(good, net_key="net", call_key="call", put_key="put")
     if projected:
         st.caption(
             f"Strike opzioni GLD proiettati sul continuo GC con "
