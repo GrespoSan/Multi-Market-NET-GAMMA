@@ -1,4 +1,4 @@
-"""Regressioni calendario V2: 17:00 Rome e archivi storici 20:30."""
+"""V2 calendar: 07:30 Rome, 08:50 + 10:00 Chicago, historical 20:30."""
 import unittest
 from datetime import datetime, date, timezone
 
@@ -7,24 +7,64 @@ from v2_pine_session import slots_for_day, parse_archived_capture, compare_captu
 
 
 class Capture1700Tests(unittest.TestCase):
-    def test_winter_cron_only_16_utc(self):
-        correct = decision(datetime(2026, 11, 12, 16, 2, tzinfo=timezone.utc),
-                           event_cron="0 16 * * 1-5")
-        self.assertTrue(correct["run"])
-        self.assertEqual(correct["slot"], "17:00")
-        wrong = decision(datetime(2026, 11, 12, 15, 2, tzinfo=timezone.utc),
-                         event_cron="0 15 * * 1-5")
-        self.assertFalse(wrong["run"])
-        self.assertEqual(wrong["reason"], "DST_NON_CORRISPONDENTE")
+    def test_winter_10_chicago_external_slot_1700(self):
+        capture = decision(
+            datetime(2026, 11, 12, 16, 2, tzinfo=timezone.utc),
+            requested="17:00", external=True)
+        self.assertTrue(capture["run"])
+        self.assertEqual(capture["slot"], "17:00")
+        self.assertEqual(capture["time_zone"], "America/Chicago")
+        self.assertEqual(capture["scheduled_local"][11:16], "10:00")
+        self.assertEqual(capture["chicago"].strftime("%H:%M"), "10:02")
+        self.assertEqual(capture["rome"].strftime("%H:%M"), "17:02")
 
-    def test_summer_cron_only_15_utc(self):
-        correct = decision(datetime(2027, 7, 12, 15, 2, tzinfo=timezone.utc),
-                           event_cron="0 15 * * 1-5")
-        self.assertTrue(correct["run"])
-        self.assertEqual(correct["slot"], "17:00")
-        wrong = decision(datetime(2027, 7, 12, 16, 2, tzinfo=timezone.utc),
-                         event_cron="0 16 * * 1-5")
-        self.assertFalse(wrong["run"])
+    def test_summer_10_chicago_external_slot_1700(self):
+        capture = decision(
+            datetime(2027, 7, 12, 15, 2, tzinfo=timezone.utc),
+            requested="17:00", external=True)
+        self.assertTrue(capture["run"])
+        self.assertEqual(capture["time_zone"], "America/Chicago")
+        self.assertEqual(capture["chicago"].strftime("%H:%M"), "10:02")
+        self.assertEqual(capture["rome"].strftime("%H:%M"), "17:02")
+
+    def test_dst_mismatch_10_chicago_means_16_rome(self):
+        # US summer time begins three weeks before Europe in March.
+        capture = decision(
+            datetime(2027, 3, 15, 15, 2, tzinfo=timezone.utc),
+            requested="17:00", external=True)
+        self.assertTrue(capture["run"])
+        self.assertEqual(capture["chicago"].strftime("%H:%M"), "10:02")
+        self.assertEqual(capture["rome"].strftime("%H:%M"), "16:02")
+        too_early = decision(
+            datetime(2027, 3, 15, 14, 57, tzinfo=timezone.utc),
+            requested="17:00", external=True)
+        self.assertFalse(too_early["run"])
+
+    def test_0730_rome_and_1550_chicago_not_changed(self):
+        rome = decision(
+            datetime(2026, 11, 12, 6, 31, tzinfo=timezone.utc),
+            requested="07:30", external=True)
+        self.assertTrue(rome["run"])
+        self.assertEqual(rome["time_zone"], "Europe/Rome")
+        chicago = decision(
+            datetime(2026, 11, 12, 14, 51, tzinfo=timezone.utc),
+            requested="15:50", external=True)
+        self.assertTrue(chicago["run"])
+        self.assertEqual(chicago["time_zone"], "America/Chicago")
+        self.assertEqual(chicago["scheduled_local"][11:16], "08:50")
+
+    def test_1550_chicago_also_moves_to_1450_rome_in_mismatch(self):
+        capture = decision(
+            datetime(2027, 3, 15, 13, 51, tzinfo=timezone.utc),
+            requested="15:50", external=True)
+        self.assertTrue(capture["run"])
+        self.assertEqual(capture["chicago"].strftime("%H:%M"), "08:51")
+        self.assertEqual(capture["rome"].strftime("%H:%M"), "14:51")
+
+    def test_native_github_cron_disabled(self):
+        with self.assertRaisesRegex(ValueError, "Cron GitHub disabilitato"):
+            decision(datetime(2026, 11, 12, 16, 2, tzinfo=timezone.utc),
+                     event_cron="0 16 * * 1-5")
 
     def test_stale_cron_job_is_not_captured(self):
         skipped = decision(datetime(2026, 11, 12, 19, 31, tzinfo=timezone.utc),
