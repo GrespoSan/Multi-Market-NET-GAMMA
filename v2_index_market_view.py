@@ -129,6 +129,30 @@ def render(ticker):
             }
         except Exception as exc:
             st.error(f"Fotografia archivio {ticker} non valida: {str(exc)[:210]}")
+    active = st.session_state.get(f"{prefix}_active")
+    if not active:
+        st.info(f"Nessuna fotografia {ticker} verificata. Usa l'acquisizione manuale o l'importazione.")
+        return
+    try:
+        doc = read_json(active["raw"], ticker)
+        dates = expiries(doc, ticker)
+        reference = float(doc["data"]["prev_day_close"])
+        if not dates or not math.isfinite(reference) or reference <= 0:
+            raise ValueError("Scadenze o close precedente CBOE non validi")
+    except (ValueError, TypeError, KeyError) as exc:
+        st.error(f"Fotografia non utilizzabile: {exc}")
+        return
+    snapshot_digest = hashlib.sha256(active["raw"]).hexdigest()
+    if st.session_state.get(f"{prefix}_snapshot_digest") != snapshot_digest:
+        st.session_state[f"{prefix}_snapshot_digest"] = snapshot_digest
+        for widget_suffix in ("close", "expiry", "weekly"):
+            st.session_state.pop(f"{prefix}_{widget_suffix}", None)
+    st.caption(
+        f"**File:** {active['origin']} · "
+        f"**Acquisizione:** {active['stamp'] or 'non verificabile'} · "
+        f"**Timestamp Cboe originale:** {doc.get('timestamp', 'non dichiarato')} "
+        "(fuso fonte non certificato)"
+    )
     # Manual acquisition remains accessible for RUT/DJX (there is no
     # dedicated RUT/DJX emergency acquisition module yet), but should not
     # interrupt the NQ-style snapshot information hierarchy.
@@ -162,30 +186,6 @@ def render(ticker):
                     st.rerun()
                 except Exception as exc:
                     st.error(f"Importazione non riuscita: {str(exc)[:260]}")
-    active = st.session_state.get(f"{prefix}_active")
-    if not active:
-        st.info(f"Nessuna fotografia {ticker} verificata. Usa l'acquisizione manuale o l'importazione.")
-        return
-    try:
-        doc = read_json(active["raw"], ticker)
-        dates = expiries(doc, ticker)
-        reference = float(doc["data"]["prev_day_close"])
-        if not dates or not math.isfinite(reference) or reference <= 0:
-            raise ValueError("Scadenze o close precedente CBOE non validi")
-    except (ValueError, TypeError, KeyError) as exc:
-        st.error(f"Fotografia non utilizzabile: {exc}")
-        return
-    snapshot_digest = hashlib.sha256(active["raw"]).hexdigest()
-    if st.session_state.get(f"{prefix}_snapshot_digest") != snapshot_digest:
-        st.session_state[f"{prefix}_snapshot_digest"] = snapshot_digest
-        for widget_suffix in ("close", "expiry", "weekly"):
-            st.session_state.pop(f"{prefix}_{widget_suffix}", None)
-    st.caption(
-        f"**File:** {active['origin']} · "
-        f"**Acquisizione:** {active['stamp'] or 'non verificabile'} · "
-        f"**Timestamp Cboe originale:** {doc.get('timestamp', 'non dichiarato')} "
-        "(fuso fonte non certificato)"
-    )
     close = st.number_input(
         f"Close precedente {ticker} · verificare fonte",
         value=reference, min_value=0.01, format="%.4f",
