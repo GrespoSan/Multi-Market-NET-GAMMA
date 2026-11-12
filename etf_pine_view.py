@@ -9,6 +9,7 @@ from __future__ import annotations
 import streamlit as st
 from etf_future_pine import make_etf_future_pine
 from v2_pine_timed_exports import render_timed_pine_exports
+from v2_pine_session import LABELS, slots_for_day
 
 CONTINUOUS_LABELS = {
     "GLD": "GC1! / MGC1!",
@@ -87,10 +88,11 @@ def render_etf_pine_exports(symbol, calculated, reference, day,
                    "avrà una scadenza coincidente con la data della fotografia.")
         return
 
-    st.markdown("**Pine per orari · 07:30 / 15:50 / 20:30**")
+    last_label = LABELS[slots_for_day(day)[-1]]
+    st.markdown(f"**Pine per orari · 07:30 / 15:50 / {last_label}**")
     render_timed_pine_exports(
         symbol, day, reference, band, None, extension=extension)
     st.caption("07:30: 0DTE + Weekly · 15:50: confronto 07:30→15:50 · "
-               "20:30: confronto 15:50→20:30. "
+               f"{last_label}: confronto 15:50→{last_label}. "
                "Gli slot senza fotografia valida restano non disponibili. "
                "Pine corrente separato nel modulo di emergenza.")
