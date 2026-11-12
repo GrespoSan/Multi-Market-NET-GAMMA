@@ -372,14 +372,17 @@ def render():
             value=True, key="mm_unified_spx_extension",
             on_change=_invalidate_spx_scripts
         )
-        missing_spx = [key for key in ("SPX_SUPABASE_URL", "SPX_SUPABASE_READ_KEY")
-                       if not str(st.secrets.get(key, "")).strip()]
-        if missing_spx:
-            st.caption("SPX/ES: archivio privato non ancora collegato. "
-                       "Configura nei Secrets di Multi-Market "
-                       + ", ".join(missing_spx) +
-                       " con accesso Storage in sola lettura. "
-                       "I cinque mercati già presenti restano disponibili.")
+        try:
+            spx_key_configured = bool(str(
+                st.secrets.get("SPX_SUPABASE_READ_KEY", "")).strip())
+        except Exception:
+            spx_key_configured = False
+        if not spx_key_configured:
+            st.caption("SPX/ES: la lettura dell'archivio privato richiede "
+                       "SPX_SUPABASE_READ_KEY nei Secrets di Multi-Market. "
+                       "URL del progetto SPX già configurato; nessuna "
+                       "modifica a Serafini SPX. Gli altri cinque mercati "
+                       "continuano a funzionare.")
         cache_key = "mm_unified_prepared_by_slot"
         saved = st.session_state.setdefault(cache_key, {})
         # Populate on first visit, then reuse the same immutable snapshot for
