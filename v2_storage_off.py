@@ -21,7 +21,7 @@ ROME = ZoneInfo("Europe/Rome")
 AVAILABLE_MARKETS = ("NDX", "RUT", "DJX", "GLD", "USO")
 SLOTS = {"0730": "Mattina 07:30 Roma",
          "1550": "Pomeriggio 08:50 Chicago",
-         "1700": "Pomeriggio 17:00 Roma",
+         "1700": "Pomeriggio 10:00 Chicago (slot 17:00)",
          "2030": "Storico 20:30 Roma",
          "manuale": "Rilevamento manuale"}
 
@@ -34,7 +34,7 @@ def _late_capture(slot_code, instant):
     """
     clocks = {"0730": (ROME, 7, 30),
               "1550": (ZoneInfo("America/Chicago"), 8, 50),
-              "1700": (ROME, 17, 0),
+              "1700": (ZoneInfo("America/Chicago"), 10, 0),
               "2030": (ZoneInfo("America/Chicago"), 13, 30)}
     if slot_code not in clocks:
         return False
