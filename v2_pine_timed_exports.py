@@ -2,7 +2,7 @@
 
 07:30: original 0DTE + Weekly.
 15:50: 07:30 0DTE + 15:50 0DTE + 15:50 Weekly.
-20:30: 15:50 0DTE + 20:30 0DTE + 20:30 Weekly.
+17:00 (new) / 20:30 (historical): 15:50 0DTE + later 0DTE + Weekly.
 
 No missing 13:30 slot is forged: unlike SPX, V2 only schedules 3 slots.
 No external futures/ETF quote downloads here: mapping is supplied and frozen.
@@ -12,7 +12,7 @@ from time import monotonic
 
 import streamlit as st
 
-from v2_pine_session import SLOTS, LABELS
+from v2_pine_session import LABELS, slots_for_day
 from v2_pine_capture import pine_capture_clock
 from v2_storage_off import load_pine_slot_captures
 from v2_pine_comparison import make_pine_comparison_v2
@@ -23,6 +23,7 @@ from v2_visual_extension import expanded_display
 EXPLANATIONS = {
     "0730": "07:30 · 0DTE + Weekly",
     "1550": "07:30 0DTE → 15:50 0DTE + Weekly",
+    "1700": "15:50 0DTE → 17:00 0DTE + Weekly",
     "2030": "15:50 0DTE → 20:30 0DTE + Weekly",
 }
 
@@ -102,7 +103,7 @@ def produce_timed_scripts(symbol, day, captures, reference, band,
     profiles, issues = build_slot_profiles(
         symbol, captures, day, reference, band, extension=extension)
     scripts = {}
-    for slot in SLOTS:
+    for slot in slots_for_day(day):
         if slot not in profiles:
             issues.setdefault(slot, "Fotografia Cboe di questo slot non disponibile.")
             continue
@@ -150,8 +151,10 @@ def produce_timed_scripts(symbol, day, captures, reference, band,
 def render_timed_pine_exports(symbol, day, reference, band, basis_or_mapping,
                               *, extension=True, macro_news=None):
     """Use only the authenticated 30-day V2 artifact archive, not live Cboe."""
-    st.caption("Come in SPX: Pine 07:30, confronto 07:30→15:50 e confronto "
-               "15:50→20:30; ogni confronto usa soltanto fotografie reali "
+    last_slot = slots_for_day(day)[-1]
+    last_label = LABELS[last_slot]
+    st.caption("Pine 07:30, confronto 07:30→15:50 e confronto "
+               f"15:50→{last_label}; ogni confronto usa soltanto fotografie reali "
                "della stessa seduta di New York. Gli orari effettivi sono "
                "indicati in CET/CEST. Nessun Gamma inventato.")
     # First view loads same-day GitHub archives automatically just like SPX.
@@ -163,11 +166,11 @@ def render_timed_pine_exports(symbol, day, reference, band, basis_or_mapping,
     # When later scheduled captures arrive, a normal rerun can discover
     # them without a manual refresh. Only archive APIs, never Massive.
     loaded_at = st.session_state.get(key + "_loaded_at", 0.0)
-    incomplete = state is None or len(state) < len(SLOTS)
+    incomplete = state is None or len(state) < len(slots_for_day(day))
     stale = incomplete and monotonic() - loaded_at >= 180
     if state is None or refresh or stale:
         try:
-            with st.spinner("Lettura rilevamenti cifrati 07:30 / 15:50 / 20:30..."):
+            with st.spinner("Lettura rilevamenti cifrati per la seduta selezionata..."):
                 captures = load_pine_slot_captures(symbol, day)
             state = {slot: {**capture} for slot, capture in captures.items()}
             st.session_state[key] = state
@@ -194,7 +197,7 @@ def render_timed_pine_exports(symbol, day, reference, band, basis_or_mapping,
         extension=extension, macro_news=macro_news)
 
     cols = st.columns(3, gap="small")
-    for col, slot in zip(cols, SLOTS):
+    for col, slot in zip(cols, slots_for_day(day)):
         with col:
             if slot in scripts:
                 script = scripts[slot]
