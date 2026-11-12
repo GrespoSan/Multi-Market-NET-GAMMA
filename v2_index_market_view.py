@@ -13,7 +13,7 @@ import streamlit as st
 import plotly.graph_objects as go
 
 from v2_universal_cboe import (
-    download_once, import_original, read_json, expiries, profile, _pine,
+    download_once, import_original, read_json, expiries, profile,
 )
 from v2_index_basis import compute_basis, CONFIG
 
@@ -254,19 +254,10 @@ def render(ticker):
                 key=f"{prefix}_chart_{name}_{day}",
             )
             st.caption(f"{len(group['rows'])} strike · copertura {group['coverage']:.0%}")
-    try:
-        pine = _pine(ticker, groups, future_mode=True, future_basis=basis)
-        st.download_button(
-            f"Scarica Pine {ticker} → {future} / micro",
-            data=pine,
-            file_name=f"{ticker}_{future}_NET_GAMMA.pine",
-            mime="text/plain",
-            key=f"{prefix}_pine_download",
-        )
-        with st.expander("Mostra codice Pine da copiare"):
-            st.code(pine, language="pine")
-    except ValueError as exc:
-        st.warning(f"Esportazione Pine non disponibile: {exc}")
+    # Come NQ/GC/CL: tre Pine temporali reali e un solo pannello di codice.
+    # Il CSV dei livelli correnti resta indipendente, per audit.
+    from v2_index_timed_exports import render_index_timed_exports
+    render_index_timed_exports(ticker, day, close, band, basis)
     output = io.StringIO()
     writer = csv.writer(output)
     writer.writerow(["scadenza", "strike_indice", "livello_future", "net_gamma_originale"])
