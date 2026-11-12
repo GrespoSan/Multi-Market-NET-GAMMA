@@ -1,0 +1,303 @@
+"""Timed unified 5-market exporter: 07:30 / 15:50 / 17:00 (legacy 20:30).
+
+Comparisons are based ONLY on validated same-day Cboe snapshots. They draw
+the preceding real 0DTE plus current 0DTE and current Weekly. This module
+extends the existing single-market graphics engine without changing Serafini
+Gamma, original strike values, ticker conversions, or ETF/future mapping.
+"""
+from datetime import datetime, date
+from math import isfinite
+from zoneinfo import ZoneInfo
+
+import streamlit as st
+
+from pine_export import _pine_array, _initial_manual_scale
+from v2_pine_session import LABELS, slots_for_day, compare_capture_pair
+from v2_pine_capture import pine_capture_clock
+from v2_storage_off import load_pine_slot_captures
+from v2_unified_pine import (
+    MARKETS, ROOTS, ETF, _from_capture, _session_basis,
+    _num, build_unified_pine, GAMMA_LIMIT,
+)
+
+NY = ZoneInfo("America/New_York")
+
+
+def _checked_comparison(previous, current, symbol):
+    """No comparison of unequal expiries or a non-0DTE ETF principal."""
+    if previous["main_label"] != "0DTE" or current["main_label"] != "0DTE":
+        raise ValueError(f"{symbol}: confronto 0DTE non disponibile; "
+                         "la scadenza principale non coincide con la seduta.")
+    if previous["main_expiry"] != current["main_expiry"]:
+        raise ValueError(f"{symbol}: scadenze 0DTE precedenti/correnti differenti.")
+    size = len(previous["main"]) + len(current["main"]) + len(current["weekly"])
+    if size > GAMMA_LIMIT:
+        raise ValueError(f"{symbol}: confronto con {size} strike oltre il limite "
+                         f"grafico {GAMMA_LIMIT}; nessuno strike eliminato.")
+    field = current["field_level"]
+    value = current["field_gamma"]
+    if previous["field_level"] != field or previous["field_gamma"] != value:
+        raise ValueError("Tipologia strike/Gamma incompatibile.")
+    if not all(isfinite(float(x[value])) and isfinite(float(x[field]))
+               for x in previous["main"]):
+        raise ValueError(f"{symbol}: Gamma precedente non valido.")
+    # One scale for all three photographic columns for this instrument only.
+    scale, _ = _initial_manual_scale([
+        ({"rows": [{"net_gamma": r[value]} for r in group]}, center)
+        for group, center in ((previous["main"], 100),
+                              (current["main"], 195),
+                              (current["weekly"], 295))
+    ])
+    checked = dict(current)
+    checked["scale"] = scale
+    return checked
+
+
+def build_unified_comparison_pine(day, current, previous, slot):
+    """Upgrade the SAME unified Pine renderer to three verified columns."""
+    if not isinstance(day, date) or slot not in slots_for_day(day)[1:]:
+        raise ValueError("Fascia di confronto non prevista per la seduta.")
+    if not current or set(current) != set(previous):
+        raise ValueError("Confronto: fotografie precedenti/correnti non accoppiate.")
+    for symbol in current:
+        _checked_comparison(previous[symbol], current[symbol], symbol)
+    valid = {symbol: _checked_comparison(previous[symbol], current[symbol], symbol)
+             for symbol in current}
+    script = build_unified_pine(day, valid)
+    prev_slot = "0730" if slot == "1550" else "1550"
+    marker = 'offsetOdte = input.int(100, "Distanza profilo principale", minval=45, maxval=250)'
+    if script.count(marker) != 1:
+        raise ValueError("Template unico: offset profili assente.")
+    script = script.replace(marker,
+        marker + '\nshowPrevious = input.bool(true, "Mostra 0DTE precedente")'
+        '\noffsetCompare = input.int(95, "Distanza corrente dalla precedente",'
+        ' minval=20, maxval=200)', 1)
+    # Immutable original strike and original Gamma arrays of previous snapshots.
+    prev_arrays = []
+    for symbol in MARKETS:
+        p = previous.get(symbol)
+        if p is None:
+            prev_arrays.extend([
+                f"var array<float> {symbol}PrevLevels = array.new_float()",
+                f"var array<float> {symbol}PrevGamma = array.new_float()",
+            ])
+        else:
+            prev_arrays.extend([
+                f'var array<float> {symbol}PrevLevels = {_pine_array(p["main"], p["field_level"])}',
+                f'var array<float> {symbol}PrevGamma = {_pine_array(p["main"], p["field_gamma"])}',
+            ])
+    names = "\n".join(prev_arrays)
+    start = "var array<line> drawnLines = array.new_line()"
+    if script.count(start) != 1:
+        raise ValueError("Template unico: inizio disegno non trovato.")
+    prev_selection = """array<float> previousLevels = switch activeMarket
+    "NDX" => NDXPrevLevels
+    "RUT" => RUTPrevLevels
+    "DJX" => DJXPrevLevels
+    "GLD" => GLDPrevLevels
+    "USO" => USOPrevLevels
+    => array.new_float()
+array<float> previousGamma = switch activeMarket
+    "NDX" => NDXPrevGamma
+    "RUT" => RUTPrevGamma
+    "DJX" => DJXPrevGamma
+    "GLD" => GLDPrevGamma
+    "USO" => USOPrevGamma
+    => array.new_float()
+"""
+    script = script.replace(start, names + "\n" + prev_selection + "\n" + start, 1)
+    # Source has exactly one guarded drawing block, generated by build_unified_pine.
+    anchor = "if barstate.islast and validTicker\n"
+    if script.count(anchor) != 1:
+        raise ValueError("Template unico: guardia disegno non compatibile.")
+    script = script[:script.index(anchor)] + """if barstate.islast and validTicker
+    for ln in drawnLines
+        line.delete(ln)
+    array.clear(drawnLines)
+    for lb in drawnLabels
+        label.delete(lb)
+    array.clear(drawnLabels)
+    bool haveData = array.size(previousLevels) > 0 and array.size(mainLevels) > 0 and array.size(weekLevels) > 0
+    bool ratioValid = not isETF or (timeframe.isintraday and not na(ratioToDraw))
+    if not haveData
+        label info = label.new(bar_index, close, "Confronto non disponibile per " + activeMarket + ": fotografia 0DTE assente.", style=label.style_label_left, color=color.orange, textcolor=color.black)
+        array.push(drawnLabels, info)
+    else if not ratioValid
+        label warn = label.new(bar_index, close, "ETF/future: nessuna coppia 5m chiusa e sincronizzata; nessun livello simulato.", style=label.style_label_left, color=color.orange, textcolor=color.black)
+        array.push(drawnLabels, warn)
+    else
+        float factor = isETF ? ratioToDraw : priceFactor
+        float shift = isETF ? 0.0 : basisIndex
+        array<float> prevMapped = mapMarket(previousLevels, factor, shift)
+        array<float> drawMain = mapMarket(mainLevels, factor, shift)
+        array<float> drawWeek = mapMarket(weekLevels, factor, shift)
+        array<float> drawCalls = mapMarket(callLevels, factor, shift)
+        array<float> drawPuts = mapMarket(putLevels, factor, shift)
+        int previousCenter = offsetOdte
+        int currentCenter = previousCenter + (showPrevious ? offsetCompare : 0)
+        int weeklyCenter = currentCenter + offsetWeekly
+        float safe = math.max(
+            showPrevious ? requiredScale(previousGamma, previousCenter) : 0.0,
+            showCurrentOdte ? requiredScale(mainGamma, currentCenter) : 0.0)
+        safe := math.max(safe,
+            showCurrentWeekly ? requiredScale(weekGamma, weeklyCenter) : 0.0)
+        bool far = (showPrevious and previousCenter >= 480) or (showCurrentOdte and currentCenter >= 480) or (showCurrentWeekly and weeklyCenter >= 480)
+        if far or actualScale < safe * 0.999999
+            label warning = label.new(bar_index + 10, close, "Scala/distanza non valida: aumenta scala o riduci offset.", style=label.style_label_left, color=color.orange, textcolor=color.black)
+            array.push(drawnLabels, warning)
+        else
+            if showPrevious
+                renderProfile(prevMapped, previousGamma, previousCenter + bar_index, "0DTE @PREV@ · precedente · " + activeMarket, actualScale)
+            if showCurrentOdte
+                renderProfile(drawMain, mainGamma, currentCenter + bar_index, "0DTE @CUR@ · corrente · " + snapshotClock, actualScale)
+            if showCurrentWeekly
+                renderProfile(drawWeek, weekGamma, weeklyCenter + bar_index, "Weekly " + weeklyExpiry + " · " + snapshotClock, actualScale)
+            if showTop3Odte and mainKind == "0DTE"
+                drawOdteTopProjections(drawCalls, drawPuts)
+"""
+    script = script.replace("@PREV@", LABELS[prev_slot]).replace("@CUR@", LABELS[slot])
+    script = script.replace("UNICO 07:30 ·", f"UNICO {LABELS[slot]} ·", 1)
+    script = script.replace("// SPERIMENTALE: 5 mercati, 1 unico motore grafico. Dati originali CBOE.",
+                            "// Cinque mercati, tre fotografie reali per mercato, un unico disegno.")
+    return script
+
+
+def _verified_basis(symbol, market_day):
+    """No guessed cash/future basis; cache date-bound independently of widgets."""
+    basis = _session_basis(symbol, market_day)
+    if basis is not None:
+        return basis
+    key = str(st.secrets.get("MASSIVE_API_KEY", "")).strip()
+    if not key:
+        raise ValueError("MASSIVE_API_KEY non configurata.")
+    if symbol == "NDX":
+        from ndx_basis import fetch_basis
+        result = fetch_basis(market_day, key)
+    else:
+        from v2_index_basis import compute_basis
+        result = compute_basis(symbol, market_day, key)
+    basis = float(result["basis"])
+    if not isfinite(basis):
+        raise ValueError("Differenziale non finito.")
+    st.session_state[f"mm_unified_basis_{symbol}"] = {
+        "analysis_day": market_day.isoformat(),
+        "basis": basis,
+        "source": result.get("source", ""),
+        "reference_date": str(result.get("reference_date", "")),
+    }
+    return basis
+
+
+def _market_band(symbol):
+    if symbol in ("RUT", "DJX"):
+        return float(st.session_state.get(f"v2_primary_{symbol.lower()}_band", 5.0))
+    if symbol == "NDX":
+        return float(st.session_state.get("ndx_band_pct", 3.0))
+    return float(st.session_state.get(f"{symbol.lower()}_cboe_band", 3.0))
+
+
+def prepare_slot(day, slot):
+    """Return valid market records, omissions and real acquisition data."""
+    if slot not in slots_for_day(day):
+        raise ValueError("Orario non previsto per la seduta selezionata.")
+    prev_slot = "0730" if slot == "1550" else "1550"
+    records, previous, reports = {}, {}, {}
+    for symbol in MARKETS:
+        try:
+            captures = load_pine_slot_captures(symbol, day)
+            current_capture = captures.get(slot)
+            if current_capture is None:
+                raise ValueError(f"Fotografia reale delle {LABELS[slot]} assente.")
+            if slot != "0730":
+                previous_capture = captures.get(prev_slot)
+                if previous_capture is None:
+                    raise ValueError(f"Fotografia precedente {LABELS[prev_slot]} assente.")
+                compare_capture_pair(previous_capture, current_capture,
+                                     prev_slot, slot)
+            band = _market_band(symbol)
+            if not 0.0 < band <= 25:
+                raise ValueError("Fascia strike non valida.")
+            extension = bool(st.session_state.get(
+                f"v2_{symbol.lower()}_visual_extension", True))
+            now = _from_capture(symbol, current_capture, day, band, extension)
+            old = None
+            if slot != "0730":
+                old = _from_capture(symbol, previous_capture, day, band, extension)
+                now = _checked_comparison(old, now, symbol)
+            if symbol not in ETF:
+                now["basis"] = _verified_basis(symbol, day)
+            else:
+                now["basis"] = 0.0
+            records[symbol] = now
+            if old is not None:
+                previous[symbol] = old
+            total = len(now["main"]) + len(now["weekly"])
+            if old is not None:
+                total += len(old["main"])
+            reports[symbol] = (f"OK · {LABELS[slot]} · "
+                               f"{total} strike reali · "
+                               f"{now['main_label']} {now['main_expiry']:%d/%m} · "
+                               f"Weekly {now['weekly_expiry']:%d/%m}")
+        except (ValueError, KeyError, TypeError, OverflowError, OSError) as exc:
+            reports[symbol] = f"N/D · {str(exc)[:155]}"
+    return records, previous, reports
+
+
+def render():
+    """One panel, three downloads with their own verified real snapshots."""
+    with st.expander("PINE MULTI-MARKET UNICO · 07:30 / 15:50 / 17:00",
+                     expanded=False):
+        st.caption("Un Pine per fascia oraria con NQ/MNQ · RTY/M2K · YM/MYM · "
+                   "GC/MGC · CL/MCL. I confronti usano 0DTE precedenti e "
+                   "correnti reali più la Weekly corrente. Nessuna fotografia "
+                   "o scadenza mancante viene ricostruita.")
+        day = st.date_input("Seduta New York", value=datetime.now(NY).date(),
+                            key="mm_unified_day")
+        if not isinstance(day, date):
+            st.warning("Seleziona una seduta.")
+            return
+        slots = slots_for_day(day)
+        st.caption("Terza acquisizione storica: 20:30 per le sedute precedenti "
+                   "al cambio 17:00.")
+        cols = st.columns(3, gap="small")
+        for col, slot in zip(cols, slots):
+            with col:
+                label = LABELS[slot]
+                if st.button(f"Prepara Pine unico {label}",
+                             key=f"mm_unified_build_{day}_{slot}",
+                             use_container_width=True):
+                    with st.spinner(f"Verifica delle cinque catene Cboe · {label}..."):
+                        current, previous, reports = prepare_slot(day, slot)
+                        if current:
+                            script = (build_unified_pine(day, current)
+                                      if slot == "0730" else
+                                      build_unified_comparison_pine(
+                                          day, current, previous, slot))
+                            st.session_state["mm_unified_prepared"] = {
+                                "day": day, "slot": slot, "script": script,
+                                "reports": reports,
+                            }
+                        else:
+                            st.session_state.pop("mm_unified_prepared", None)
+                            st.warning(f"{label}: nessun mercato verificato.")
+        prepared = st.session_state.get("mm_unified_prepared", {})
+        if prepared.get("day") != day or prepared.get("slot") not in slots:
+            return
+        st.markdown(f"**Pine Multi-Market unico · {LABELS[prepared['slot']]}**")
+        for symbol in MARKETS:
+            st.caption(f"{symbol} → {', '.join(ROOTS[symbol])}: "
+                       f"{prepared['reports'][symbol]}")
+        present = sum(prepared["reports"][symbol].startswith("OK")
+                      for symbol in MARKETS)
+        if present < len(MARKETS):
+            st.warning(f"Pine con {present}/5 mercati verificati. I mercati "
+                       "assenti non disegnano profili né sostituiscono dati.")
+        st.download_button(
+            f"Scarica Pine unico · {LABELS[prepared['slot']]}",
+            data=prepared["script"].encode("utf-8"),
+            file_name=f"Serafini_MultiMarket_UNICO_{prepared['slot']}_{day:%Y%m%d}.pine",
+            mime="text/plain", on_click="ignore",
+            use_container_width=True,
+            key=f"mm_unified_download_{day}_{prepared['slot']}")
+        with st.expander("Mostra codice Pine unico da copiare"):
+            st.code(prepared["script"], language="pine")
