@@ -332,6 +332,33 @@ def prepare_slot(day, slot):
     return records, previous, reports
 
 
+def _slot_has_occurred(day, slot, now=None):
+    """Do not advertise future snapshot slots as historical CBOE data."""
+    from datetime import time
+    from zoneinfo import ZoneInfo
+
+    if now is None:
+        now = datetime.now(ZoneInfo("Europe/Rome"))
+    if now.tzinfo is None:
+        raise ValueError("Orario locale non verificabile.")
+    if slot in ("0730", "1700"):
+        tz = ZoneInfo("Europe/Rome")
+        hour, minute = (7, 30) if slot == "0730" else (17, 0)
+    elif slot in ("1550", "2030"):
+        tz = ZoneInfo("America/Chicago")
+        hour, minute = (8, 50) if slot == "1550" else (13, 30)
+    else:
+        raise ValueError("Fascia oraria sconosciuta.")
+    expected = datetime.combine(day, time(hour, minute), tzinfo=tz)
+    return now.astimezone(tz) >= expected
+
+
+def _missing_unified_markets(records, reports):
+    """No unified export masquerading as six markets if one is absent."""
+    return [symbol for symbol in MARKETS
+            if symbol not in records or not str(reports.get(symbol, "")).startswith("OK")]
+
+
 def render():
     """One panel, three independently prepared and downloadable time slots."""
     with st.expander("PINE MULTI-MARKET UNICO · 07:30 / 15:50 / 17:00",
@@ -375,6 +402,16 @@ def _render_automatic_downloads(day, slots):
             label = LABELS[slot]
             identity = (day.isoformat(), slot)
             prepared = saved.get(identity)
+            # Never export a Pine for a future slot: a previously generated
+            # incomplete script is static and would never self-update.
+            if not _slot_has_occurred(day, slot):
+                saved.pop(identity, None)
+                st.button(f"Pine · {label} · in attesa",
+                          disabled=True, use_container_width=True,
+                          key=f"mm_unified_waiting_{day}_{slot}")
+                st.caption(f"Rilevamento {label} non ancora previsto "
+                           "per questa seduta. Nessun profilo simulato.")
+                continue
             incomplete = (
                 prepared is not None
                 and sum(str(v).startswith("OK")
@@ -386,14 +423,20 @@ def _render_automatic_downloads(day, slots):
             if prepared is None or stale_incomplete:
                 try:
                     current, previous, reports = prepare_slot(day, slot)
-                    script = (
-                        build_unified_pine(day, current) if slot == "0730"
-                        else build_unified_comparison_pine(
-                            day, current, previous, slot, reports=reports)
-                    ) if current else None
+                    missing = _missing_unified_markets(current, reports)
+                    # Fail closed: a real six-market Pine must contain SIX
+                    # verified markets, not 1/6 with orange Pine placeholders.
+                    script = None
+                    if not missing:
+                        script = (
+                            build_unified_pine(day, current) if slot == "0730"
+                            else build_unified_comparison_pine(
+                                day, current, previous, slot, reports=reports)
+                        )
                     prepared = {
                         "script": script, "reports": reports,
                         "checked_at": monotonic(),
+                        "missing": missing,
                     }
                 except (ValueError, KeyError, TypeError, OverflowError,
                         OSError) as exc:
@@ -426,8 +469,17 @@ def _render_automatic_downloads(day, slots):
                         prepared["reports"].items()
                         if not message.startswith("OK")
                     ]
-                    st.caption(issues[0] if issues else
-                               "Fotografie CBOE non disponibili.")
+                    missing_names = prepared.get("missing") or [
+                        m for m in MARKETS if not
+                        str(prepared["reports"].get(m, "")).startswith("OK")
+                    ]
+                    st.caption("Acquisizione incompleta · " +
+                               str(len(MARKETS) - len(missing_names)) + "/" +
+                               str(len(MARKETS)) + " mercati verificati. Mancano: " +
+                               ", ".join(missing_names) +
+                               ". Controllo automatico ogni 3 minuti.")
+                    if issues:
+                        st.caption(issues[0][:220])
                 else:
                     st.caption("Fotografie CBOE non disponibili.")
     available = [s for s in slots
