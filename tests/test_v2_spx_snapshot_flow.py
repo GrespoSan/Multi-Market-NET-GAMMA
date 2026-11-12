@@ -20,7 +20,7 @@ class SPXSnapshotParityTests(unittest.TestCase):
         self.assertIn("v2-multi-market-42", label)
         self.assertEqual(SLOTS["0730"],"Mattina 07:30 Roma")
         self.assertEqual(SLOTS["1550"],"Pomeriggio 08:50 Chicago")
-        self.assertEqual(SLOTS["1700"],"Pomeriggio 17:00 Roma")
+        self.assertEqual(SLOTS["1700"],"Pomeriggio 10:00 Chicago (slot 17:00)")
         self.assertEqual(SLOTS["2030"],"Storico 20:30 Roma")
         self.assertEqual(AVAILABLE_MARKETS,("NDX","RUT","DJX","GLD","USO"))
 
@@ -103,7 +103,8 @@ class SPXSnapshotParityTests(unittest.TestCase):
         import v2_cron
         self.assertEqual(clock["07:30"][0],"Europe/Rome")
         self.assertEqual(clock["15:50"][0],"America/Chicago")
-        self.assertEqual(clock["17:00"][0],"Europe/Rome")
+        self.assertEqual(clock["17:00"][0],"America/Chicago")
+        self.assertEqual(clock["17:00"][1:3],(10,0))
         self.assertIn("V2_AUTHORIZED_FEED_CONFIRMED",Path(v2_cron.__file__).read_text())
         self.assertIn("V2_FEED_TOKEN",Path(v2_cron.__file__).read_text())
         self.assertIn("V2_ARCHIVE_FERNET_KEY",Path(v2_cron.__file__).read_text())
