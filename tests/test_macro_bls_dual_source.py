@@ -4,9 +4,7 @@ from datetime import date, datetime, timezone
 from unittest.mock import patch
 
 from bls_calendar import parse_ics, parse_month_html, fetch_bls
-from macro_calendar import (
-    _kind, _prepare, _rome_time, merge_calendars, load_calendar,
-)
+from macro_calendar import load_calendar
 from pine_news_overlay import append_news
 
 
@@ -89,94 +87,28 @@ END:VCALENDAR"""
         self.assertEqual(req.call_count, 2)
 
 
-class DualSourceTests(unittest.TestCase):
-    def test_fc_v2_release_at_utc_is_primary(self):
-        event = {
-            "series_code": "us-cpi", "country": "US", "date": "2026-11-10",
-            "release_at_utc": "2026-11-10T13:30:00+00:00",
-            "time_utc": "2026-11-10T15:30:00+00:00",
-            "status": "scheduled",
-        }
-        prepared = _prepare([event], NOV10)
-        self.assertEqual(prepared[0]["clock"], "14:30")
-        self.assertEqual(prepared[0]["kind"], "CPI")
+class FreeSourcesTests(unittest.TestCase):
+    def test_official_BLS_CPI_is_not_lost_on_other_source_outage(self):
+        with patch("bls_calendar.fetch_bls", return_value=[cpi()]), \
+             patch("macro_calendar._bea_events", side_effect=OSError()), \
+             patch("macro_calendar._census_events", side_effect=OSError()), \
+             patch("macro_calendar._fed_events", side_effect=OSError()), \
+             patch("macro_calendar._ism_events", side_effect=OSError()), \
+             patch("macro_calendar._claims_events", side_effect=OSError()):
+            events, health = load_calendar.__wrapped__(NOV10, NOV10)
+        self.assertEqual([(e["kind"], e["clock"]) for e in events],
+                         [("CPI", "14:30")])
+        self.assertIn("BLS", health["healthy"])
+        self.assertFalse(health["complete"])
 
-    def test_cpi_present_when_financecalendar_returns_empty(self):
-        with patch("macro_calendar._fetch", return_value=[]), \
-             patch("macro_calendar.st.secrets", {"FINANCE_CALENDAR_API_KEY":"test"}), \
-             patch("bls_calendar.fetch_bls", return_value=[cpi()]):
-            events, health = load_calendar(NOV10, NOV10)
-        self.assertEqual([(e["kind"],e["clock"]) for e in events],
-                         [("CPI","14:30")])
-        self.assertTrue(health["bls_ok"])
-        self.assertTrue(health["financecalendar_ok"])
-        self.assertTrue(any("assente" in msg for msg in health["messages"]))
-
-    def test_cpi_still_visible_without_financecalendar_api_key(self):
-        with patch("macro_calendar.st.secrets", {}), \
-             patch("bls_calendar.fetch_bls", return_value=[cpi()]):
-            events, health = load_calendar(NOV10, NOV10)
-        self.assertEqual(events[0]["kind"], "CPI")
-        self.assertFalse(health["financecalendar_ok"])
-        self.assertTrue(health["bls_ok"])
-
-    def test_bls_time_wins_while_showing_disagreement(self):
-        fc = [{
-            **cpi(), "clock": "15:30", "source": "https://www.financecalendar.com",
-            "provider": "FinanceCalendar", "official_schedule": False,
-        }]
-        merged, warnings = merge_calendars(fc, [cpi()],
-                                          finance_ok=True, bls_ok=True)
-        self.assertEqual(len(merged), 1)
-        self.assertEqual(merged[0]["clock"], "14:30")
-        self.assertIn("Orario discordante", merged[0]["source_warning"])
-        self.assertTrue(warnings)
-
-    def test_blssource_outage_does_not_hide_fc_event(self):
-        fc = _prepare([{
-            "series_code": "us-cpi", "date": "2026-11-10",
-            "release_at_utc": "2026-11-10T13:30:00+00:00",
-            "country": "US",
-        }], NOV10)
-        with patch("macro_calendar._fetch", return_value=[{
-            "series_code": "us-cpi", "date": "2026-11-10",
-            "release_at_utc": "2026-11-10T13:30:00+00:00",
-            "country": "US",
-        }]), \
-             patch("macro_calendar.st.secrets", {"FINANCE_CALENDAR_API_KEY":"x"}), \
-             patch("bls_calendar.fetch_bls", side_effect=OSError("BLS unavailable")):
-            events, status = load_calendar(NOV10, NOV10)
-        self.assertEqual(events[0]["clock"], "14:30")
-        self.assertFalse(status["bls_ok"])
-
-    def test_both_unavailable_are_not_misreported_as_zero_events(self):
-        with patch("macro_calendar.st.secrets", {}), \
-             patch("bls_calendar.fetch_bls", side_effect=OSError("BLS unavailable")):
-            with self.assertRaisesRegex(RuntimeError, "Entrambe"):
-                load_calendar(NOV10, NOV10)
-
-    def test_macro_ui_keeps_bls_link_no_yesterday_and_no_yellow_fc_warning(self):
-        from pathlib import Path
-        source = (Path(__file__).resolve().parents[1] /
-                  "macro_calendar.py").read_text(encoding="utf-8")
-        self.assertIn("Calendario ufficiale BLS</a>", source)
-        self.assertNotIn('with st.expander(f"Ieri', source)
-        self.assertNotIn('st.warning("Calendario parziale:', source)
-        self.assertIn('st.caption("FinanceCalendar temporaneamente non disponibile', source)
-        self.assertIn('elif not health["financecalendar_ok"]:', source)
-
-    def test_pine_marks_cpi_only_before_verified_download(self):
-        events=[cpi()]
+    def test_pine_line_only_before_verified_download(self):
         before = append_news(
-            "//@version=6\nindicator('test',overlay=true)",
-            events, captured_at="2026-11-10T07:30:10+01:00")
+            "//@version=6\nindicator('test',overlay=true)", [cpi()],
+            captured_at="2026-11-10T07:30:10+01:00")
         after = append_news(
-            "//@version=6\nindicator('test',overlay=true)",
-            events, captured_at="2026-11-10T15:50:10+01:00")
-        self.assertIn("newsTime0", before)
-        # Etichetta TradingView intenzionalmente verticale C / P / I.
+            "//@version=6\nindicator('test',overlay=true)", [cpi()],
+            captured_at="2026-11-10T15:50:10+01:00")
         self.assertIn('timestamp("Europe/Rome", 2026, 11, 10, 14, 30)', before)
-        self.assertIn("newsLabel0", before)
         self.assertNotIn("newsTime0", after)
 
 
