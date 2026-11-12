@@ -251,8 +251,8 @@ def prepare_slot(day, slot):
                     raise ValueError(f"SPX: fotografia ufficiale {LABELS[slot]} "
                                      "non verificata nell'archivio Serafini SPX.")
                 basis, basis_source = spx_basis(day)
-                extension = bool(st.session_state.get("mm_unified_spx_extension", True))
-                now = spx_record(current_frame, day, basis, extension=extension)
+                # Always use original SPX 25+25 plus visual extension.
+                now = spx_record(current_frame, day, basis, extension=True)
                 prior_note = ""
                 old = None
                 if slot != "0730":
@@ -264,7 +264,7 @@ def prepare_slot(day, slot):
                             if old_time >= now_time:
                                 raise ValueError("timestamp precedenti non cronologici.")
                             candidate = spx_record(
-                                earlier, day, basis, extension=extension)
+                                earlier, day, basis, extension=True)
                             _checked_comparison(candidate, now, symbol)
                             old = candidate
                         except (ValueError, TypeError, KeyError) as exc:
@@ -348,30 +348,6 @@ def render():
         slots = slots_for_day(day)
         st.caption("Per le sedute precedenti al cambio d'orario rimane "
                    "il terzo slot storico delle 20:30.")
-        # SPX original data stay in the separate, private official archive.
-        # A manual verified ES-SPX basis may override SPX's identical Yahoo
-        # previous-session methodology. Never overwrite a manual input.
-        def _invalidate_spx_scripts():
-            saved_items = st.session_state.get("mm_unified_prepared_by_slot", {})
-            for cached_key in list(saved_items):
-                if cached_key[0] == day.isoformat():
-                    saved_items.pop(cached_key, None)
-
-        st.text_input(
-            "SPX → ES/MES · differenziale ES−SPX (facoltativo, punti)",
-            key=f"mm_unified_spx_basis_manual_{day.isoformat()}",
-            placeholder="Vuoto = calcolo automatico come in Serafini SPX",
-            on_change=_invalidate_spx_scripts,
-            help="Compilare solo con il valore verificato per questa seduta "
-                 "nell'app SPX. Se vuoto, usa la medesima media ES=F−^GSPC "
-                 "delle barre 15m della sessione cash precedente, arrotondata "
-                 "all'intero come nell'app SPX."
-        )
-        st.checkbox(
-            "SPX · estensione grafica originale (25+25 sempre conservati)",
-            value=True, key="mm_unified_spx_extension",
-            on_change=_invalidate_spx_scripts
-        )
         try:
             spx_key_configured = bool(str(
                 st.secrets.get("SPX_SUPABASE_READ_KEY", "")).strip())
@@ -383,88 +359,94 @@ def render():
                        "URL del progetto SPX già configurato; nessuna "
                        "modifica a Serafini SPX. Gli altri cinque mercati "
                        "continuano a funzionare.")
-        cache_key = "mm_unified_prepared_by_slot"
-        saved = st.session_state.setdefault(cache_key, {})
-        # Populate on first visit, then reuse the same immutable snapshot for
-        # downloads and code copy. Retry incomplete slots periodically only
-        # after explicit page interactions; no repeated archive downloads on
-        # each Streamlit widget rerun. The refresh button forces a new audit.
-        refresh = st.button("Aggiorna Pine per orari",
-                            key=f"mm_unified_refresh_{day}")
-        cols = st.columns(3, gap="small")
-        for col, slot in zip(cols, slots):
-            with col:
-                label = LABELS[slot]
-                identity = (day.isoformat(), slot)
-                prepared = saved.get(identity)
-                stale_missing = (
-                    prepared is not None and not prepared.get("script")
-                    and monotonic() - prepared.get("checked_at", 0) > 180
-                )
-                if refresh or prepared is None or stale_missing:
-                    try:
-                        current, previous, reports = prepare_slot(day, slot)
-                        script = (
-                            build_unified_pine(day, current) if slot == "0730"
-                            else build_unified_comparison_pine(
-                                day, current, previous, slot, reports=reports)
-                        ) if current else None
-                        prepared = {
-                            "script": script, "reports": reports,
-                            "checked_at": monotonic(),
-                        }
-                    except (ValueError, KeyError, TypeError, OverflowError,
-                            OSError) as exc:
-                        prepared = {
-                            "script": None,
-                            "reports": {symbol: "N/D · " + str(exc)[:130]
-                                        for symbol in MARKETS},
-                            "checked_at": monotonic(),
-                        }
-                    saved[identity] = prepared
-                if prepared and prepared.get("script"):
-                    st.download_button(
-                        f"Scarica Pine · {label}",
-                        data=prepared["script"].encode("utf-8"),
-                        file_name=f"Serafini_MultiMarket_UNICO_{slot}_{day:%Y%m%d}.pine",
-                        mime="text/plain", on_click="ignore",
-                        use_container_width=True,
-                        key=f"mm_unified_download_{day}_{slot}")
-                    count = sum(
-                        x.startswith("OK")
-                        for x in prepared["reports"].values())
-                    st.caption(f"{count}/{len(MARKETS)} mercati verificati")
+        _render_automatic_downloads(day, slots)
+
+
+@st.fragment(run_every=180)
+def _render_automatic_downloads(day, slots):
+    """Three direct downloads. Recheck incomplete slots without manual buttons."""
+    cache_key = "mm_unified_prepared_by_slot"
+    saved = st.session_state.setdefault(cache_key, {})
+    # Refresh partial/missing slots automatically at most every 3 minutes.
+    # Completed exports are stable and never repeatedly fetched.
+    cols = st.columns(3, gap="small")
+    for col, slot in zip(cols, slots):
+        with col:
+            label = LABELS[slot]
+            identity = (day.isoformat(), slot)
+            prepared = saved.get(identity)
+            incomplete = (
+                prepared is not None
+                and sum(str(v).startswith("OK")
+                        for v in prepared.get("reports", {}).values()) < len(MARKETS)
+            )
+            stale_incomplete = (
+                incomplete and monotonic() - prepared.get("checked_at", 0) >= 180
+            )
+            if prepared is None or stale_incomplete:
+                try:
+                    current, previous, reports = prepare_slot(day, slot)
+                    script = (
+                        build_unified_pine(day, current) if slot == "0730"
+                        else build_unified_comparison_pine(
+                            day, current, previous, slot, reports=reports)
+                    ) if current else None
+                    prepared = {
+                        "script": script, "reports": reports,
+                        "checked_at": monotonic(),
+                    }
+                except (ValueError, KeyError, TypeError, OverflowError,
+                        OSError) as exc:
+                    prepared = {
+                        "script": None,
+                        "reports": {symbol: "N/D · " + str(exc)[:130]
+                                    for symbol in MARKETS},
+                        "checked_at": monotonic(),
+                    }
+                saved[identity] = prepared
+            if prepared and prepared.get("script"):
+                st.download_button(
+                    f"Scarica Pine · {label}",
+                    data=prepared["script"].encode("utf-8"),
+                    file_name=f"Serafini_MultiMarket_UNICO_{slot}_{day:%Y%m%d}.pine",
+                    mime="text/plain", on_click="ignore",
+                    use_container_width=True,
+                    key=f"mm_unified_download_{day}_{slot}")
+                count = sum(
+                    x.startswith("OK")
+                    for x in prepared["reports"].values())
+                st.caption(f"{count}/{len(MARKETS)} mercati verificati")
+            else:
+                st.button(f"Pine · {label} · non disponibile",
+                          disabled=True, use_container_width=True,
+                          key=f"mm_unified_missing_{day}_{slot}")
+                if prepared:
+                    issues = [
+                        f"{symbol}: {message}" for symbol, message in
+                        prepared["reports"].items()
+                        if not message.startswith("OK")
+                    ]
+                    st.caption(issues[0] if issues else
+                               "Fotografie CBOE non disponibili.")
                 else:
-                    st.button(f"Pine · {label} · non disponibile",
-                              disabled=True, use_container_width=True,
-                              key=f"mm_unified_missing_{day}_{slot}")
-                    if prepared:
-                        issues = [
-                            f"{symbol}: {message}" for symbol, message in
-                            prepared["reports"].items()
-                            if not message.startswith("OK")
-                        ]
-                        st.caption(issues[0] if issues else
-                                   "Fotografie CBOE non disponibili.")
-                    else:
-                        st.caption("Fotografie CBOE non disponibili.")
-        available = [s for s in slots
-                     if saved.get((day.isoformat(), s), {}).get("script")]
-        if not available:
-            return
-        selected = st.selectbox(
-            "Visualizza report e codice Pine",
-            available, format_func=lambda s: LABELS[s],
-            key=f"mm_unified_view_slot_{day}")
-        chosen = saved[(day.isoformat(), selected)]
-        st.markdown(f"**Pine Multi-Market unico · {LABELS[selected]}**")
-        for symbol in MARKETS:
-            st.caption(f"{symbol} → {', '.join(ROOTS[symbol])}: "
-                       f"{chosen['reports'][symbol]}")
-        n = sum(chosen["reports"][symbol].startswith("OK")
-                for symbol in MARKETS)
-        if n < len(MARKETS):
-            st.warning(f"Copertura {n}/{len(MARKETS)} mercati: gli strumenti senza dati "
-                       "verificati non mostrano alcun profilo.")
-        with st.expander("Mostra codice Pine unico da copiare"):
-            st.code(chosen["script"], language="pine")
+                    st.caption("Fotografie CBOE non disponibili.")
+    available = [s for s in slots
+                 if saved.get((day.isoformat(), s), {}).get("script")]
+    if not available:
+        return
+    selected = st.selectbox(
+        "Visualizza report e codice Pine",
+        available, format_func=lambda s: LABELS[s],
+        key=f"mm_unified_view_slot_{day}")
+    chosen = saved[(day.isoformat(), selected)]
+    st.markdown(f"**Pine Multi-Market unico · {LABELS[selected]}**")
+    for symbol in MARKETS:
+        st.caption(f"{symbol} → {', '.join(ROOTS[symbol])}: "
+                   f"{chosen['reports'][symbol]}")
+    n = sum(chosen["reports"][symbol].startswith("OK")
+            for symbol in MARKETS)
+    if n < len(MARKETS):
+        st.warning(f"Copertura {n}/{len(MARKETS)} mercati: gli strumenti senza dati "
+                   "verificati non mostrano alcun profilo.")
+    with st.expander("Mostra codice Pine unico da copiare"):
+        st.code(chosen["script"], language="pine")
