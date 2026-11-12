@@ -352,7 +352,7 @@ def render():
     with st.expander("NET GAMMA UNIVERSALE — CBOE", expanded=False):
         st.caption("Ticker libero · un solo download manuale CBOE · Gamma originali. "
                    "Formula: (OI+Volume)×Gamma Call − (OI+Volume)×Gamma Put.")
-        ticker_text = st.text_input("Ticker CBOE (es. AAPL - MSFT - GOOG - AMZN - NVDA - META - TSLA - PBT (Bitcoin)", value="NVDA",
+        ticker_text = st.text_input("Ticker CBOE es. AAPL - MSFT - GOOG - AMZN - NVDA - META - TSLA - PBT (Bitcoin)", value="NVDA",
                                     key="universal_cboe_ticker").strip().upper()
         try:
             ticker = validate_ticker(ticker_text)
