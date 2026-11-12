@@ -21,7 +21,7 @@ from ndx_engine import (unpack_snapshot, available_expirations, close_from_paylo
 from ndx_basis import fetch_basis
 from pine_export import make_pine
 from v2_pine_timed_exports import render_timed_pine_exports
-from macro_events import events_for_pine, CREDITS as MACRO_CREDITS
+from macro_events import events_for_pine
 from pine_news_overlay import append_news
 from nq_price_panel import load_nq_candles, chart_compare_nq
 
@@ -360,42 +360,16 @@ def render_selected_market(market_key):
         except Exception:
             st.caption('Calendario macro non disponibile: eventuali linee news '
                        'vengono omesse dai Pine. I livelli NET GAMMA non cambiano.')
-    # Pine corrente dalla fotografia selezionata: separato dai tre
-    # pulsanti orari, incluso 07:30 autonomo (richiesto dall'utente).
-    st.markdown("**NET GAMMA corrente · NQ/MNQ · 0DTE + Weekly**")
-    if "0DTE" in visual_profiles and "Weekly" in visual_profiles:
-        try:
-            current_script = make_pine(
-                {"0DTE": visual_profiles["0DTE"],
-                 "Weekly": visual_profiles["Weekly"]},
-                basis, day, "NET GAMMA CORRENTE",
-                acquisition_time=st.session_state.get("ndx_capture_rome_iso"))
-            if macro_news:
-                current_script = append_news(
-                    current_script, macro_news,
-                    captured_at=st.session_state.get("ndx_capture_rome_iso"))
-            st.download_button(
-                "Scarica Pine NET GAMMA corrente · NQ/MNQ (.pine)",
-                data=current_script.encode("utf-8"),
-                file_name=f"NDX_NET_GAMMA_CORRENTE_{day:%Y%m%d}.pine",
-                mime="text/plain", on_click="ignore",
-                key=f"ndx_current_pine_{day:%Y%m%d}",
-                use_container_width=True)
-            with st.expander("Mostra codice Pine corrente da copiare"):
-                st.code(current_script, language="pine")
-        except (ValueError, TypeError, KeyError, OverflowError) as exc:
-            st.info("Pine corrente non disponibile per la fotografia "
-                    f"selezionata: {str(exc)[:220]}")
-    else:
-        st.info("Per esportare il Pine corrente occorrono sia il profilo "
-                "0DTE sia il Weekly della fotografia selezionata.")
-
-    with st.expander("Pine per orari · 07:30 / 15:50 / 20:30",
-                     expanded=False):
-        render_timed_pine_exports(
-            'NDX', day, reference, band_pct, basis,
-            extension=show_extension, macro_news=macro_news)
-    st.caption('Il Pine corrente usa la fotografia selezionata; quello '
+    # Gli export orari hanno una sola posizione principale, non piu in un expander.
+    # Il Pine "corrente" rimane disponibile unicamente nel modulo di emergenza
+    # dedicato, evitando un doppio download qui.
+    st.markdown("**Pine per orari · 07:30 / 15:50 / 20:30**")
+    render_timed_pine_exports(
+        'NDX', day, reference, band_pct, basis,
+        extension=show_extension, macro_news=macro_news)
+    st.caption("07:30: 0DTE + Weekly · 15:50: confronto 07:30→15:50 · "
+               "20:30: confronto 15:50→20:30. "
+               "Solo fotografie archiviate reali; disponibilità indicata per slot.")
                'delle 07:30 rimane disponibile come esportazione autonoma '
                'assieme ai confronti 07:30→15:50 e 15:50→20:30.')
     
