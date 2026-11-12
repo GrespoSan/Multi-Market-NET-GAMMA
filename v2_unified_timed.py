@@ -195,7 +195,7 @@ def _market_band(symbol):
 
 
 def prepare_slot(day, slot):
-    """Return valid market records, omissions and real acquisition data."""
+    """Current snapshot is primary. Prior is OPTIONAL and never guessed."""
     if slot not in slots_for_day(day):
         raise ValueError("Orario non previsto per la seduta selezionata.")
     prev_slot = "0730" if slot == "1550" else "1550"
@@ -205,27 +205,37 @@ def prepare_slot(day, slot):
             captures = load_pine_slot_captures(symbol, day)
             current_capture = captures.get(slot)
             if current_capture is None:
-                raise ValueError(f"Fotografia reale delle {LABELS[slot]} assente.")
-            if slot != "0730":
-                previous_capture = captures.get(prev_slot)
-                if previous_capture is None:
-                    raise ValueError(f"Fotografia precedente {LABELS[prev_slot]} assente.")
-                compare_capture_pair(previous_capture, current_capture,
-                                     prev_slot, slot)
+                raise ValueError(f"Fotografia corrente {LABELS[slot]} non trovata "
+                                 "nell'archivio verificato.")
             band = _market_band(symbol)
             if not 0.0 < band <= 25:
                 raise ValueError("Fascia strike non valida.")
             extension = bool(st.session_state.get(
                 f"v2_{symbol.lower()}_visual_extension", True))
             now = _from_capture(symbol, current_capture, day, band, extension)
-            old = None
-            if slot != "0730":
-                old = _from_capture(symbol, previous_capture, day, band, extension)
-                now = _checked_comparison(old, now, symbol)
             if symbol not in ETF:
                 now["basis"] = _verified_basis(symbol, day)
             else:
                 now["basis"] = 0.0
+            # Keep verified CURRENT and WEEKLY even when the former slot
+            # cannot be compared (absent, other expiry or line budget).
+            old = None
+            prior_note = ""
+            if slot != "0730":
+                previous_capture = captures.get(prev_slot)
+                if previous_capture is None:
+                    prior_note = f"precedente {LABELS[prev_slot]} non archiviato"
+                else:
+                    try:
+                        compare_capture_pair(previous_capture, current_capture,
+                                             prev_slot, slot)
+                        candidate = _from_capture(
+                            symbol, previous_capture, day, band, extension)
+                        _checked_comparison(candidate, now, symbol)
+                        old = candidate
+                    except (ValueError, KeyError, TypeError,
+                            OverflowError, OSError) as exc:
+                        prior_note = "precedente N/D: " + str(exc)[:110]
             records[symbol] = now
             if old is not None:
                 previous[symbol] = old
@@ -235,7 +245,8 @@ def prepare_slot(day, slot):
             reports[symbol] = (f"OK · {LABELS[slot]} · "
                                f"{total} strike reali · "
                                f"{now['main_label']} {now['main_expiry']:%d/%m} · "
-                               f"Weekly {now['weekly_expiry']:%d/%m}")
+                               f"Weekly {now['weekly_expiry']:%d/%m}"
+                               + (f" · {prior_note}" if prior_note else ""))
         except (ValueError, KeyError, TypeError, OverflowError, OSError) as exc:
             reports[symbol] = f"N/D · {str(exc)[:155]}"
     return records, previous, reports
