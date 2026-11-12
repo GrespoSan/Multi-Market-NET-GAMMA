@@ -6,7 +6,7 @@ import unittest
 from datetime import datetime, timezone
 from pathlib import Path
 
-from v2_storage_off import _archive_label, SLOTS, AVAILABLE_MARKETS
+from v2_storage_off import _archive_label, _late_capture, SLOTS, AVAILABLE_MARKETS
 from gamma_chart_style import capture_display
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -97,6 +97,19 @@ class SPXSnapshotParityTests(unittest.TestCase):
         self.assertIn('captured_at=now["capture"]["rome"]', timed)
         self.assertIn("st.download_button(", timed)
         self.assertIn("07:30 0DTE → 15:50 0DTE + Weekly", timed)
+
+    def test_archive_delay_classification_uses_chicago_in_mismatch_weeks(self):
+        # 10:02 CDT = 16:02 CET during March EU/US mismatch.
+        capture = datetime(2027, 3, 15, 15, 2, tzinfo=timezone.utc)
+        self.assertFalse(_late_capture("1700", capture))
+        # 08:52 CDT = 14:52 CET.
+        afternoon = datetime(2027, 3, 15, 13, 52, tzinfo=timezone.utc)
+        self.assertFalse(_late_capture("1550", afternoon))
+        # 07:32 CET remains anchored to Rome.
+        morning = datetime(2027, 3, 15, 6, 32, tzinfo=timezone.utc)
+        self.assertFalse(_late_capture("0730", morning))
+        late = datetime(2027, 3, 15, 15, 15, tzinfo=timezone.utc)
+        self.assertTrue(_late_capture("1700", late))
 
     def test_scheduler_retains_chicago_dst_and_authorized_source_gate(self):
         from v2_schedule import SLOTS as clock
