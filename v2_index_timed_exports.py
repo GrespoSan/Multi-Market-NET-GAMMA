@@ -1,4 +1,4 @@
-"""Russell and Dow: verified 07:30 / 15:50 / 20:30 Pine exports.
+"""Russell and Dow: verified 07:30 / 15:50 / 17:00 Pine exports; 20:30 historical.
 
 The historic CBOE snapshots remain immutable. 0DTE comparison shows the
 previous and current real photographs plus current Weekly, with one common
@@ -11,7 +11,7 @@ from math import isfinite
 import streamlit as st
 
 from v2_storage_off import load_pine_slot_captures
-from v2_pine_session import SLOTS, LABELS, compare_capture_pair
+from v2_pine_session import LABELS, compare_capture_pair, slots_for_day
 from v2_pine_capture import pine_capture_clock
 from v2_universal_cboe import read_json, expiries, profile, _pine
 from pine_export import _pine_array, _initial_manual_scale
@@ -162,15 +162,17 @@ def render_index_timed_exports(ticker, day, reference, band, basis):
     if ticker not in ("RUT", "DJX"):
         raise ValueError("Indice non supportato.")
     st.subheader("Esportazione Pine Script v6")
-    st.markdown("**Pine per orari · 07:30 / 15:50 / 20:30**")
+    final_slot = slots_for_day(day)[-1]
+    final_label = LABELS[final_slot]
+    st.markdown(f"**Pine per orari · 07:30 / 15:50 / {final_label}**")
     st.caption("07:30: 0DTE + Weekly · 15:50: confronto 07:30→15:50 · "
-               "20:30: confronto 15:50→20:30. Solo fotografie reali "
+               f"{final_label}: confronto 15:50→{final_label}. Solo fotografie reali "
                "della stessa seduta New York; Gamma CBOE originali.")
     key = f"v2_index_timed_{ticker}_{day.isoformat()}"
     saved = st.session_state.get(key)
     loaded_at = st.session_state.get(key + "_loaded_at", 0.0)
     refresh = st.button("Aggiorna Pine per orari", key=f"refresh_{key}")
-    if saved is None or refresh or (len(saved) < len(SLOTS) and monotonic() - loaded_at > 180):
+    if saved is None or refresh or (len(saved) < len(slots_for_day(day)) and monotonic() - loaded_at > 180):
         try:
             captures = load_pine_slot_captures(ticker, day)
             saved = captures
@@ -181,7 +183,7 @@ def render_index_timed_exports(ticker, day, reference, band, basis):
             saved = {}
     profiles, errors = _snapshot_profiles(ticker, saved, day, reference, band)
     scripts = {}
-    for slot in SLOTS:
+    for slot in slots_for_day(day):
         if slot not in profiles:
             errors.setdefault(slot, "Fotografia CBOE di questo slot non disponibile.")
             continue
@@ -212,8 +214,9 @@ def render_index_timed_exports(ticker, day, reference, band, basis):
     cols = st.columns(3, gap="small")
     labels = {"0730": "07:30 · 0DTE + Weekly",
               "1550": "07:30 → 15:50 · 0DTE + Weekly",
+              "1700": "15:50 → 17:00 · 0DTE + Weekly",
               "2030": "15:50 → 20:30 · 0DTE + Weekly"}
-    for column, slot in zip(cols, SLOTS):
+    for column, slot in zip(cols, slots_for_day(day)):
         with column:
             if slot in scripts:
                 st.download_button(
