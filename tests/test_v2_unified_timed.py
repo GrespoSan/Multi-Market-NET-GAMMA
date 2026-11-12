@@ -35,12 +35,12 @@ class UnifiedTimedTests(unittest.TestCase):
         code = build_unified_comparison_pine(DAY, cur, old, "1550")
         self.assertEqual(code.count('indicator("'), 1)
         self.assertIn('UNICO 15:50', code)
-        self.assertIn('showPrevious = input.bool(true', code)
+        self.assertIn('showPrevious = input.bool(false', code)
         self.assertIn('renderProfile(prevMapped, previousGamma', code)
         self.assertIn('renderProfile(drawMain, mainGamma', code)
         self.assertIn('renderProfile(drawWeek, weekGamma', code)
-        self.assertIn('0DTE 07:30 · precedente', code)
-        self.assertIn('0DTE 15:50 · corrente', code)
+        self.assertIn('mainKind + " 07:30 · precedente', code)
+        self.assertIn('mainKind + " 15:50 · corrente', code)
         self.assertEqual(code.count('if barstate.islast and validTicker'), 1)
         self.assertIn('etfTime == futTime', code)
         self.assertIn('request.security_lower_tf(', code)
@@ -54,8 +54,8 @@ class UnifiedTimedTests(unittest.TestCase):
         old = {"RUT": record("RUT", sign=-1)}
         code = build_unified_comparison_pine(DAY, cur, old, "1700")
         self.assertIn("UNICO 17:00", code)
-        self.assertIn("0DTE 15:50 · precedente", code)
-        self.assertIn("0DTE 17:00 · corrente", code)
+        self.assertIn('mainKind + " 15:50 · precedente', code)
+        self.assertIn('mainKind + " 17:00 · corrente', code)
         self.assertIn("var array<float> GLDPrevLevels = array.new_float()", code)
 
     def test_historical_2030_is_not_relabelled(self):
@@ -63,21 +63,49 @@ class UnifiedTimedTests(unittest.TestCase):
         cur = {"RUT": record("RUT", expiry=HIST)}
         code = build_unified_comparison_pine(HIST, cur, old, "2030")
         self.assertIn("UNICO 20:30", code)
-        self.assertIn("0DTE 15:50 · precedente", code)
-        self.assertIn("0DTE 20:30 · corrente", code)
+        self.assertIn('mainKind + " 15:50 · precedente', code)
+        self.assertIn('mainKind + " 20:30 · corrente', code)
         self.assertEqual(slots_for_day(HIST)[-1], "2030")
 
     def test_mismatched_expiries_rejected(self):
         prev = record("NDX", expiry=DAY)
         cur = record("NDX", expiry=date(2026,11,13))
-        with self.assertRaisesRegex(ValueError, "scadenze 0DTE"):
+        with self.assertRaisesRegex(ValueError, "scadenze principali"):
             _checked_comparison(prev, cur, "NDX")
 
-    def test_non_0dte_etf_cannot_be_forged_into_comparison(self):
-        prev, cur = record("USO"), record("USO")
+    def test_real_non_0dte_uso_same_expiry_can_be_compared(self):
+        prev = record("USO", expiry=date(2026, 11, 13))
+        cur = record("USO", expiry=date(2026, 11, 13))
+        for item in (prev, cur):
+            item["main_label"] = "Principale (non 0DTE)"
+        code = build_unified_comparison_pine(
+            DAY, {"USO": cur}, {"USO": prev}, "1550")
+        self.assertIn('=> "Principale (non 0DTE)"', code)
+        self.assertIn('showTop3Odte and mainKind == "0DTE"', code)
+        self.assertIn('mainKind + " 15:50 · corrente', code)
+
+    def test_mismatched_principal_types_and_expiries_rejected(self):
+        prev = record("USO")
+        cur = record("USO", expiry=date(2026, 11, 13))
         cur["main_label"] = "Principale (non 0DTE)"
-        with self.assertRaisesRegex(ValueError, "confronto 0DTE non disponibile"):
+        with self.assertRaisesRegex(ValueError, "tipo di profilo differente"):
             _checked_comparison(prev, cur, "USO")
+        prev["main_label"] = "Principale (non 0DTE)"
+        with self.assertRaisesRegex(ValueError, "scadenze principali"):
+            _checked_comparison(prev, cur, "USO")
+
+    def test_missing_previous_keeps_real_current_and_weekly(self):
+        code = build_unified_comparison_pine(
+            DAY, {"NDX": record("NDX")}, {}, "1550",
+            reports={"USO": "N/D · Fotografia corrente 15:50 non trovata"})
+        self.assertIn("bool haveData = array.size(mainLevels) > 0", code)
+        self.assertNotIn("bool haveData = array.size(previousLevels)", code)
+        self.assertIn('showPrevious = input.bool(false', code)
+        self.assertIn("var array<float> NDXPrevLevels = array.new_float()", code)
+        self.assertIn("Fotografia corrente 15:50 non trovata", code)
+        self.assertIn("float effectiveScale", code)
+        self.assertIn("unifiedReadableScale", code)
+        self.assertIn("if previousVisible", code)
 
     def test_real_strike_budget_fail_closed(self):
         cur = record("DJX")
@@ -87,7 +115,7 @@ class UnifiedTimedTests(unittest.TestCase):
             _checked_comparison(prev, cur, "DJX")
 
     def test_unpaired_market_fail_closed(self):
-        with self.assertRaisesRegex(ValueError, "non accoppiate"):
+        with self.assertRaisesRegex(ValueError, "precedenti senza mercato corrente"):
             build_unified_comparison_pine(DAY,
                 {"NDX": record("NDX")}, {"RUT": record("RUT")}, "1550")
 
