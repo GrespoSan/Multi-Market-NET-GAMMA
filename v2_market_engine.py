@@ -343,26 +343,23 @@ def render_selected_market(market_key):
         st.info('Inserisci il differenziale NQ–NDX per esportare gli strike sul grafico NQ.')
         return
     
-    # Time-based exports are prepared from verified same-day V2 archives.
-    # Linee news opzionali: il calendario è indipendente dai NET GAMMA.
-    # Nascondiamo i dettagli nella sezione espandibile, senza cambiare il
-    # codice Pine esportato o inventare timestamp se la fonte è assente.
-    macro_news=[]
+    # Le news macro opzionali usano esclusivamente le fonti gratuite del
+    # calendario comune; non cambiano Gamma, acquisizioni o livelli.
+    macro_news = []
     with st.expander('Dettaglio news macro opzionali nei Pine', expanded=False):
         try:
             with st.spinner('Verifica calendario macro USA...'):
-                macro_news=events_for_pine(day)
-            st.caption(f"Eventi macro con orario verificato: {len(macro_news)} "
-                       f"per il {day:%d/%m/%Y} · Fonti: BLS ufficiale e "
-                       f"[Finance Calendar]({MACRO_CREDITS}). "
-                       "Gli eventi già trascorsi al momento della fotografia "
-                       "non sono disegnati. Linee disattivabili nel Pine.")
+                macro_news = events_for_pine(day)
+            st.caption(f"Eventi macro con orario verificabile: {len(macro_news)} "
+                       f"per il {day:%d/%m/%Y} · Fonti pubbliche gratuite USA. "
+                       "Gli eventi antecedenti alla fotografia non sono disegnati. "
+                       "Linee disattivabili nel Pine.")
         except Exception:
             st.caption('Calendario macro non disponibile: eventuali linee news '
-                       'vengono omesse dai Pine. I livelli NET GAMMA non cambiano.')
-    # Gli export orari hanno una sola posizione principale, non piu in un expander.
-    # Il Pine "corrente" rimane disponibile unicamente nel modulo di emergenza
-    # dedicato, evitando un doppio download qui.
+                       'omesse dai Pine. I livelli NET GAMMA non cambiano.')
+
+    # Gli export per slot sono la sezione principale. Il Pine corrente
+    # si trova solo nell'apposito strumento di emergenza separato.
     st.markdown("**Pine per orari · 07:30 / 15:50 / 20:30**")
     render_timed_pine_exports(
         'NDX', day, reference, band_pct, basis,
@@ -370,6 +367,3 @@ def render_selected_market(market_key):
     st.caption("07:30: 0DTE + Weekly · 15:50: confronto 07:30→15:50 · "
                "20:30: confronto 15:50→20:30. "
                "Solo fotografie archiviate reali; disponibilità indicata per slot.")
-               'delle 07:30 rimane disponibile come esportazione autonoma '
-               'assieme ai confronti 07:30→15:50 e 15:50→20:30.')
-    
