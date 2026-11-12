@@ -1,4 +1,4 @@
-"""One-chart unified Pine engine for NDX RUT DJX GLD USO.
+"""One-chart unified Pine engine for NDX RUT DJX GLD USO and SPX.
 
 Original individual exporters remain untouched. For each supported futures root
 the same original Cboe rows are embedded, and only that root is rendered.
@@ -19,15 +19,16 @@ from pine_export import _pine_array, _top_gamma_rows, _initial_manual_scale
 from pine_spx_visual import SPX_RENDER_FUNCTIONS
 
 NY = ZoneInfo("America/New_York")
-MARKETS = ("NDX", "RUT", "DJX", "GLD", "USO")
+MARKETS = ("NDX", "RUT", "DJX", "GLD", "USO", "SPX")
 ROOTS = {
     "NDX": ("NQ", "MNQ"),
     "RUT": ("RTY", "M2K"),
     "DJX": ("YM", "MYM"),
     "GLD": ("GC", "MGC"),
     "USO": ("CL", "MCL"),
+    "SPX": ("ES", "MES"),
 }
-FACTORS = {"NDX": 1.0, "RUT": 1.0, "DJX": 100.0, "GLD": 1.0, "USO": 1.0}
+FACTORS = {"NDX": 1.0, "RUT": 1.0, "DJX": 100.0, "GLD": 1.0, "USO": 1.0, "SPX": 1.0}
 ETF = ("GLD", "USO")
 FIELD = {"NDX": ("strike_index", "net_gamma")}
 GAMMA_LIMIT = 460  # per ACTIVE instrument only, with room for guide lines
@@ -214,12 +215,13 @@ indicator("Serafini Multi-Market · UNICO 07:30 · @DAY@", overlay=true, max_lin
 // Un mercato senza fotografia/basis valido NON viene disegnato.
 // ETF GLD/USO: Gamma ETF originale, livello future solo proiezione dinamica.
 // Opzioni future native GC/CL NON sono disponibili da questi profili.
+bool isES = syminfo.type == "futures" and (syminfo.root == "ES" or syminfo.root == "MES")
 bool isNQ = syminfo.type == "futures" and (syminfo.root == "NQ" or syminfo.root == "MNQ")
 bool isRTY = syminfo.type == "futures" and (syminfo.root == "RTY" or syminfo.root == "M2K")
 bool isYM = syminfo.type == "futures" and (syminfo.root == "YM" or syminfo.root == "MYM")
 bool isGC = syminfo.type == "futures" and (ticker.standard(syminfo.tickerid) == "COMEX:GC1!" or ticker.standard(syminfo.tickerid) == "COMEX_MINI:MGC1!")
 bool isCL = syminfo.type == "futures" and (ticker.standard(syminfo.tickerid) == "NYMEX:CL1!" or ticker.standard(syminfo.tickerid) == "NYMEX:MCL1!")
-string activeMarket = isNQ ? "NDX" : isRTY ? "RUT" : isYM ? "DJX" : isGC ? "GLD" : isCL ? "USO" : "NONE"
+string activeMarket = isES ? "SPX" : isNQ ? "NDX" : isRTY ? "RUT" : isYM ? "DJX" : isGC ? "GLD" : isCL ? "USO" : "NONE"
 bool validTicker = activeMarket != "NONE"
 bool isETF = isGC or isCL
 
@@ -301,7 +303,7 @@ plot(isETF ? ratioToDraw : na, "Rapporto ETF/future sincronizzato", display=disp
 
 @SPX_ARRAYS@
 
-// The arrays for all five markets are immutable snapshots; only the
+// The arrays for all six markets are immutable snapshots; only the
 // active ticker's six arrays are used to draw. No cross-market rescaling.
 array<float> mainLevels = switch activeMarket
     "NDX" => NDXLevels
@@ -309,6 +311,7 @@ array<float> mainLevels = switch activeMarket
     "DJX" => DJXLevels
     "GLD" => GLDLevels
     "USO" => USOLevels
+    "SPX" => SPXLevels
     => array.new_float()
 array<float> mainGamma = switch activeMarket
     "NDX" => NDXGamma
@@ -316,6 +319,7 @@ array<float> mainGamma = switch activeMarket
     "DJX" => DJXGamma
     "GLD" => GLDGamma
     "USO" => USOGamma
+    "SPX" => SPXGamma
     => array.new_float()
 array<float> weekLevels = switch activeMarket
     "NDX" => NDXWeekLevels
@@ -323,6 +327,7 @@ array<float> weekLevels = switch activeMarket
     "DJX" => DJXWeekLevels
     "GLD" => GLDWeekLevels
     "USO" => USOWeekLevels
+    "SPX" => SPXWeekLevels
     => array.new_float()
 array<float> weekGamma = switch activeMarket
     "NDX" => NDXWeekGamma
@@ -330,6 +335,7 @@ array<float> weekGamma = switch activeMarket
     "DJX" => DJXWeekGamma
     "GLD" => GLDWeekGamma
     "USO" => USOWeekGamma
+    "SPX" => SPXWeekGamma
     => array.new_float()
 array<float> callLevels = switch activeMarket
     "NDX" => NDXCalls
@@ -337,6 +343,7 @@ array<float> callLevels = switch activeMarket
     "DJX" => DJXCalls
     "GLD" => GLDCalls
     "USO" => USOCalls
+    "SPX" => SPXCalls
     => array.new_float()
 array<float> putLevels = switch activeMarket
     "NDX" => NDXPuts
@@ -344,6 +351,7 @@ array<float> putLevels = switch activeMarket
     "DJX" => DJXPuts
     "GLD" => GLDPuts
     "USO" => USOPuts
+    "SPX" => SPXPuts
     => array.new_float()
 
 var array<line> drawnLines = array.new_line()
