@@ -18,7 +18,9 @@ SLOTS = {
     "15:50": ("America/Chicago", 8, 50, "50 8 * * 1-5"),
     "17:00": ("Europe/Rome", 17, 0, "0 17 * * 1-5"),
 }
+HISTORICAL_2030 = ("America/Chicago", 13, 30, "30 13 * * 1-5")
 SLOT_FOR_CRON = {values[3]: label for label, values in SLOTS.items()}
+SLOT_FOR_CRON[HISTORICAL_2030[3]] = "20:30"
 
 
 def decision(now: datetime, requested=None, event_cron=None, manual=False, external=False):
@@ -32,7 +34,8 @@ def decision(now: datetime, requested=None, event_cron=None, manual=False, exter
         return {"run": False, "reason": "SLOT_2030_DISMESSO",
                 "slot": requested, "rome": roma, "chicago": chicago,
                 "time_zone": "America/Chicago"}
-    if requested and requested not in SLOTS:
+    if requested and requested not in SLOTS and not (
+            requested == "20:30" and roma.date() < CHANGEOVER):
         raise ValueError("Slot logico non riconosciuto.")
     if external and (manual or event_cron or not requested):
         raise ValueError("cron-job.org richiede uno slot riconosciuto e non manuale.")
@@ -60,9 +63,12 @@ def decision(now: datetime, requested=None, event_cron=None, manual=False, exter
     if roma.weekday() >= 5:
         return {"run": False, "reason": "WEEKEND", "slot": requested or "",
                 "rome": roma, "chicago": chicago, "time_zone": ""}
-    candidates = (requested,) if requested else tuple(SLOTS)
+    eligible = dict(SLOTS)
+    if roma.date() < CHANGEOVER:
+        eligible["20:30"] = HISTORICAL_2030
+    candidates = (requested,) if requested else tuple(eligible)
     for label in candidates:
-        zone, hour, minute, _ = SLOTS[label]
+        zone, hour, minute, _ = eligible[label]
         clock = roma if zone == "Europe/Rome" else chicago
         scheduled = clock.replace(hour=hour, minute=minute,
                                   second=0, microsecond=0)
@@ -92,4 +98,4 @@ def decision(now: datetime, requested=None, event_cron=None, manual=False, exter
             "reason": "FUORI_FINESTRA" if requested else "NESSUNO_SLOT",
             "slot": requested or "", "rome": roma, "chicago": chicago,
             "requested_slot": requested or "", "time_zone": (
-                SLOTS[requested][0] if requested else "")}
+                eligible[requested][0] if requested else "")}
