@@ -10,10 +10,22 @@ import re
 
 NY = ZoneInfo("America/New_York")
 ROME = ZoneInfo("Europe/Rome")
-SLOTS = ("0730", "1550", "2030")
-LABELS = {"0730": "07:30", "1550": "15:50", "2030": "20:30"}
+# Cambio prospettico dal 13 novembre 2026: non rietichettare vecchi archivi.
+CHANGEOVER = date(2026, 11, 13)
+SLOTS = ("0730", "1550", "1700")
+LEGACY_SLOTS = ("0730", "1550", "2030")
+ALL_SLOTS = ("0730", "1550", "1700", "2030")
+LABELS = {"0730": "07:30", "1550": "15:50", "1700": "17:00",
+          "2030": "20:30"}
+
+
+def slots_for_day(market_day):
+    """Use real historical slot conventions, with no retroactive relabeling."""
+    if not isinstance(market_day, date):
+        raise ValueError("Data seduta non valida.")
+    return LEGACY_SLOTS if market_day < CHANGEOVER else SLOTS
 FILE = re.compile(
-    r"^(NDX|RUT|DJX|GLD|USO)_(\d{8}T\d{6}Z)_(0730|1550|2030)_([0-9a-f]{12})\.json\.gz$"
+    r"^(NDX|RUT|DJX|GLD|USO)_(\d{8}T\d{6}Z)_(0730|1550|1700|2030)_([0-9a-f]{12})\.json\.gz$"
 )
 
 
@@ -35,7 +47,7 @@ def parse_archived_capture(filename, symbol, market_day):
 def compare_capture_pair(previous, current, previous_slot, current_slot):
     """Reject future/reversed/different-day captures and dishonest slot pairs."""
     if (previous_slot, current_slot) not in (
-            ("0730", "1550"), ("1550", "2030")):
+            ("0730", "1550"), ("1550", "1700"), ("1550", "2030")):
         raise ValueError("Coppia di rilevamenti non prevista.")
     if (previous["slot"] != previous_slot or current["slot"] != current_slot
             or previous["utc"].astimezone(NY).date() !=
