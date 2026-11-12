@@ -83,7 +83,6 @@ def render_uso_cboe():
                 st.session_state["uso_cboe_import_rome"] = (
                     st.session_state.get("v2_archive_capture_rome_USO")
                     or st.session_state["uso_cboe_import_rome"])
-                st.success("Fotografia programmata caricata dall'archivio privato.")
             except Exception as exc:
                 st.error(f"Fotografia archivio non valida: {str(exc)[:240]}")
 
