@@ -109,6 +109,10 @@ def render(ticker):
     pending_key = f"{prefix}_activate_manual"
     if st.session_state.pop(pending_key, False):
         st.session_state[f"v2_archive_choice_{ticker.lower()}"] = "manuale"
+    # NQ is the presentation reference for all primary markets:
+    # headline first, then the same archive selector and verified timestamps.
+    st.subheader(f"Fotografia opzioni Cboe · {ticker}")
+    st.caption("La stessa fotografia alimenta i profili NET GAMMA e gli export Pine orari; nessun secondo download.")
     archive = archive_panel(ticker)
     current_choice = st.session_state.get(f"v2_archive_choice_{ticker.lower()}")
     if current_choice == "manuale":
@@ -125,12 +129,10 @@ def render(ticker):
             }
         except Exception as exc:
             st.error(f"Fotografia archivio {ticker} non valida: {str(exc)[:210]}")
-    st.subheader(f"Fotografia opzioni CBOE · {ticker}")
-    st.caption(
-        f"Opzioni {ticker} originali, visualizzazione sul futuro {future}. "
-        "Gamma non monetario: [(OI+Volume)×Gamma] Call − [(OI+Volume)×Gamma] Put."
-    )
-    with st.container(border=True):
+    # Manual acquisition remains accessible for RUT/DJX (there is no
+    # dedicated RUT/DJX emergency acquisition module yet), but should not
+    # interrupt the NQ-style snapshot information hierarchy.
+    with st.expander("Acquisizione manuale Cboe / importa ZIP · JSON", expanded=False):
         if st.button(f"Scarica fotografia {ticker} da CBOE", key=f"{prefix}_download"):
             try:
                 with st.spinner(f"Acquisizione CBOE {ticker}..."):
@@ -178,8 +180,10 @@ def render(ticker):
         for widget_suffix in ("close", "expiry", "weekly"):
             st.session_state.pop(f"{prefix}_{widget_suffix}", None)
     st.caption(
-        f"Fonte: {active['origin']} · CBOE timestamp {doc.get('timestamp', 'non dichiarato')} "
-        f"(fuso fonte non certificato) · acquisizione Roma {active['stamp'] or 'non verificabile'}"
+        f"**File:** {active['origin']} · "
+        f"**Acquisizione:** {active['stamp'] or 'non verificabile'} · "
+        f"**Timestamp Cboe originale:** {doc.get('timestamp', 'non dichiarato')} "
+        "(fuso fonte non certificato)"
     )
     close = st.number_input(
         f"Close precedente {ticker} · verificare fonte",
