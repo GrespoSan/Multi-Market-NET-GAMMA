@@ -167,21 +167,33 @@ with st.container(border=True):
                        "automaticamente valide per NDX, GLD e USO.")
         render_selected_market(market_key)
     
-    # Context is now automatic, as in Serafini SPX. Daily Massive responses are
-    # shared by v2_massive_day_cache and expire on the next Rome calendar day.
+    # A collapsed Streamlit expander still executes its body. External macro,
+    # Yahoo and Massive requests run only when this market's context is enabled.
+    # The shared Daily caches and Roma-midnight invalidation remain unchanged.
     with context_slot.container():
+        context_key = f"v2_context_requested_{market_key}"
         if market_key in ("RUSSELL", "DOW"):
             with st.expander("ANALISI DEL CONTESTO — News macro USA",
                              expanded=context_initial):
-                from macro_calendar import render as render_macro_calendar
-                render_macro_calendar()
-                st.caption("Trend e volatilità specifici di Russell/Dow non ancora verificati; "
-                           "nessun dato di un altro mercato viene attribuito a questi indici.")
+                if st.toggle("Carica calendario macro USA",
+                             key=context_key, value=False,
+                             help="Disattiva per evitare richieste esterne nei successivi aggiornamenti della pagina."):
+                    from macro_calendar import render as render_macro_calendar
+                    render_macro_calendar()
+                    st.caption("Trend e volatilità specifici di Russell/Dow non ancora verificati; "
+                               "nessun dato di un altro mercato viene attribuito a questi indici.")
+                else:
+                    st.caption("Calendario in pausa: attiva il caricamento quando serve.")
         else:
             with st.expander("ANALISI DEL CONTESTO — News · Volatilità · Trend Daily",
                              expanded=context_initial):
-                from v2_context import render as render_market_context
-                render_market_context(market_key)
+                if st.toggle("Carica News · Volatilità · Trend Daily",
+                             key=context_key, value=False,
+                             help="Disattiva per sospendere le richieste Massive, Yahoo e macro quando la sezione non serve."):
+                    from v2_context import render as render_market_context
+                    render_market_context(market_key)
+                else:
+                    st.caption("Contesto in pausa: attiva il caricamento quando serve.")
 
     # One shared snapshot per market: the emergency export reuses the same
     # session-state photograph; no redundant download/import widgets.
