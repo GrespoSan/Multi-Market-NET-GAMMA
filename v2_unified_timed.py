@@ -6,6 +6,7 @@ extends the existing single-market graphics engine without changing Serafini
 Gamma, original strike values, ticker conversions, or ETF/future mapping.
 """
 from datetime import datetime, date
+from time import monotonic
 from math import isfinite
 from zoneinfo import ZoneInfo
 
@@ -259,28 +260,44 @@ def render():
                    "il terzo slot storico delle 20:30.")
         cache_key = "mm_unified_prepared_by_slot"
         saved = st.session_state.setdefault(cache_key, {})
+        # Populate on first visit, then reuse the same immutable snapshot for
+        # downloads and code copy. Retry incomplete slots periodically only
+        # after explicit page interactions; no repeated archive downloads on
+        # each Streamlit widget rerun. The refresh button forces a new audit.
+        refresh = st.button("Aggiorna Pine per orari",
+                            key=f"mm_unified_refresh_{day}")
         cols = st.columns(3, gap="small")
         for col, slot in zip(cols, slots):
             with col:
                 label = LABELS[slot]
-                if st.button(f"Prepara Pine · {label}",
-                             key=f"mm_unified_build_{day}_{slot}",
-                             use_container_width=True):
-                    with st.spinner(f"Verifica delle fotografie Cboe · {label}..."):
+                identity = (day.isoformat(), slot)
+                prepared = saved.get(identity)
+                stale_missing = (
+                    prepared is not None and not prepared.get("script")
+                    and monotonic() - prepared.get("checked_at", 0) > 180
+                )
+                if refresh or prepared is None or stale_missing:
+                    try:
                         current, previous, reports = prepare_slot(day, slot)
-                        if current:
-                            script = (build_unified_pine(day, current)
-                                      if slot == "0730" else
-                                      build_unified_comparison_pine(
-                                          day, current, previous, slot))
-                            saved[(day.isoformat(), slot)] = {
-                                "script": script, "reports": reports,
-                            }
-                        else:
-                            saved.pop((day.isoformat(), slot), None)
-                            st.warning(f"{label}: nessun mercato verificato.")
-                prepared = saved.get((day.isoformat(), slot))
-                if prepared:
+                        script = (
+                            build_unified_pine(day, current) if slot == "0730"
+                            else build_unified_comparison_pine(
+                                day, current, previous, slot)
+                        ) if current else None
+                        prepared = {
+                            "script": script, "reports": reports,
+                            "checked_at": monotonic(),
+                        }
+                    except (ValueError, KeyError, TypeError, OverflowError,
+                            OSError) as exc:
+                        prepared = {
+                            "script": None,
+                            "reports": {symbol: "N/D · " + str(exc)[:130]
+                                        for symbol in MARKETS},
+                            "checked_at": monotonic(),
+                        }
+                    saved[identity] = prepared
+                if prepared and prepared.get("script"):
                     st.download_button(
                         f"Scarica Pine · {label}",
                         data=prepared["script"].encode("utf-8"),
@@ -293,8 +310,21 @@ def render():
                         for x in prepared["reports"].values())
                     st.caption(f"{count}/5 mercati verificati")
                 else:
-                    st.caption("Da preparare: richiede fotografie reali.")
-        available = [s for s in slots if (day.isoformat(), s) in saved]
+                    st.button(f"Pine · {label} · non disponibile",
+                              disabled=True, use_container_width=True,
+                              key=f"mm_unified_missing_{day}_{slot}")
+                    if prepared:
+                        issues = [
+                            f"{symbol}: {message}" for symbol, message in
+                            prepared["reports"].items()
+                            if not message.startswith("OK")
+                        ]
+                        st.caption(issues[0] if issues else
+                                   "Fotografie CBOE non disponibili.")
+                    else:
+                        st.caption("Fotografie CBOE non disponibili.")
+        available = [s for s in slots
+                     if saved.get((day.isoformat(), s), {}).get("script")]
         if not available:
             return
         selected = st.selectbox(
