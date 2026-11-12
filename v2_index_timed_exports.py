@@ -27,13 +27,18 @@ def _snapshot_profiles(ticker, captures, day, reference, band):
             expiry_dates = expiries(doc, ticker)
             if day not in expiry_dates:
                 raise ValueError("0DTE reale non presente nella fotografia.")
-            fridays = [d for d in expiry_dates if d > day and d.weekday() == 4]
-            if not fridays:
-                raise ValueError("Weekly successiva non presente nella fotografia.")
+            from v2_index_weekly import choose_weekly
+            weekly_date, weekly, details = choose_weekly(
+                doc, ticker, day, reference, band, expiry_dates)
+            if weekly is None:
+                if not details:
+                    raise ValueError("Weekly successiva non presente nella fotografia.")
+                raise ValueError("Weekly di venerdì presenti, ma nessuna "
+                                 "catena Gamma Call/Put utilizzabile.")
             odte = profile(doc, ticker, day, reference, band)
-            weekly = profile(doc, ticker, fridays[0], reference, band)
-            if not odte.get("usable") or not weekly.get("usable"):
-                raise ValueError("Gamma 0DTE/Weekly non sufficientemente completi.")
+            if not odte.get("usable"):
+                raise ValueError("Gamma 0DTE insufficienti; Weekly verificata "
+                                 "ma confronto 0DTE non disponibile.")
             result[slot] = {"0DTE": odte, "Weekly": weekly, "capture": capture}
         except (ValueError, TypeError, KeyError, OverflowError) as exc:
             problems[slot] = str(exc)[:200]
