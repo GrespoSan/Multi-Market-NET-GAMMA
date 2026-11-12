@@ -70,7 +70,7 @@ def extract_encrypted_artifact(zip_bytes, symbol):
             basename = name.rsplit("/", 1)[-1]
             if (not info.is_dir()
                     and re.fullmatch(
-                        rf"{symbol}_\d{{8}}T\d{{6}}Z_(?:0730|1550|2030|manuale)_[a-f0-9]{{12}}\.json\.gz\.enc",
+                        rf"{symbol}_\d{{8}}T\d{{6}}Z_(?:0730|1550|1700|2030|manuale)_[a-f0-9]{{12}}\.json\.gz\.enc",
                         basename)
                     and info.file_size <= MAX_ENCRYPTED_FILE):
                 matches.append((name, info))
