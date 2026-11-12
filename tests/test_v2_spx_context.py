@@ -55,7 +55,9 @@ class SPXContextV2Tests(unittest.TestCase):
 
     def test_original_macro_and_m7_live_modules_are_present(self):
         macro = (ROOT / "macro_calendar.py").read_text(encoding="utf-8")
-        self.assertIn("financecalendar.com", macro)
+        self.assertNotIn("financecalendar.com", macro.lower())
+        self.assertIn("Jobless Claims", macro)
+        self.assertIn("Census", macro)
         self.assertIn("Calendario macro USA — eventi da monitorare", macro)
         self.assertIn("magnificent7_earnings", macro)
         self.assertIn("FOMC", macro)
