@@ -1,8 +1,12 @@
-name: Multi-Market V2 · SPX 07:30 Roma · 08:50 e 13:30 Chicago
+name: Multi-Market V2 · 07:30 Roma · 08:50 Chicago · 17:00 Roma
 
-# Downloads are launched exclusively by cron-job.org via workflow_dispatch.
-# Manual runs remain available for diagnostics. No native GitHub schedule.
+# Existing 07:30 and 15:50 dispatches continue via cron-job.org.
+# Third slot 17:00 Europe/Rome uses GitHub Actions native UTC schedule
+# at 15:00 (CEST) or 16:00 (CET), gated by v2_schedule.py DST checks.
 on:
+  schedule:
+    - cron: "0 15 * * 1-5"
+    - cron: "0 16 * * 1-5"
   workflow_dispatch:
     inputs:
       slot:
@@ -13,7 +17,7 @@ on:
           - ""
           - "07:30"
           - "15:50"
-          - "20:30"
+          - "17:00"
       trigger:
         description: "Origine del comando: manuale oppure scheduler cron-job.org"
         required: false
@@ -32,10 +36,10 @@ concurrency:
 
 jobs:
   capture_v2:
-    # cron-job.org provides the three scheduled dispatches with slot
-    # and trigger=cron-job. Built-in GitHub schedule permanently removed.
+    # 07:30 and 15:50 may use cron-job.org. The third 17:00 uses native
+    # GitHub cron with DST checking; former external 20:30 is rejected.
     # The historical V2_USE_EXTERNAL_CRONJOB variable is now unnecessary.
-    # Three NDX, GLD and USO Cboe option-chain captures per dispatch.
+    # Five NDX, RUT, DJX, GLD and USO captures per successful dispatch.
     # Hard-wire public URLs in v2_cron.py, no legacy feed-secret overrides
     # can hijack these scheduled captures.
     # Fernet secret is required; no Supabase or bypass of 401/403/429.
@@ -51,11 +55,12 @@ jobs:
           python-version: '3.12'
       - name: Install V2 runtime requirements
         run: python -m pip install -r requirements.txt
-      - name: Capture Cboe NDX GLD USO JSON with actual time and Fernet encryption
+      - name: Capture Cboe NDX RUT DJX GLD USO JSON with actual time and Fernet encryption
         env:
           V2_REQUESTED_SLOT: ${{ inputs.slot }}
-          V2_MANUAL_RUN: ${{ inputs.trigger != 'cron-job' }}
-          V2_EXTERNAL_CRONJOB: ${{ inputs.trigger == 'cron-job' }}
+          V2_MANUAL_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.trigger != 'cron-job' }}
+          V2_EXTERNAL_CRONJOB: ${{ github.event_name == 'workflow_dispatch' && inputs.trigger == 'cron-job' }}
+          V2_EVENT_CRON: ${{ github.event.schedule }}
           V2_ARCHIVE_FERNET_KEY: ${{ secrets.V2_ARCHIVE_FERNET_KEY }}
         run: python v2_cron.py
       - name: Keep audit logs and encrypted snapshots (never plaintext)
