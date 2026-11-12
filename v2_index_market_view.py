@@ -343,8 +343,9 @@ def render(ticker):
         st.error("Nessun profilo CBOE validato: nessun Pine generato.")
         return
     rows = [r for g in groups.values() for r in g["rows"]]
-    net = sum(row["net"] for row in rows)
-    st.metric("NET GAMMA · sole scadenze mostrate", f"{net:+,.2f}")
+    from v2_gamma_summary import render_gamma_summary
+    render_gamma_summary(groups.values(), net_key="net", call_key="call",
+                         put_key="put")
     st.caption(
         f"Gamma originale CBOE · {len(rows)} livelli · close {ticker} {close:.2f}. "
         "Zero interpolazione e zero modifica del Gamma."
