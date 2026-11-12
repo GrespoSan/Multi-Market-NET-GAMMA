@@ -174,7 +174,7 @@ class MultiMarketTop3(unittest.TestCase):
                     self.assertEqual(code.count("drawOdteTopProjections("), 2)
                     self.assertNotIn("line.new(bar_index - 1, y", code)
                     if slot != "0730":
-                        self.assertIn("showPrevious = input.bool(true", code)
+                        self.assertIn("showPrevious = input.bool(false", code)
                         if sym == "NDX":
                             self.assertIn("drawOdteTopProjections(topCallOdteLevels, topPutOdteLevels)", code)
                         else:
