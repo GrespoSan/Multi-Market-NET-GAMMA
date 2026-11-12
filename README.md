@@ -1,5 +1,47 @@
 # Multi-Market NET GAMMA — prototype 0.1
 
+## SPX/ES nei tre Pine UNICI — collegamento di sola lettura (novembre 2026)
+
+Il Pine Multi-Market UNICO ora include **sei mercati**: ES/MES da SPX, NQ/MNQ da NDX,
+RTY/M2K da RUT, YM/MYM da DJX, GC/MGC da GLD e CL/MCL da USO. Gli export
+**07:30**, **15:50** (07:30→15:50) e **17:00** (15:50→17:00) includono SPX
+solo se esiste una fotografia ufficiale originale verificabile per lo slot.
+
+**Configurazione una tantum** nella pagina **Streamlit → App Multi-Market →
+Settings → Secrets** (non in GitHub, non nell'interfaccia TradingView):
+
+```toml
+SPX_SUPABASE_READ_KEY = "INSERIRE_CREDENZIALE_STORAGE_SPX_AUTORIZZATA"
+# Opzionale: l'URL pubblico del progetto SPX è già configurato nel bridge.
+# SPX_SUPABASE_URL = "https://...supabase.co"
+# SPX_SUPABASE_BUCKET = "spx-snapshots"
+```
+
+La credenziale deve poter **leggere** oggetti e liste del bucket privato
+`spx-snapshots` (policy Storage SELECT) e va mantenuta **solo lato server**;
+preferire credenziali con permessi limitati. Le due app NON condividono
+automaticamente i propri Secrets. Non copiare la chiave nel codice Pine, in
+una chat o nel repository. Il bridge non esegue upload, update né delete su SPX.
+
+Il bridge usa esclusivamente i log ufficiali (`scheduled_slot`, `rome_date`,
+`status`, file originale, `download_rome`) per selezionare le fotografie,
+non deduce l'orario dal timestamp CBOE privo di fuso. Le scadenze vengono
+calcolate con il codice SPX originale copiato in moduli isolati
+(`v2_spx_reference_gamma.py`, `v2_spx_reference_basis.py`):
+**25+25 strike SPX originali**, eventuale estensione solo grafica, formula
+NET GAMMA non modificata. In Pine sono proiettati su ES tramite basis ES−SPX:
+per impostazione predefinita lo stesso metodo SPX (barre Yahoo 15m sincronizzate
+della precedente seduta cash e arrotondamento all'intero); è possibile inserire
+il basis verificato nell'app SPX per riprodurre esattamente il suo valore.
+Confronto precedente OFF di default. Scadenza e Gamma precedenti non vengono
+inventati. Per giorni storici lo slot 20:30 mantiene l'etichetta originale.
+
+Se la credenziale, il basis o uno slot SPX non sono disponibili, ES/MES è
+marcato N/D e **gli altri cinque mercati continuano a funzionare**. Il bridge
+non modifica né il repository né gli archivi di Serafini SPX. Test Python
+non sostituiscono il collaudo e la compilazione del Pine in TradingView.
+
+
 **Independent project, does not modify the Serafini SPX code, GitHub repository, or Supabase bucket.**
 
 ## Current scope
