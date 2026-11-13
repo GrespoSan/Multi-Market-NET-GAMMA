@@ -21,7 +21,7 @@ ROME = ZoneInfo("Europe/Rome")
 AVAILABLE_MARKETS = ("NDX", "RUT", "DJX", "GLD", "USO")
 SLOTS = {"0730": "Mattina 07:30 Roma",
          "1550": "Pomeriggio 08:50 Chicago",
-         "1700": "Pomeriggio 10:00 Chicago (slot 17:00, storico)",
+         "1700": "Pomeriggio 10:00 Chicago (slot 17:00)",
          "1616": "Pomeriggio 09:16 Chicago (slot 16:16)",
          "1746": "Pomeriggio 10:46 Chicago (slot 17:46)",
          "2030": "Storico 20:30 Roma",
