@@ -291,10 +291,16 @@ def prepare_slot(day, slot, *, snapshots_by_market=None, spx_by_day=None):
                 count = len(now["main"]) + len(now["weekly"])
                 if old is not None:
                     count += len(old["main"])
+                gex = now.get("gex_levels_spx") or {}
+                gex_count = sum(gex.get(k) is not None for k in (
+                    "call_wall_spx", "put_wall_spx", "gamma_flip_spx"))
+                gex_status = (f"GEX Edge {gex_count}/3" if gex_count
+                              else "GEX Edge N/D")
                 reports[symbol] = (
                     f"OK · SPX UFFICIALE · {LABELS[slot]} · "
                     f"{count} strike · 25+25 originali per profilo · "
-                    f"ES−SPX {basis:+.2f} ({basis_source})" + prior_note
+                    f"ES−SPX {basis:+.2f} ({basis_source}) · "
+                    f"{gex_status}" + prior_note
                 )
                 continue
 
