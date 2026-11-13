@@ -28,6 +28,14 @@ def slots_for_day(market_day):
     if market_day >= CHANGEOVER_NEW:
         return NEW_SLOTS
     return LEGACY_SLOTS if market_day < CHANGEOVER else SLOTS
+def previous_slot_for(market_day, current_slot):
+    """Direct predecessor among the verified three-slot cohort."""
+    slots = slots_for_day(market_day)
+    if current_slot not in slots or current_slot == slots[0]:
+        return None
+    return slots[slots.index(current_slot) - 1]
+
+
 FILE = re.compile(
     r"^(NDX|RUT|DJX|GLD|USO)_(\d{8}T\d{6}Z)_(0730|1550|1700|2030|1616|1746)_([0-9a-f]{12})\.json\.gz$"
 )
