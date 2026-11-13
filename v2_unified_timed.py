@@ -16,6 +16,7 @@ from pine_export import _pine_array, _initial_manual_scale
 from v2_pine_session import LABELS, slots_for_day, compare_capture_pair
 from v2_pine_capture import pine_capture_clock
 from v2_storage_off import load_pine_slot_captures
+from v2_unified_es_gex_pine import append_es_gex_overlays
 from v2_unified_pine import (
     MARKETS, ROOTS, ETF, _from_capture, _session_basis,
     _num, build_unified_pine, GAMMA_LIMIT,
@@ -190,7 +191,11 @@ if barstate.islast and validTicker
 
     script = script.replace("@PREV@", LABELS[prev_slot]).replace("@CUR@", LABELS[slot])
     script = script.replace("UNICO 07:30 ·", f"UNICO {LABELS[slot]} ·", 1)
-    return script
+    # The comparison rewrites the main renderer, so append the EXACT
+    # CURRENT 0DTE GEX levels afterwards. Never borrow previous slot walls.
+    spx = valid.get("SPX") or {}
+    return append_es_gex_overlays(
+        script, spx.get("gex_levels_spx"), float(spx.get("basis", 0.0)))
 
 
 def _verified_basis(symbol, market_day):
@@ -286,10 +291,16 @@ def prepare_slot(day, slot, *, snapshots_by_market=None, spx_by_day=None):
                 count = len(now["main"]) + len(now["weekly"])
                 if old is not None:
                     count += len(old["main"])
+                gex = now.get("gex_levels_spx") or {}
+                gex_count = sum(gex.get(k) is not None for k in (
+                    "call_wall_spx", "put_wall_spx", "gamma_flip_spx"))
+                gex_status = (f"GEX Edge {gex_count}/3" if gex_count
+                              else "GEX Edge N/D")
                 reports[symbol] = (
                     f"OK · SPX UFFICIALE · {LABELS[slot]} · "
                     f"{count} strike · 25+25 originali per profilo · "
-                    f"ES−SPX {basis:+.2f} ({basis_source})" + prior_note
+                    f"ES−SPX {basis:+.2f} ({basis_source}) · "
+                    f"{gex_status}" + prior_note
                 )
                 continue
 
