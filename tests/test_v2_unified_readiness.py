@@ -102,8 +102,15 @@ class UnifiedReadinessTests(TestCase):
     def test_ui_cannot_download_partial_pine_and_auto_refreshes(self):
         source = (Path(__file__).resolve().parents[1] /
                   "v2_unified_timed.py").read_text(encoding="utf-8")
-        self.assertIn('if not st.toggle(', source)
-        self.assertIn('key=f"mm_unified_enabled_{day.isoformat()}"', source)
+        # No extra action is needed to prepare the three downloads.
+        self.assertNotIn('if not st.toggle(', source)
+        self.assertNotIn('mm_unified_enabled_', source)
+        self.assertNotIn('Attiva preparazione Pine unico', source)
+        self.assertNotIn('Pine unico in pausa', source)
+        self.assertIn('_render_automatic_downloads(day, slots)', source)
+        self.assertIn('st.columns(3, gap="small")', source)
+        self.assertIn('f"Scarica Pine · {label}"', source)
+        self.assertIn('st.download_button(', source)
         self.assertIn('snapshots_by_market=snapshots_by_market', source)
         self.assertIn('spx_by_day=spx_by_day', source)
         self.assertIn('if not _slot_has_occurred(day, slot):', source)
