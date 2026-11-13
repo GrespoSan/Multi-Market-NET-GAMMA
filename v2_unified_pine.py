@@ -17,6 +17,7 @@ from v2_pine_capture import pine_capture_clock
 from v2_visual_extension import expanded_display
 from pine_export import _pine_array, _top_gamma_rows, _initial_manual_scale
 from pine_spx_visual import SPX_RENDER_FUNCTIONS
+from v2_unified_es_gex_pine import append_es_gex_overlays
 
 NY = ZoneInfo("America/New_York")
 MARKETS = ("NDX", "RUT", "DJX", "GLD", "USO", "SPX")
@@ -403,13 +404,18 @@ if barstate.islast and validTicker
             if showTop3Odte and mainKind == "0DTE"
                 drawOdteTopProjections(drawCalls, drawPuts)
 ''';
-    return (output.replace("@DAY@", day.isoformat())
+    code = (output.replace("@DAY@", day.isoformat())
         .replace("@ARRAYS@", statements).replace("@SCALES@", scales)
         .replace("@MAIN_NAMES@", main_names).replace("@STAMPS@", stamps)
         .replace("@MAIN_DATES@", labels).replace("@WEEK_DATES@", weekly_labels)
         .replace("@BASES@", bases)
         .replace("@SPX_ARRAYS@", "")
         .replace("@RENDER@", SPX_RENDER_FUNCTIONS))
+    # Only ES/MES can render these independently modeled 0DTE GEX levels.
+    # Other five market displays and Gamma arrays are unchanged.
+    spx = market_data.get("SPX") or {}
+    return append_es_gex_overlays(
+        code, spx.get("gex_levels_spx"), float(spx.get("basis", 0.0)))
 
 
 def render():
