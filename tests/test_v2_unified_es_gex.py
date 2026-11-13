@@ -176,6 +176,37 @@ class UnifiedEsGexTests(unittest.TestCase):
                 self.assertEqual(script.count("if barstate.islast and validTicker"), 1)
                 self.assertIn("showPrevious = input.bool", script)
 
+    def test_new_chicago_1616_and_1746_es_gex_lines(self):
+        # The 16 Nov cutover uses current same-slot GEX only. Historical
+        # snapshots are not reclassified; no actual CBOE or SPX request.
+        day = date(2026, 11, 16)
+        assert day.weekday() == 0
+        morning = record("07:31", edge_result(6030., 5960., 6010.))
+        first = record("16:16", edge_result(6015., 5980., 6002.))
+        second = record("17:46", edge_result(6040., 5970., 6008.))
+        for item in (morning, first, second):
+            item["main_expiry"] = day
+            item["weekly_expiry"] = date(2026, 11, 20)
+        from v2_pine_session import slots_for_day, previous_slot_for
+        self.assertEqual(slots_for_day(day), ("0730", "1616", "1746"))
+        self.assertEqual(previous_slot_for(day, "1616"), "0730")
+        self.assertEqual(previous_slot_for(day, "1746"), "1616")
+        for slot, now, old, expected, prior in (
+            ("1616", first, morning, "6053.00000000", "6068.00000000"),
+            ("1746", second, first, "6078.00000000", "6053.00000000"),
+        ):
+            with self.subTest(slot=slot):
+                pine = build_unified_comparison_pine(
+                    day, {"SPX": now}, {"SPX": old}, slot)
+                self.assertIn("float gexCallES = " + expected, pine)
+                self.assertNotIn("float gexCallES = " + prior, pine)
+                self.assertIn("float gexPutES = ", pine)
+                self.assertIn("float gexFlipES = ", pine)
+                self.assertIn("if isES and showGexLevels", pine)
+                self.assertEqual(pine.count("showGexLevels = input.bool"), 1)
+                self.assertIn('syminfo.root == "MES"', pine)
+                self.assertIn("line.style_dotted, width=gexFlipWidth", pine)
+
     def test_unavailable_flip_or_missing_spx_does_not_borrow_levels(self):
         no_flip = record("15:51", edge_result(flip=None))
         pine = build_unified_pine(DAY, {"SPX": no_flip})
