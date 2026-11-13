@@ -108,7 +108,6 @@ with st.sidebar:
     if st.button("Esci", key="v2_logout"):
         st.session_state.pop("v2_role", None)
         st.rerun()
-    st.caption("V2 indipendente · nessun collegamento Supabase")
 
 st.subheader("01 · MERCATI PRINCIPALI")
 st.caption("NDX / NQ · RUT / RTY · DJX / YM · GLD / GC · USO / CL · 0DTE / Weekly")
