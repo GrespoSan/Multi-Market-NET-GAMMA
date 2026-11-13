@@ -181,7 +181,7 @@ class UnifiedEsGexTests(unittest.TestCase):
         single = (root / "v2_unified_pine.py").read_text()
         timed = (root / "v2_unified_timed.py").read_text()
         self.assertIn('"raw": raw', bridge)
-        self.assertIn('edge.get("sha256") != archive.get("source_sha256")', bridge)
+        self.assertIn('if digest != archive.get("source_sha256"):', bridge)
         self.assertIn('append_es_gex_overlays(', single)
         self.assertIn('append_es_gex_overlays(', timed)
         self.assertNotIn('method="PUT"', bridge)
