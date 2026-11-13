@@ -34,7 +34,14 @@ SLOT_CRONS = {
     "2030": "30 20 * * 1-5",  # historical only
 }
 EXPECTED_CLOCK = {"0730": (7, 30), "1550": (15, 50),
-                  "1700": (17, 0), "2030": (20, 30)}
+                  "1700": (17, 0), "2030": (20, 30),
+                  "1616": (16, 16), "1746": (17, 46)}
+NEW_SLOT_CRONS = {"0730": "30 7 * * 1-5",
+                  "1616": "16 16 * * 1-5",
+                  "1746": "46 17 * * 1-5"}
+
+def spx_slot_crons(day):
+    return NEW_SLOT_CRONS if day >= date(2026, 11, 16) else SLOT_CRONS
 
 
 class SPXArchiveReadOnly:
@@ -127,7 +134,7 @@ def _select_logs(logs, day, slots):
         if when is None:
             continue
         for slot in slots:
-            if log.get("scheduled_slot") == SLOT_CRONS.get(slot):
+            if log.get("scheduled_slot") == spx_slot_crons(day).get(slot):
                 # The original log is authoritative for time and schedule.
                 selected[slot].append((when, log))
                 break
