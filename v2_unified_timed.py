@@ -13,7 +13,7 @@ from zoneinfo import ZoneInfo
 import streamlit as st
 
 from pine_export import _pine_array, _initial_manual_scale
-from v2_pine_session import LABELS, slots_for_day, compare_capture_pair
+from v2_pine_session import LABELS, slots_for_day, previous_slot_for, compare_capture_pair
 from v2_pine_capture import pine_capture_clock
 from v2_storage_off import load_pine_slot_captures
 from v2_unified_es_gex_pine import append_es_gex_overlays
@@ -65,7 +65,7 @@ def build_unified_comparison_pine(day, current, previous, slot, reports=None):
         valid[symbol] = (_checked_comparison(previous[symbol], item, symbol)
                          if symbol in previous else dict(item))
     script = build_unified_pine(day, valid)
-    prev_slot = "0730" if slot == "1550" else "1550"
+    prev_slot = previous_slot_for(day, slot)
     marker = 'offsetOdte = input.int(100, "Distanza profilo principale", minval=45, maxval=250)'
     if script.count(marker) != 1:
         raise ValueError("Template unico: offset profili assente.")
@@ -362,7 +362,7 @@ def _slot_has_occurred(day, slot, now=None):
     """Use EXACT scheduler clocks; archive labels are not Rome wall times."""
     from datetime import time
     from zoneinfo import ZoneInfo
-    from v2_schedule import SLOTS, HISTORICAL_2030
+    from v2_schedule import slots_on_day, HISTORICAL_2030
 
     if now is None:
         now = datetime.now(ZoneInfo("Europe/Rome"))
@@ -372,9 +372,10 @@ def _slot_has_occurred(day, slot, now=None):
         zone, hour, minute, _ = HISTORICAL_2030
     else:
         label = LABELS.get(slot)
-        if label not in SLOTS:
+        schedules = slots_on_day(day)
+        if label not in schedules:
             raise ValueError("Fascia oraria sconosciuta.")
-        zone, hour, minute, _ = SLOTS[label]
+        zone, hour, minute, _ = schedules[label]
     tz = ZoneInfo(zone)
     expected = datetime.combine(day, time(hour, minute), tzinfo=tz)
     return now.astimezone(tz) >= expected
@@ -388,7 +389,7 @@ def _missing_unified_markets(records, reports):
 
 def render():
     """One panel, three independently prepared and downloadable time slots."""
-    with st.expander("PINE MULTI-MARKET UNICO · 07:30 / 15:50 / 17:00",
+    with st.expander("PINE MULTI-MARKET UNICO · 07:30 / 16:16 / 17:46",
                      expanded=False):
         st.caption("Un Pine per fascia oraria con ES/MES · NQ/MNQ · RTY/M2K · YM/MYM · "
                    "GC/MGC · CL/MCL. I confronti mostrano 0DTE precedente, "
@@ -427,7 +428,7 @@ def _render_automatic_downloads(day, slots):
     """
     # Schema-aware cache key: a completed Pine from a previous deployment
     # is STATIC and must never mask newly added GEX Wall/Flip data.
-    cache_key = "mm_unified_prepared_by_slot_gex_source_v2"
+    cache_key = "mm_unified_prepared_by_slot_chicago_1616_1746_v3"
     saved = st.session_state.setdefault(cache_key, {})
     # One 5-market archive scan and one SPX bridge scan per UI refresh,
     # instead of repeating both for each of the three time slots.

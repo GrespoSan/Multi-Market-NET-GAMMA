@@ -39,4 +39,4 @@ def refresh_multimarket_data(session_state):
 
     # Regenerate the three user-visible unified Pine downloads on next render.
     # The session key is application-owned, NOT user input/authentication.
-    session_state.pop("mm_unified_prepared_by_slot_gex_source_v2", None)
+    session_state.pop("mm_unified_prepared_by_slot_chicago_1616_1746_v3", None)

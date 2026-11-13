@@ -11,7 +11,7 @@ from math import isfinite
 import streamlit as st
 
 from v2_storage_off import load_pine_slot_captures
-from v2_pine_session import LABELS, compare_capture_pair, slots_for_day
+from v2_pine_session import LABELS, compare_capture_pair, slots_for_day, previous_slot_for
 from v2_pine_capture import pine_capture_clock
 from v2_universal_cboe import read_json, expiries, profile, _pine
 from pine_export import _pine_array, _initial_manual_scale
@@ -169,9 +169,10 @@ def render_index_timed_exports(ticker, day, reference, band, basis):
     st.subheader("Esportazione Pine Script v6")
     final_slot = slots_for_day(day)[-1]
     final_label = LABELS[final_slot]
-    st.markdown(f"**Pine per orari · 07:30 / 15:50 / {final_label}**")
-    st.caption("07:30: 0DTE + Weekly · 15:50: confronto 07:30→15:50 · "
-               f"{final_label}: confronto 15:50→{final_label}. Solo fotografie reali "
+    middle_label = LABELS[slots_for_day(day)[1]]
+    st.markdown(f"**Pine per orari · 07:30 / {middle_label} / {final_label}**")
+    st.caption(f"07:30: 0DTE + Weekly · {middle_label}: confronto 07:30→{middle_label} · "
+               f"{final_label}: confronto {middle_label}→{final_label}. Solo fotografie reali "
                "della stessa seduta New York; Gamma CBOE originali.")
     key = f"v2_index_timed_{ticker}_{day.isoformat()}"
     saved = st.session_state.get(key)
@@ -198,7 +199,7 @@ def render_index_timed_exports(ticker, day, reference, band, basis):
                 script = _pine(ticker, {"0DTE": now["0DTE"], "Weekly": now["Weekly"]},
                                future_mode=True, future_basis=basis)
             else:
-                prev_slot = "0730" if slot == "1550" else "1550"
+                prev_slot = previous_slot_for(day, slot)
                 if prev_slot not in profiles:
                     raise ValueError("Manca la precedente 0DTE reale.")
                 previous = profiles[prev_slot]
@@ -220,6 +221,8 @@ def render_index_timed_exports(ticker, day, reference, band, basis):
     labels = {"0730": "07:30 · 0DTE + Weekly",
               "1550": "07:30 → 15:50 · 0DTE + Weekly",
               "1700": "15:50 → 17:00 · 0DTE + Weekly",
+              "1616": "07:30 → 16:16 · 0DTE + Weekly",
+              "1746": "16:16 → 17:46 · 0DTE + Weekly",
               "2030": "15:50 → 20:30 · 0DTE + Weekly"}
     for column, slot in zip(cols, slots_for_day(day)):
         with column:

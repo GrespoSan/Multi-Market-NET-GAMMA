@@ -1,8 +1,8 @@
 """V2 three-slot scheduler with independent market-local clocks.
 
-07:30 is Europe/Rome. 15:50 (logical archive ID) means 08:50 Chicago.
-17:00 (logical archive ID) means 10:00 Chicago, including the EU/US DST
-mismatch weeks. Captures are scheduled through cron-job.org only.
+07:30 is Europe/Rome. Historic 15:50/17:00 = 08:50/10:00 Chicago.
+Starting 16 Nov 2026 new 16:16/17:46 logical IDs = 09:16/10:46 Chicago,
+including EU/US DST mismatch weeks. Capture via cron-job.org only.
 Historical 20:30 records remain readable; no look-ahead or backdating.
 """
 from datetime import datetime, date
@@ -13,14 +13,26 @@ CHICAGO = ZoneInfo("America/Chicago")
 INSTRUMENTS = ("NDX", "RUT", "DJX", "GLD", "USO")
 MAX_LAG_SECONDS = 12 * 60
 CHANGEOVER = date(2026, 11, 12)
+CHANGEOVER_NEW = date(2026, 11, 16)
 
 SLOTS = {
     "07:30": ("Europe/Rome", 7, 30, "30 7 * * 1-5"),
     "15:50": ("America/Chicago", 8, 50, "50 8 * * 1-5"),
     "17:00": ("America/Chicago", 10, 0, "0 10 * * 1-5"),
 }
+NEW_SLOTS = {
+    "07:30": ("Europe/Rome", 7, 30, "30 7 * * 1-5"),
+    "16:16": ("America/Chicago", 9, 16, "16 9 * * 1-5"),
+    "17:46": ("America/Chicago", 10, 46, "46 10 * * 1-5"),
+}
 HISTORICAL_2030 = ("America/Chicago", 13, 30, "30 13 * * 1-5")
-SLOT_FOR_CRON = {values[3]: label for label, values in SLOTS.items()}
+
+
+def slots_on_day(day):
+    """Prospective scheduler; historical jobs remain identifiable."""
+    return NEW_SLOTS if day >= CHANGEOVER_NEW else SLOTS
+SLOT_FOR_CRON = {values[3]: label for label, values in
+                 (SLOTS | NEW_SLOTS).items()}
 SLOT_FOR_CRON[HISTORICAL_2030[3]] = "20:30"
 
 
@@ -35,8 +47,15 @@ def decision(now: datetime, requested=None, event_cron=None, manual=False, exter
         return {"run": False, "reason": "SLOT_2030_DISMESSO",
                 "slot": requested, "rome": roma, "chicago": chicago,
                 "time_zone": "America/Chicago"}
-    if requested and requested not in SLOTS and not (
+    active = slots_on_day(roma.date())
+    if requested and requested not in active and not (
             requested == "20:30" and roma.date() < CHANGEOVER):
+        # No ambiguous assignment of old jobs to new time slots.
+        # Obsolete cron-job.org triggers are ignored without a Cboe request.
+        if requested in (SLOTS | NEW_SLOTS):
+            return {"run": False, "reason": "SLOT_STORICO_O_NON_ANCORA_ATTIVO",
+                    "slot": requested, "rome": roma, "chicago": chicago,
+                    "time_zone": ""}
         raise ValueError("Slot logico non riconosciuto.")
     if external and (manual or event_cron or not requested):
         raise ValueError("cron-job.org richiede uno slot riconosciuto e non manuale.")
@@ -50,7 +69,7 @@ def decision(now: datetime, requested=None, event_cron=None, manual=False, exter
     if roma.weekday() >= 5:
         return {"run": False, "reason": "WEEKEND", "slot": requested or "",
                 "rome": roma, "chicago": chicago, "time_zone": ""}
-    eligible = dict(SLOTS)
+    eligible = dict(active)
     if roma.date() < CHANGEOVER:
         eligible["20:30"] = HISTORICAL_2030
     candidates = (requested,) if requested else tuple(eligible)

@@ -21,6 +21,8 @@ class TimedPineUILayout(unittest.TestCase):
         self.assertEqual(LEGACY_SLOTS, ("0730", "1550", "2030"))
         self.assertEqual(slots_for_day(date(2026,11,11))[-1], "2030")
         self.assertEqual(slots_for_day(date(2026,11,12))[-1], "1700")
+        self.assertEqual(slots_for_day(date(2026,11,16)),
+                         ("0730", "1616", "1746"))
         self.assertIn("17:00", EXPLANATIONS["1700"])
         self.assertIn("20:30", EXPLANATIONS["2030"])
 
@@ -51,7 +53,7 @@ class TimedPineUILayout(unittest.TestCase):
         timed = source("v2_pine_timed_exports.py")
         self.assertIn('if slot == "0730":', timed)
         self.assertIn("make_pine_comparison_v2(", timed)
-        self.assertIn('prev_slot = "0730" if slot == "1550" else "1550"', timed)
+        self.assertIn('prev_slot = previous_slot_for(day, slot)', timed)
         self.assertIn("scripts[slot] = script", timed)
 
 
