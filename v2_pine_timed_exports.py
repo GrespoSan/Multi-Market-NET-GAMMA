@@ -12,7 +12,7 @@ from time import monotonic
 
 import streamlit as st
 
-from v2_pine_session import LABELS, slots_for_day
+from v2_pine_session import LABELS, slots_for_day, previous_slot_for
 from v2_pine_capture import pine_capture_clock
 from v2_storage_off import load_pine_slot_captures
 from v2_pine_comparison import make_pine_comparison_v2
@@ -24,6 +24,8 @@ EXPLANATIONS = {
     "0730": "07:30 · 0DTE + Weekly",
     "1550": "07:30 0DTE → 15:50 0DTE + Weekly",
     "1700": "15:50 0DTE → 17:00 0DTE + Weekly",
+    "1616": "07:30 0DTE → 16:16 0DTE + Weekly (09:16 Chicago)",
+    "1746": "16:16 0DTE → 17:46 0DTE + Weekly (10:46 Chicago)",
     "2030": "15:50 0DTE → 20:30 0DTE + Weekly",
 }
 
@@ -122,7 +124,7 @@ def produce_timed_scripts(symbol, day, captures, reference, band,
                         None, acquisition_time=now["capture"]["rome"],
                         continuous=True)
             else:
-                prev_slot = "0730" if slot == "1550" else "1550"
+                prev_slot = previous_slot_for(day, slot)
                 if prev_slot not in profiles:
                     raise ValueError(f"Manca 0DTE precedente {LABELS[prev_slot]}.")
                 prev = profiles[prev_slot]
@@ -153,8 +155,9 @@ def render_timed_pine_exports(symbol, day, reference, band, basis_or_mapping,
     """Use only the authenticated 30-day V2 artifact archive, not live Cboe."""
     last_slot = slots_for_day(day)[-1]
     last_label = LABELS[last_slot]
-    st.caption("Pine 07:30, confronto 07:30→15:50 e confronto "
-               f"15:50→{last_label}; ogni confronto usa soltanto fotografie reali "
+    middle_label = LABELS[slots_for_day(day)[1]]
+    st.caption(f"Pine 07:30, confronto 07:30→{middle_label} e confronto "
+               f"{middle_label}→{last_label}; ogni confronto usa soltanto fotografie reali "
                "della stessa seduta di New York. Gli orari effettivi sono "
                "indicati in CET/CEST. Nessun Gamma inventato.")
     # First view loads same-day GitHub archives automatically just like SPX.
