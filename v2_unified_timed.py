@@ -413,15 +413,9 @@ def render():
                        "URL del progetto SPX già configurato; nessuna "
                        "modifica a Serafini SPX. Gli altri cinque mercati "
                        "continuano a funzionare.")
-        if not st.toggle(
-                "Attiva preparazione Pine unico (6 mercati)",
-                key=f"mm_unified_enabled_{day.isoformat()}",
-                value=False,
-                help="Avvia la lettura delle fotografie solo quando vuoi usare il Pine unico. "
-                     "Spegni per interrompere i controlli automatici ogni 3 minuti."):
-            st.caption("Pine unico in pausa: nessuna lettura dei sei mercati "
-                       "finché non attivi la preparazione.")
-            return
+        # Three direct "Scarica Pine" buttons, as in the agreed UI.
+        # Preparation is automatic and cached per day/slot: no preliminary
+        # toggle, no "Prepara" or "Aggiorna Pine" controls.
         _render_automatic_downloads(day, slots)
 
 
@@ -429,7 +423,7 @@ def render():
 def _render_automatic_downloads(day, slots):
     """Three direct downloads; check incomplete slots every 3 minutes.
 
-    The fragment exists only after explicit activation by the user.
+    Completed snapshots remain cached; unavailable slots are rechecked every 3 minutes.
     """
     cache_key = "mm_unified_prepared_by_slot"
     saved = st.session_state.setdefault(cache_key, {})
