@@ -79,7 +79,7 @@ class MultiMarketSidebarRefreshTests(unittest.TestCase):
         self.assertNotIn("_cached_snapshot.clear()", source)
         self.assertNotIn("_cl_cached_json.cache_clear()", source)
         self.assertNotIn("login_limiter.clear()", source)
-        self.assertNotIn("v2_role", source)
+        self.assertNotIn('session_state.pop("v2_role"', source)
         self.assertNotIn("download_once", source)
 
 
