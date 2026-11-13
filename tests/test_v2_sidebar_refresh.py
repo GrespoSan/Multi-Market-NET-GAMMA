@@ -44,7 +44,7 @@ class MultiMarketSidebarRefreshTests(unittest.TestCase):
                 "ndx_basis_value": "300.25",
                 "mm_unified_day": "2026-11-13",
                 "mm_unified_view_slot_2026-11-13": "1700",
-                "mm_unified_prepared_by_slot_gex_source_v2": {
+                "mm_unified_prepared_by_slot_chicago_1616_1746_v3": {
                     ("2026-11-13", "1700"): {"script": "STATIC OLD PINE"}},
             }
             with self.subTest(role=role), patch.dict(sys.modules, modules):
@@ -58,12 +58,12 @@ class MultiMarketSidebarRefreshTests(unittest.TestCase):
                 self.assertEqual(session["ndx_basis_value"], "300.25")
                 self.assertEqual(session["mm_unified_day"], "2026-11-13")
                 self.assertEqual(session["mm_unified_view_slot_2026-11-13"], "1700")
-                self.assertNotIn("mm_unified_prepared_by_slot_gex_source_v2", session)
+                self.assertNotIn("mm_unified_prepared_by_slot_chicago_1616_1746_v3", session)
 
     def test_sidebar_is_shared_after_login_and_before_logout(self):
         source = (ROOT / "app.py").read_text(encoding="utf-8")
         start = source.index('role = st.session_state["v2_role"]\nwith st.sidebar:')
-        end = source.index('st.caption("V2 indipendente', start)
+        end = source.index('st.subheader("01 · MERCATI PRINCIPALI")', start)
         sidebar = source[start:end]
         self.assertIn('st.button("🔄 Aggiorna dati"', sidebar)
         self.assertIn('refresh_multimarket_data(st.session_state)', sidebar)
