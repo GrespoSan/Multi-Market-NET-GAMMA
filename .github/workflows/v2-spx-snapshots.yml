@@ -1,7 +1,8 @@
-name: Multi-Market V2 · 07:30 Roma · 08:50 Chicago · 10:00 Chicago
+name: Multi-Market V2 · 07:30 Roma · 09:16 Chicago · 10:46 Chicago
 
 # All three scheduled dispatches are handled by cron-job.org.
-# The logical 15:50 and 17:00 archive labels are retained for compatibility.
+# From 2026-11-16, logical 16:16 and 17:46 follow 09:16/10:46 Chicago.
+# Historical 15:50 and 17:00 snapshots remain archived and readable.
 # Native GitHub schedules are disabled to prevent duplicate acquisitions.
 on:
   workflow_dispatch:
@@ -13,8 +14,8 @@ on:
         options:
           - ""
           - "07:30"
-          - "15:50"
-          - "17:00"
+          - "16:16"
+          - "17:46"
       trigger:
         description: "Origine del comando: manuale oppure scheduler cron-job.org"
         required: false
@@ -33,7 +34,7 @@ concurrency:
 
 jobs:
   capture_v2:
-    # All 07:30 Rome, 08:50 Chicago and 10:00 Chicago captures are
+    # All 07:30 Rome, 09:16 Chicago and 10:46 Chicago captures are
     # initiated through cron-job.org. External 20:30 is rejected.
     # Five NDX, RUT, DJX, GLD and USO captures per successful dispatch.
     # Hard-wire public URLs in v2_cron.py, no legacy feed-secret overrides
