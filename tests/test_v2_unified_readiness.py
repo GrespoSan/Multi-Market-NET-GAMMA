@@ -42,20 +42,20 @@ class UnifiedReadinessTests(TestCase):
 
     def test_spring_dst_mismatch_10_chicago_available_at_16_rome(self):
         day = date(2027, 3, 15)
-        early = datetime(2027, 3, 15, 15, 57, tzinfo=ROME)
-        due = datetime(2027, 3, 15, 16, 1, tzinfo=ROME)
-        self.assertFalse(_slot_has_occurred(day, "1700", early))
-        self.assertTrue(_slot_has_occurred(day, "1700", due))
-        self.assertTrue(_slot_has_occurred(day, "1550", due))
+        early = datetime(2027, 3, 15, 16, 45, tzinfo=ROME)
+        due = datetime(2027, 3, 15, 16, 47, tzinfo=ROME)
+        self.assertFalse(_slot_has_occurred(day, "1746", early))
+        self.assertTrue(_slot_has_occurred(day, "1746", due))
+        self.assertTrue(_slot_has_occurred(day, "1616", due))
         self.assertTrue(_slot_has_occurred(day, "0730", due))
 
     def test_1550_mismatch_respects_0850_chicago_not_1550_rome(self):
         day = date(2027, 3, 15)
-        early = datetime(2027, 3, 15, 14, 47, tzinfo=ROME)
-        due = datetime(2027, 3, 15, 14, 51, tzinfo=ROME)
-        self.assertFalse(_slot_has_occurred(day, "1550", early))
-        self.assertTrue(_slot_has_occurred(day, "1550", due))
-        self.assertFalse(_slot_has_occurred(day, "1700", due))
+        early = datetime(2027, 3, 15, 15, 15, tzinfo=ROME)
+        due = datetime(2027, 3, 15, 15, 17, tzinfo=ROME)
+        self.assertFalse(_slot_has_occurred(day, "1616", early))
+        self.assertTrue(_slot_has_occurred(day, "1616", due))
+        self.assertFalse(_slot_has_occurred(day, "1746", due))
 
     def test_original_0730_always_stays_rome(self):
         day = date(2027, 3, 15)
