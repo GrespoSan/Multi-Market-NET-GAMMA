@@ -73,7 +73,7 @@ class UnifiedPineTests(unittest.TestCase):
         self.assertIn('st.download_button(', timed)
         self.assertIn('st.button(f"Pine · {label} · non disponibile"', timed)
         self.assertIn('disabled=True', timed)
-        self.assertIn('"mm_unified_prepared_by_slot_gex_source_v2"', timed)
+        self.assertIn('"mm_unified_prepared_by_slot_chicago_1616_1746_v3"', timed)
         self.assertIn('if prepared is None or stale_incomplete:', timed)
         self.assertIn('@st.fragment(run_every=180)', timed)
         self.assertNotIn('st.button("Aggiorna Pine per orari"', timed)
