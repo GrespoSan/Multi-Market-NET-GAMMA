@@ -9,6 +9,7 @@ Do NOT put privileged keys in public client code or GitHub commits.
 """
 import json
 import math
+import hashlib
 from datetime import date, datetime, timedelta
 from decimal import Decimal, ROUND_HALF_UP
 from urllib.error import HTTPError, URLError
@@ -166,6 +167,10 @@ def _official_captures(day, slots, url, jwt, bucket):
                     continue
                 results[slot] = {
                     "snapshot": snap,
+                    # Exact original Cboe bytes already fetched for Serafini:
+                    # the independent Edge 0DTE model must use SAME bytes.
+                    "raw": raw,
+                    "source_sha256": hashlib.sha256(raw).hexdigest(),
                     "download_rome": when.isoformat(timespec="seconds"),
                     "log": log["file"],
                     "origin": "SPX UFFICIALE",
@@ -205,6 +210,42 @@ def spx_basis(day):
 def _weekly_expiry(day):
     delta = 4 - day.weekday()
     return day + timedelta(days=delta if delta > 0 else 7)
+
+
+def _edge_levels_for_same_spx(archive, day, spot, basis):
+    """Independently modeled GEX 0DTE on the exact official Serafini bytes.
+
+    No previous slot fallback, no inferred Wall from NET GAMMA Serafini and
+    no fake Gamma Flip when the model has no zero crossing. Invalid data = N/D.
+    """
+    raw = archive.get("raw")
+    if not isinstance(raw, bytes) or not raw:
+        return None
+    try:
+        from edge_auto import result_from_snapshot
+        edge = result_from_snapshot(raw, 0.0)
+        if (edge.get("symbol") != "SPX"
+                or edge.get("mode") != "0DTE"
+                or edge.get("expiries") != [day.isoformat()]
+                or edge.get("quality_sufficient") is not True
+                or edge.get("sha256") != hashlib.sha256(raw).hexdigest()
+                or edge.get("sha256") != archive.get("source_sha256")
+                or not math.isclose(float(edge["spot_spx"]), float(spot),
+                                    abs_tol=0.01)):
+            return None
+        levels = {}
+        for key in ("call_wall_spx", "put_wall_spx", "gamma_flip_spx"):
+            value = edge.get(key)
+            try:
+                amount = float(value)
+                if math.isfinite(amount) and amount > 0:
+                    levels[key] = amount
+            except (ValueError, TypeError, OverflowError):
+                continue
+        return levels or None
+    except (ValueError, TypeError, KeyError, RuntimeError, OSError,
+            OverflowError, ImportError, AttributeError):
+        return None
 
 
 def spx_record(archive, day, basis, *, extension=True):
@@ -249,4 +290,7 @@ def spx_record(archive, day, basis, *, extension=True):
         "weekly_expiry": expiration,
         "captured": pine_capture_clock(archive["download_rome"]),
         "reference": reference, "basis": float(basis), "source": "SPX",
+        # GEX Wall/Flip are NOT Serafini Top 3. Only valid official 0DTE Edge.
+        "gex_levels_spx": _edge_levels_for_same_spx(
+            archive, day, snap["data"].get("current_price"), basis),
     }
