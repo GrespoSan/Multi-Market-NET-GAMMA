@@ -79,6 +79,55 @@ class UnifiedEsGexTests(unittest.TestCase):
         self.assertIsNone(_edge_levels_for_same_spx(
             {**archive, "raw": None}, DAY, 6000., 38.))
 
+    def test_real_edge_cloud_feed_fallback_requires_same_slot_and_sha(self):
+        from v2_spx_bridge import _cached_verified_official_feed
+        from gex_official_csv import verified_official_gex_csv
+        raw = b"original-gz-cboe"
+        metadata = {
+            "schema":"serafini_mt4_v4", "mode":"Ufficiale",
+            "date_rome":DAY.isoformat(), "slot_rome":"17:00",
+            "download_clock_rome":"17:00:18",
+            "gex_model":"EDGE_0DTE", "gex_expiry":DAY.isoformat(),
+            "gex_source_sha256":hashlib.sha256(raw).hexdigest(),
+            "gex_cboe_timestamp":"official timestamp",
+            "gex_call_wall_spx":"6015",
+            "gex_put_wall_spx":"5980",
+            "gex_gamma_flip_spx":"6002",
+        }
+        content = (chr(10).join(f"{k},{v}" for k,v in metadata.items())
+                   + chr(10) + "profile,expiry,strike_spx,price_es,net_gamma"
+                   + chr(10)).encode()
+        archive = {
+            "raw":raw, "source_sha256":hashlib.sha256(raw).hexdigest(),
+            "snapshot":{"timestamp":"official timestamp"},
+            "download_rome":f"{DAY.isoformat()}T17:00:18+01:00",
+            "slot_rome":"1700",
+        }
+        with patch("edge_auto.result_from_snapshot",
+                   return_value=edge_result(sufficient=False)), patch(
+                "v2_spx_bridge._secrets",
+                return_value=("https://example.invalid","token","spx-snapshots")), patch(
+                "v2_spx_bridge._cached_verified_official_feed",
+                return_value=content):
+            value = _edge_levels_for_same_spx(archive, DAY, 6000., 38.)
+            self.assertEqual(value, {
+                "call_wall_spx":6015., "put_wall_spx":5980.,
+                "gamma_flip_spx":6002.})
+            self.assertIsNone(_edge_levels_for_same_spx(
+                {**archive, "slot_rome":"1550"}, DAY, 6000., 38.))
+            self.assertIsNone(_edge_levels_for_same_spx(
+                {**archive, "source_sha256":"bad"}, DAY, 6000., 38.))
+        self.assertIsNone(verified_official_gex_csv(
+            content, b"other-gz", DAY, "1700",
+            "official timestamp", "17:00:18"))
+
+    def test_ui_cache_is_versioned_for_new_gex_lines(self):
+        from pathlib import Path
+        text = (Path(__file__).resolve().parents[1] /
+                "v2_unified_timed.py").read_text(encoding="utf-8")
+        self.assertIn("mm_unified_prepared_by_slot_gex_source_v2", text)
+        self.assertNotIn('cache_key = "mm_unified_prepared_by_slot"', text)
+
     def test_0730_es_lines_and_independent_styles(self):
         current = record("07:31")
         pine = build_unified_pine(DAY, {"SPX": current})
@@ -132,7 +181,7 @@ class UnifiedEsGexTests(unittest.TestCase):
         single = (root / "v2_unified_pine.py").read_text()
         timed = (root / "v2_unified_timed.py").read_text()
         self.assertIn('"raw": raw', bridge)
-        self.assertIn('edge.get("sha256") != archive.get("source_sha256")', bridge)
+        self.assertIn('if digest != archive.get("source_sha256"):', bridge)
         self.assertIn('append_es_gex_overlays(', single)
         self.assertIn('append_es_gex_overlays(', timed)
         self.assertNotIn('method="PUT"', bridge)

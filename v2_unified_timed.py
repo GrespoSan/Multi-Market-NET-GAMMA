@@ -425,7 +425,9 @@ def _render_automatic_downloads(day, slots):
 
     Completed snapshots remain cached; unavailable slots are rechecked every 3 minutes.
     """
-    cache_key = "mm_unified_prepared_by_slot"
+    # Schema-aware cache key: a completed Pine from a previous deployment
+    # is STATIC and must never mask newly added GEX Wall/Flip data.
+    cache_key = "mm_unified_prepared_by_slot_gex_source_v2"
     saved = st.session_state.setdefault(cache_key, {})
     # One 5-market archive scan and one SPX bridge scan per UI refresh,
     # instead of repeating both for each of the three time slots.

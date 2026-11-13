@@ -172,6 +172,7 @@ def _official_captures(day, slots, url, jwt, bucket):
                     "raw": raw,
                     "source_sha256": hashlib.sha256(raw).hexdigest(),
                     "download_rome": when.isoformat(timespec="seconds"),
+                    "slot_rome": slot,
                     "log": log["file"],
                     "origin": "SPX UFFICIALE",
                 }
@@ -212,41 +213,63 @@ def _weekly_expiry(day):
     return day + timedelta(days=delta if delta > 0 else 7)
 
 
-def _edge_levels_for_same_spx(archive, day, spot, basis):
-    """Independently modeled GEX 0DTE on the exact official Serafini bytes.
+@st.cache_data(ttl=120, max_entries=8, show_spinner=False)
+def _cached_verified_official_feed(url, jwt, bucket):
+    """One private read of already computed 100-strike GEX metadata."""
+    return SPXArchiveReadOnly(url, jwt, bucket).download("mt4/official100.csv")
 
-    No previous slot fallback, no inferred Wall from NET GAMMA Serafini and
-    no fake Gamma Flip when the model has no zero crossing. Invalid data = N/D.
+
+def _edge_levels_for_same_spx(archive, day, spot, basis):
+    """Use Edge 0DTE on the exact chain, with SHA-bound official feed failover.
+
+    If the pinned Edge engine is temporarily unavailable, the already
+    published verified MT4 Edge output can supply the SAME 0DTE Wall/Flip.
+    No stale date, slot or Cboe SHA is accepted.
     """
     raw = archive.get("raw")
     if not isinstance(raw, bytes) or not raw:
         return None
+    digest = hashlib.sha256(raw).hexdigest()
+    if digest != archive.get("source_sha256"):
+        return None
     try:
         from edge_auto import result_from_snapshot
         edge = result_from_snapshot(raw, 0.0)
-        if (edge.get("symbol") != "SPX"
-                or edge.get("mode") != "0DTE"
-                or edge.get("expiries") != [day.isoformat()]
-                or edge.get("quality_sufficient") is not True
-                or edge.get("sha256") != hashlib.sha256(raw).hexdigest()
-                or edge.get("sha256") != archive.get("source_sha256")
-                or not math.isclose(float(edge["spot_spx"]), float(spot),
-                                    abs_tol=0.01)):
-            return None
-        levels = {}
-        for key in ("call_wall_spx", "put_wall_spx", "gamma_flip_spx"):
-            value = edge.get(key)
-            try:
-                amount = float(value)
-                if math.isfinite(amount) and amount > 0:
-                    levels[key] = amount
-            except (ValueError, TypeError, OverflowError):
-                continue
-        return levels or None
+        if (edge.get("symbol") == "SPX"
+                and edge.get("mode") == "0DTE"
+                and edge.get("expiries") == [day.isoformat()]
+                and edge.get("quality_sufficient") is True
+                and edge.get("sha256") == digest
+                and math.isclose(float(edge["spot_spx"]), float(spot),
+                                 abs_tol=0.01)):
+            levels = {}
+            for key in ("call_wall_spx", "put_wall_spx", "gamma_flip_spx"):
+                value = edge.get(key)
+                try:
+                    amount = float(value)
+                    if math.isfinite(amount) and amount > 0:
+                        levels[key] = amount
+                except (ValueError, TypeError, OverflowError):
+                    continue
+            if levels:
+                return levels
+    except (ValueError, TypeError, KeyError, RuntimeError, OSError,
+            OverflowError, ImportError, AttributeError):
+        pass
+
+    # Exact-source, independently verified fallback. A 17:00 feed must NEVER
+    # supply levels to the 07:30 or 15:50 export.
+    try:
+        from gex_official_csv import verified_official_gex_csv
+        url, token, bucket = _secrets()
+        content = _cached_verified_official_feed(url, token, bucket)
+        timestamp = archive["snapshot"]["timestamp"]
+        clock = datetime.fromisoformat(archive["download_rome"]).strftime("%H:%M:%S")
+        return verified_official_gex_csv(
+            content, raw, day, archive["slot_rome"], timestamp, clock)
     except (ValueError, TypeError, KeyError, RuntimeError, OSError,
             OverflowError, ImportError, AttributeError):
         return None
-
 
 def spx_record(archive, day, basis, *, extension=True):
     """Exact original SPX calculations, original strikes, frozen ES basis."""
