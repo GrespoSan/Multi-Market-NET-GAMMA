@@ -97,6 +97,14 @@ if st.session_state.get("v2_role") not in ("admin", "friend"):
 role = st.session_state["v2_role"]
 with st.sidebar:
     st.write("**Accesso:** " + ("Amministratore" if role == "admin" else "Lettore"))
+    # Identico a Serafini SPX: entrambi i ruoli autorizzati possono rileggere
+    # le fonti senza uscire o perdere password, selezioni e fotografie manuali.
+    if st.button("🔄 Aggiorna dati", key="v2_sidebar_refresh",
+                 use_container_width=True,
+                 help="Aggiorna archivi, dati recenti e Pine UNICO senza nuovo login o download Cboe."):
+        from v2_refresh import refresh_multimarket_data
+        refresh_multimarket_data(st.session_state)
+        st.toast("Aggiornamento richiesto: ricarico i dati disponibili.", icon="🔄")
     if st.button("Esci", key="v2_logout"):
         st.session_state.pop("v2_role", None)
         st.rerun()
