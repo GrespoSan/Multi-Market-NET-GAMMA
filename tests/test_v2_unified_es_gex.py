@@ -145,6 +145,19 @@ class UnifiedEsGexTests(unittest.TestCase):
         for sym in MARKETS:
             self.assertIn("var array<float> " + sym + "Levels", pine)
 
+    def test_equal_call_put_strike_has_one_label_two_colors_at_true_price(self):
+        # One actual ES level is allowed to be both walls; never shift a level.
+        same = record("17:01", edge_result(7500., 7500., 7581.84))
+        script = build_unified_pine(DAY, {"SPX": same})
+        self.assertIn("float gexCallES = 7538.00000000", script)
+        self.assertIn("float gexPutES = 7538.00000000", script)
+        self.assertIn("bool gexWallsCoincident =", script)
+        self.assertIn('"GEX CW = PW "', script)
+        self.assertIn("style=(gexWallsCoincident ? line.style_dotted : line.style_solid)", script)
+        self.assertIn("if not gexWallsCoincident", script)
+        self.assertIn("if isES and showGexLevels", script)
+        self.assertNotIn("gexPutES + syminfo.mintick", script)
+
     def test_comparisons_use_current_gex_not_preceding(self):
         previous = record("07:31", edge_result(6030., 5950., 6050.))
         now = record("15:51", edge_result(6015., 5980., 6002.))
