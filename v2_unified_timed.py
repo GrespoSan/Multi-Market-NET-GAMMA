@@ -432,7 +432,7 @@ def _render_automatic_downloads(day, slots):
     """
     # Schema-aware cache key: a completed Pine from a previous deployment
     # is STATIC and must never mask newly added GEX Wall/Flip data.
-    cache_key = "mm_unified_prepared_by_slot_chicago_1616_1746_v3"
+    cache_key = "mm_unified_prepared_by_slot_chicago_1616_1746_v4"
     saved = st.session_state.setdefault(cache_key, {})
     # One 5-market archive scan and one SPX bridge scan per UI refresh,
     # instead of repeating both for each of the three time slots.
@@ -454,10 +454,15 @@ def _render_automatic_downloads(day, slots):
                 st.caption(f"Rilevamento {label} non ancora previsto "
                            "per questa seduta. Nessun profilo simulato.")
                 continue
+            # Anche un errore di generazione del Pine con 6 report OK
+            # deve essere riprovato automaticamente, non restare in cache.
             incomplete = (
                 prepared is not None
-                and sum(str(v).startswith("OK")
-                        for v in prepared.get("reports", {}).values()) < len(MARKETS)
+                and (
+                    not prepared.get("script")
+                    or sum(str(v).startswith("OK")
+                           for v in prepared.get("reports", {}).values()) < len(MARKETS)
+                )
             )
             stale_incomplete = (
                 incomplete and monotonic() - prepared.get("checked_at", 0) >= 180
