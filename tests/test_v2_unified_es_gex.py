@@ -121,6 +121,37 @@ class UnifiedEsGexTests(unittest.TestCase):
             content, b"other-gz", DAY, "1700",
             "official timestamp", "17:00:18"))
 
+    def test_new_1616_1746_official_csv_slots_are_mapped(self):
+        from gex_official_csv import verified_official_gex_csv
+        day = date(2026, 11, 16)
+        raw = b"verified-new-slot-raw"
+        for slot, pretty in (("1616", "16:16"), ("1746", "17:46")):
+            with self.subTest(slot=slot):
+                stamp = "2026-11-16 15:15:22"
+                clock = pretty + ":09"
+                metadata = {
+                    "schema": "serafini_mt4_v4", "mode": "Ufficiale",
+                    "date_rome": day.isoformat(), "slot_rome": pretty,
+                    "download_clock_rome": clock,
+                    "gex_model": "EDGE_0DTE",
+                    "gex_expiry": day.isoformat(),
+                    "gex_source_sha256": hashlib.sha256(raw).hexdigest(),
+                    "gex_cboe_timestamp": stamp,
+                    "gex_call_wall_spx": "7580",
+                    "gex_put_wall_spx": "7490",
+                    "gex_gamma_flip_spx": "7525",
+                }
+                content = ("\\n".join(f"{k},{v}" for k, v in metadata.items())
+                           + "\\nprofile,expiry,strike_spx,price_es,net_gamma\\n").encode()
+                self.assertEqual(
+                    verified_official_gex_csv(
+                        content, raw, day, slot, stamp, clock),
+                    {"call_wall_spx": 7580.0, "put_wall_spx": 7490.0,
+                     "gamma_flip_spx": 7525.0},
+                )
+                self.assertIsNone(verified_official_gex_csv(
+                    content, b"different-chain", day, slot, stamp, clock))
+
     def test_ui_cache_is_versioned_for_new_gex_lines(self):
         from pathlib import Path
         text = (Path(__file__).resolve().parents[1] /
