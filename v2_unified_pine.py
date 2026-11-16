@@ -235,8 +235,8 @@ showCurrentOdte = input.bool(true, "Mostra profilo principale")
 showCurrentWeekly = input.bool(true, "Mostra Weekly")
 showTop3Odte = input.bool(false, "Proietta Top 3 Call / Put 0DTE")
 showTitles = input.bool(true, "Mostra intestazioni")
-positiveColor = input.color(color.rgb(0, 143, 76), "NET GAMMA positivo")
-negativeColor = input.color(color.rgb(242, 54, 69), "NET GAMMA negativo")
+positiveColor = input.color(color.rgb(152, 255, 152), "NET GAMMA positivo")
+negativeColor = input.color(color.rgb(249, 132, 229), "NET GAMMA negativo")
 
 @ARRAYS@
 
