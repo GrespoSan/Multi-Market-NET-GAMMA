@@ -240,7 +240,11 @@ def prepare_slot(day, slot, *, snapshots_by_market=None, spx_by_day=None):
     """
     if slot not in slots_for_day(day):
         raise ValueError("Orario non previsto per la seduta selezionata.")
-    prev_slot = "0730" if slot == "1550" else "1550"
+    # Segui la sequenza ufficiale della data selezionata:
+    # fino al 13/11 07:30 → 15:50 → 17:00;
+    # dal 16/11 07:30 → 16:16 → 17:46.
+    # Non reinterpretare retroattivamente gli snapshot storici.
+    prev_slot = previous_slot_for(day, slot)
     records, previous, reports = {}, {}, {}
     # Read-only SPX bridge. Failed auth must NEVER disable the other 5 assets.
     from v2_spx_bridge import load_official_spx, spx_record, spx_basis
