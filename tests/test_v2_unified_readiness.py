@@ -99,6 +99,55 @@ class UnifiedReadinessTests(TestCase):
         self.assertEqual(spx_load.call_count, 1)
         self.assertEqual(market_load.call_count, len(MARKETS) - 1)
 
+    def test_new_official_slots_use_real_previous_capture(self):
+        """Regression: 16:16 -> 07:30 and 17:46 -> 16:16, never 15:50."""
+        day = date(2026, 11, 16)
+        frames = {
+            "0730": {"download_rome": "2026-11-16T07:30:00+01:00", "marker": "0730"},
+            "1616": {"download_rome": "2026-11-16T16:16:00+01:00", "marker": "1616"},
+            "1746": {"download_rome": "2026-11-16T17:46:00+01:00", "marker": "1746"},
+        }
+
+        def record(frame, *args, **kwargs):
+            return {
+                "marker": frame["marker"],
+                "main": [1], "weekly": [2], "gex_levels_spx": {},
+            }
+
+        with patch("v2_spx_bridge.load_official_spx", return_value=frames), \
+             patch("v2_spx_bridge.spx_basis", return_value=(20.0, "test")), \
+             patch("v2_spx_bridge.spx_record", side_effect=record), \
+             patch("v2_unified_timed._checked_comparison", side_effect=lambda old, now, symbol: now), \
+             patch("v2_unified_timed.load_pine_slot_captures", return_value={}):
+            for current, prior in (("1616", "0730"), ("1746", "1616")):
+                records, previous, reports = prepare_slot(day, current)
+                self.assertEqual(records["SPX"]["marker"], current)
+                self.assertEqual(previous["SPX"]["marker"], prior)
+                self.assertTrue(reports["SPX"].startswith("OK"))
+
+    def test_historical_1700_still_uses_1550_predecessor(self):
+        day = date(2026, 11, 12)
+        frames = {
+            "0730": {"download_rome": "2026-11-12T07:30:00+01:00", "marker": "0730"},
+            "1550": {"download_rome": "2026-11-12T15:50:00+01:00", "marker": "1550"},
+            "1700": {"download_rome": "2026-11-12T17:00:00+01:00", "marker": "1700"},
+        }
+
+        def record(frame, *args, **kwargs):
+            return {
+                "marker": frame["marker"],
+                "main": [1], "weekly": [2], "gex_levels_spx": {},
+            }
+
+        with patch("v2_spx_bridge.load_official_spx", return_value=frames), \
+             patch("v2_spx_bridge.spx_basis", return_value=(20.0, "test")), \
+             patch("v2_spx_bridge.spx_record", side_effect=record), \
+             patch("v2_unified_timed._checked_comparison", side_effect=lambda old, now, symbol: now), \
+             patch("v2_unified_timed.load_pine_slot_captures", return_value={}):
+            _, previous, reports = prepare_slot(day, "1700")
+            self.assertEqual(previous["SPX"]["marker"], "1550")
+            self.assertTrue(reports["SPX"].startswith("OK"))
+
     def test_ui_cannot_download_partial_pine_and_auto_refreshes(self):
         source = (Path(__file__).resolve().parents[1] /
                   "v2_unified_timed.py").read_text(encoding="utf-8")
