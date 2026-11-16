@@ -137,6 +137,13 @@ class UnifiedEsGexTests(unittest.TestCase):
         self.assertIn('if isES and showGexLevels', pine)
         self.assertIn('syminfo.root == "MES"', pine)
         self.assertIn("line.style_dotted, width=gexFlipWidth", pine)
+        # Only three GEX text labels grow, including CW=PW confluent case.
+        for label in ("gexCallLabel", "gexPutLabel", "gexFlipLabel"):
+            label_line = next(
+                line for line in pine.splitlines()
+                if f"{label} := label.new" in line)
+            self.assertIn("size=size.normal)", label_line)
+            self.assertNotIn("size=size.small)", label_line)
         self.assertEqual(pine.count("showGexLevels = input.bool"), 1)
         for x in ("gexCallColor", "gexPutColor", "gexFlipColor"):
             self.assertEqual(pine.count(x + " = input.color"), 1)
