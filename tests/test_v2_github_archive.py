@@ -103,6 +103,23 @@ class GitHubArchiveTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "Chiave"):
             decrypt_encrypted(encrypted, Fernet.generate_key().decode())
 
+    def test_new_chicago_slots_are_readable_for_all_five_markets(self):
+        """16:16/17:46 filenames must reach the Pine archive reader."""
+        for symbol in ("NDX", "RUT", "DJX", "GLD", "USO"):
+            for slot in ("1616", "1746"):
+                with self.subTest(symbol=symbol, slot=slot):
+                    filename = (
+                        f"{symbol}_20261116T151610Z_{slot}_"
+                        "123456789abc.json.gz.enc"
+                    )
+                    archive_data = io.BytesIO()
+                    with zipfile.ZipFile(archive_data, "w") as archive:
+                        archive.writestr(filename, b"test-encrypted-contents")
+                    contents, chosen = extract_encrypted_artifact(
+                        archive_data.getvalue(), symbol)
+                    self.assertEqual(chosen, filename)
+                    self.assertEqual(contents, b"test-encrypted-contents")
+
     def test_external_artifact_url_is_rejected(self):
         key, raw, encrypted, zip_bytes, listing = example()
         with self.assertRaisesRegex(ValueError, "non appartenente"):
