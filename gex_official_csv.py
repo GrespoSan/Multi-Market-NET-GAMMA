@@ -22,7 +22,8 @@ def verified_official_gex_csv(csv_blob, raw_cboe, day, slot, cboe_stamp, clock=N
                 return None
             metadata[cells[0]] = cells[1]
         normalized_slot = slot if ":" in slot else (
-            {"0730": "07:30", "1550": "15:50", "1700": "17:00"}.get(slot, slot))
+            {"0730": "07:30", "1550": "15:50", "1700": "17:00",
+             "1616": "16:16", "1746": "17:46"}.get(slot, slot))
         if (metadata.get("schema") != "serafini_mt4_v4"
                 or metadata.get("mode") != "Ufficiale"
                 or metadata.get("date_rome") != day.isoformat()
