@@ -156,7 +156,7 @@ class UnifiedEsGexTests(unittest.TestCase):
         from pathlib import Path
         text = (Path(__file__).resolve().parents[1] /
                 "v2_unified_timed.py").read_text(encoding="utf-8")
-        self.assertIn("mm_unified_prepared_by_slot_chicago_1616_1746_v3", text)
+        self.assertIn("mm_unified_prepared_by_slot_chicago_1616_1746_v5", text)
         self.assertNotIn('cache_key = "mm_unified_prepared_by_slot"', text)
 
     def test_0730_es_lines_and_independent_styles(self):
