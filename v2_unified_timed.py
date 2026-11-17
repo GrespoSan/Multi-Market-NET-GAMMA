@@ -298,8 +298,7 @@ def prepare_slot(day, slot, *, snapshots_by_market=None, spx_by_day=None):
                 gex = now.get("gex_levels_spx") or {}
                 gex_count = sum(gex.get(k) is not None for k in (
                     "call_wall_spx", "put_wall_spx", "gamma_flip_spx"))
-                gex_status = (f"GEX Edge {gex_count}/3" if gex_count
-                              else "GEX Edge N/D")
+                gex_status = f"GEX Edge {gex_count}/3 verificati"
                 reports[symbol] = (
                     f"OK · SPX UFFICIALE · {LABELS[slot]} · "
                     f"{count} strike · 25+25 originali per profilo · "
@@ -432,7 +431,7 @@ def _render_automatic_downloads(day, slots):
     """
     # Schema-aware cache key: a completed Pine from a previous deployment
     # is STATIC and must never mask newly added GEX Wall/Flip data.
-    cache_key = "mm_unified_prepared_by_slot_chicago_1616_1746_v4"
+    cache_key = "mm_unified_prepared_by_slot_chicago_1616_1746_v5"
     saved = st.session_state.setdefault(cache_key, {})
     # One 5-market archive scan and one SPX bridge scan per UI refresh,
     # instead of repeating both for each of the three time slots.
