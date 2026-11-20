@@ -43,7 +43,7 @@ class SPXSnapshotParityTests(unittest.TestCase):
         acquisition=(ROOT/"v2_emergency_acquisition.py").read_text()
         emergency=(ROOT/"v2_emergency_pine.py").read_text()
         self.assertIn("prefer_manual_source(symbol)",acquisition)
-        self.assertIn('"Scarica CBOE adesso"',emergency)
+        self.assertIn('"Scarica CBOE adesso · sospeso"',emergency)
         self.assertIn('"In alternativa importa ZIP / JSON / JSON.GZ"',emergency)
         self.assertIn('"Usa file importato"',emergency)
         self.assertIn('"Scarica una fotografia CBOE oppure importa un file "',emergency)
