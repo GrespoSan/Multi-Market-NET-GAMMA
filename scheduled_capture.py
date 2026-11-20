@@ -42,6 +42,8 @@ def validate_authorized_url(url):
 
 
 def read_authorized_source(symbol, url, token="", get=None):
+    from cboe_acquisition_pause import require_cboe_acquisition_enabled
+    require_cboe_acquisition_enabled()
     """One request, bounded response, explicit failed status; no fallback scraping."""
     validate_authorized_url(url)
     get = get or requests.get
