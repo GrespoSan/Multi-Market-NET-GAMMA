@@ -5,6 +5,8 @@ NDX_URL = 'https://cdn.cboe.com/api/global/delayed_quotes/options/_NDX.json'
 
 
 def download_ndx(limit_mb=100) -> bytes:
+    from cboe_acquisition_pause import require_cboe_acquisition_enabled
+    require_cboe_acquisition_enabled()
     headers={'User-Agent':'Mozilla/5.0', 'Accept':'application/json',
              'Cache-Control':'no-cache'}
     with requests.get(NDX_URL, headers=headers, timeout=(8, 55), stream=True) as response:
