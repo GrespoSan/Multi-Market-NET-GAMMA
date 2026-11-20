@@ -157,7 +157,11 @@ def render(ticker):
     # dedicated RUT/DJX emergency acquisition module yet), but should not
     # interrupt the NQ-style snapshot information hierarchy.
     with st.expander("Acquisizione manuale Cboe / importa ZIP · JSON", expanded=False):
-        if st.button(f"Scarica fotografia {ticker} da CBOE", key=f"{prefix}_download"):
+        from cboe_acquisition_pause import CBOE_ACQUISITIONS_PAUSED, PAUSE_MESSAGE
+        if CBOE_ACQUISITIONS_PAUSED:
+            st.caption(PAUSE_MESSAGE)
+        if st.button(f"Scarica fotografia {ticker} da CBOE · sospeso",
+                     key=f"{prefix}_download", disabled=CBOE_ACQUISITIONS_PAUSED):
             try:
                 with st.spinner(f"Acquisizione CBOE {ticker}..."):
                     raw = download_once(ticker)
