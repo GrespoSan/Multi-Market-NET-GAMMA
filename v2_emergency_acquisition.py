@@ -33,6 +33,8 @@ def _validated(symbol, raw, name, *, source, download_rome=None):
 
 
 def download_current_snapshot(symbol):
+    from cboe_acquisition_pause import require_cboe_acquisition_enabled
+    require_cboe_acquisition_enabled()
     """ONLY on explicit button press; reuse current approved V2 downloaders."""
     if symbol == "NDX":
         from data_sources import download_ndx
