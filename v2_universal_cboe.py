@@ -351,6 +351,7 @@ var array<float> topPuts = {_pine_array(tp, "strike")}
 '''
 
 def render():
+    from cboe_acquisition_pause import CBOE_ACQUISITIONS_PAUSED, PAUSE_MESSAGE
     with st.expander("NET GAMMA UNIVERSALE — CBOE", expanded=False):
         st.caption("Ticker libero · un solo download manuale CBOE · Gamma originali. "
                    "Formula: (OI+Volume)×Gamma Call − (OI+Volume)×Gamma Put.")
@@ -365,7 +366,10 @@ def render():
         if previous and previous["ticker"] != ticker:
             st.session_state.pop("universal_cboe_active", None)
             previous = None
-        if st.button("Scarica CBOE e calcola", key="universal_cboe_download",
+        if CBOE_ACQUISITIONS_PAUSED:
+            st.caption(PAUSE_MESSAGE)
+        if st.button("Scarica CBOE e calcola · sospeso", key="universal_cboe_download",
+                     disabled=CBOE_ACQUISITIONS_PAUSED,
                      use_container_width=True):
             try:
                 with st.spinner(f"Download manuale {ticker} da CBOE..."):
