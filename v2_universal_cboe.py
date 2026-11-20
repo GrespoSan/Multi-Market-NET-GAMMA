@@ -157,6 +157,8 @@ def import_original(name, content, ticker):
 
 
 def download_once(ticker):
+    from cboe_acquisition_pause import require_cboe_acquisition_enabled
+    require_cboe_acquisition_enabled()
     # CBOE can restrict requests from hosted servers; never bypass access restrictions.
     source_symbol = "_" + ticker if ticker in INDEX_TICKERS else ticker
     url = f"https://cdn.cboe.com/api/global/delayed_quotes/options/{source_symbol}.json"
