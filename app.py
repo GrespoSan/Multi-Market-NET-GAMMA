@@ -94,6 +94,7 @@ if st.session_state.get("v2_role") not in ("admin", "friend"):
                 st.error("Password non corretta.")
     st.stop()
 
+from cboe_acquisition_pause import CBOE_ACQUISITIONS_PAUSED, PAUSE_MESSAGE
 role = st.session_state["v2_role"]
 with st.sidebar:
     st.write("**Accesso:** " + ("Amministratore" if role == "admin" else "Lettore"))
@@ -108,6 +109,9 @@ with st.sidebar:
     if st.button("Esci", key="v2_logout"):
         st.session_state.pop("v2_role", None)
         st.rerun()
+
+if CBOE_ACQUISITIONS_PAUSED:
+    st.info(PAUSE_MESSAGE)
 
 st.subheader("01 · MERCATI PRINCIPALI")
 st.caption("NDX / NQ · RUT / RTY · DJX / YM · GLD / GC · USO / CL · 0DTE / Weekly")
