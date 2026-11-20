@@ -13,13 +13,17 @@ from zoneinfo import ZoneInfo
 
 import streamlit as st
 
+st.set_page_config(page_title="Serafini · Multi-Market NET GAMMA V2",
+                   page_icon="📊", layout="wide")
+
+# Maintenance always runs BEFORE credentials, disk cache or market modules.
+from app_maintenance import suspend_if_enabled
+suspend_if_enabled(st, "Serafini · Multi-Market — NET GAMMA")
+
 from markets import MARKETS
 from market_ui import PAGE_STYLE
 from v2_market_engine import render_selected_market
 from v2_massive_day_cache import purge_expired, invalidate_ratio_sessions
-
-st.set_page_config(page_title="Serafini · Multi-Market NET GAMMA V2",
-                   page_icon="📊", layout="wide")
 
 # On the first UI event after Rome midnight, delete yesterday's temporary
 # disk cache and session-frozen ratios. NEVER touch Cboe GitHub artifacts.
