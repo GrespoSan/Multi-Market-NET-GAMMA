@@ -237,6 +237,7 @@ def render(market_key):
     if market_key not in MARKET_SYMBOL:
         return
     import streamlit as st
+    from cboe_acquisition_pause import CBOE_ACQUISITIONS_PAUSED, PAUSE_MESSAGE
     from v2_emergency_acquisition import (
         STORE_PREFIX, download_current_snapshot, use_uploaded_snapshot)
 
@@ -249,8 +250,11 @@ def render(market_key):
         )
         left, right = st.columns(2, gap="medium")
         with left:
-            if st.button("Scarica CBOE adesso",
+            if CBOE_ACQUISITIONS_PAUSED:
+                st.caption(PAUSE_MESSAGE)
+            if st.button("Scarica CBOE adesso · sospeso",
                          key=f"v2_emergency_download_{symbol}",
+                         disabled=CBOE_ACQUISITIONS_PAUSED,
                          use_container_width=True):
                 st.session_state.pop(store_key, None)
                 try:
