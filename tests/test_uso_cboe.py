@@ -2,6 +2,7 @@
 import gzip
 import json
 import unittest
+from unittest.mock import patch
 from datetime import date
 
 from uso_cboe import (USO_URL, download_uso, read_uso, parse_contract, expirations,
@@ -19,6 +20,7 @@ def sample(symbol="USO"):
             "data": {"prev_day_close": 166.1, "current_price": 166.8, "options": items}}
 
 
+@patch("cboe_acquisition_pause.CBOE_ACQUISITIONS_PAUSED", False)
 class TestCboeOil(unittest.TestCase):
     def test_read_original_json_and_gzip(self):
         blob = json.dumps(sample()).encode()
