@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 import tempfile
 import unittest
+from unittest.mock import patch
 
 from cryptography.fernet import Fernet
 
@@ -33,6 +34,8 @@ def synthetic(symbol):
     }).encode()
 
 
+@patch("cboe_acquisition_pause.CBOE_ACQUISITIONS_PAUSED", False)
+@patch("v2_cron.CBOE_ACQUISITIONS_PAUSED", False)
 class V2SPXSetupTests(unittest.TestCase):
     def test_spx_shell_removed_modules_and_no_supabase(self):
         code = (ROOT / "app.py").read_text(encoding="utf-8")
