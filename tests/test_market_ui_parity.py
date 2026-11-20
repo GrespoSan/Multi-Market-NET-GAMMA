@@ -57,7 +57,7 @@ class CommonMarketLayoutTests(unittest.TestCase):
         acquisition = source("v2_emergency_acquisition.py")
         for symbol in ("NDX", "GLD", "USO"):
             self.assertIn(f'"{symbol}"', acquisition)
-        self.assertIn('st.button("Scarica CBOE adesso"', emergency)
+        self.assertIn('st.button("Scarica CBOE adesso · sospeso"', emergency)
         self.assertIn('st.file_uploader(', emergency)
         self.assertIn('st.button("Usa file importato"', emergency)
         self.assertIn('type=["zip", "json", "gz"]', emergency)
