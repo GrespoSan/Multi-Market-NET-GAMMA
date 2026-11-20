@@ -19,6 +19,8 @@ MIN_VALID_COVERAGE = 0.70
 
 
 def download_uso(limit_mb=50, session=None) -> bytes:
+    from cboe_acquisition_pause import require_cboe_acquisition_enabled
+    require_cboe_acquisition_enabled()
     """One explicit, bounded Cboe USO request (no unattended collection).
 
     Preserve the response bytes; validate USO chain before exposing it.
