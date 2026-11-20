@@ -84,10 +84,14 @@ def render_acquisition_controls(symbol, source_url, show_header=True):
         raise ValueError("Sottostante grafico non riconosciuto.")
     if show_header:
         st.subheader(f"Fotografia opzioni Cboe · {symbol}")
+    from cboe_acquisition_pause import CBOE_ACQUISITIONS_PAUSED, PAUSE_MESSAGE
+    if CBOE_ACQUISITIONS_PAUSED:
+        st.caption(PAUSE_MESSAGE)
     clicked = st.button(
-        f"Aggiorna fotografia {symbol} da Cboe",
+        f"Aggiorna fotografia {symbol} da Cboe · sospeso",
         type="primary",
         key=f"{symbol.lower()}_cboe_fetch",
+        disabled=CBOE_ACQUISITIONS_PAUSED,
     )
     with st.expander("Importazione manuale JSON originale", expanded=False):
         st.link_button(f"Apri file {symbol}.json su Cboe", source_url)
