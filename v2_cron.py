@@ -22,6 +22,8 @@ from pathlib import Path
 from urllib.parse import urlsplit
 
 import requests
+from cboe_acquisition_pause import (CBOE_ACQUISITIONS_PAUSED, PAUSE_MESSAGE,
+                                    require_cboe_acquisition_enabled)
 
 from v2_schedule import decision, INSTRUMENTS
 from ndx_engine import unpack_snapshot, available_expirations, contract_parts
@@ -61,6 +63,7 @@ def safe_url(url):
 
 
 def fetch_authorized(url, token="", get=None):
+    require_cboe_acquisition_enabled()
     safe_url(url)
     caller = get or requests.get
     headers = {
@@ -167,6 +170,9 @@ def validate_options(symbol, raw):
 
 
 def run_capture(now=None, env=None, output=None, downloader=None):
+    # Stop centrale anche per dispatch cron-job.org, manuali e test esterni.
+    if CBOE_ACQUISITIONS_PAUSED:
+        return {"status": "CBOE_PAUSED", "note": PAUSE_MESSAGE, "markets": {}}
     now = now or datetime.now(timezone.utc)
     if now.tzinfo is None:
         raise ValueError("Clock UTC non valido.")
