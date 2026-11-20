@@ -11,7 +11,7 @@ import re
 from datetime import date, timedelta
 
 import requests
-from v2_massive_day_cache import fetch_json as fetch_massive_json
+from spx_massive_day_cache import fetch_json as fetch_massive_json
 
 API = "https://api.massive.com/futures/v1/aggs/"
 PATTERN = re.compile(r"^(ES|NQ|GC|CL)[FGHJKMNQUVXZ][0-9]{1,2}$")
@@ -44,8 +44,6 @@ def parse_session(raw, ticker):
         raise MassiveSourceError("Barra sessione Massive incompleta.") from exc
     if high < low or close > high or close < low:
         raise MassiveSourceError("OHLC fuori range: impossibile validare.")
-    # A missing Open doesn't invalidate the range/Close comparison.
-    # It DOES make candle-color and impulse analysis unavailable.
     opening = None if raw.get("open") is None else _value(raw["open"])
     if opening is not None and not low <= opening <= high:
         raise MassiveSourceError("Open futures fuori dal range di sessione.")
@@ -132,7 +130,8 @@ def previous_daily_context(bars):
         "ticker": yesterday["ticker"],
         "source": "Massive Futures REST · 1session · trade close",
         "high": yesterday["hi"], "low": yesterday["lo"],
-        "close": yesterday["close"], "previous_close": before["close"],
+        "open": yesterday["open"], "close": yesterday["close"],
+        "previous_close": before["close"],
         "previous_close_day": before["day"].isoformat(),
         "range_points": round(amount, 6), "range_pct": round(pct_range, 6),
         "previous_range_points": round(previous_amount, 6),

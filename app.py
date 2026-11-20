@@ -1,232 +1,135 @@
-"""Multi-Market NET GAMMA V2 · SPX dashboard architecture.
-
-Visual/navigation shell adapted from Serafini-SPX-Dashboard/app.py.
-Removed by design: GEX EDGE, Replay e confronto, Report giornaliero AI.
-Market-specific NDX/GLD/USO engines are preserved in v2_market_engine.py.
-No Supabase connection, credentials, storage imports or scheduled fetches.
-"""
-import hmac
-import threading
-import time
 from datetime import datetime
 from zoneinfo import ZoneInfo
-
+import re
 import streamlit as st
+import hmac
 
-from markets import MARKETS
-from market_ui import PAGE_STYLE
-from v2_market_engine import render_selected_market
-from v2_massive_day_cache import purge_expired, invalidate_ratio_sessions
+st.set_page_config(page_title="Serafini · Analisi CSV", page_icon="📊", layout="wide")
 
-st.set_page_config(page_title="Serafini · Multi-Market NET GAMMA V2",
-                   page_icon="📊", layout="wide")
+def verifica_password():
+    inserita = st.session_state.pop("password_input", "")
+    configurata = st.secrets["APP_PASSWORD"]
+    st.session_state.accesso = hmac.compare_digest(inserita.encode(), configurata.encode())
 
-# On the first UI event after Rome midnight, delete yesterday's temporary
-# disk cache and session-frozen ratios. NEVER touch Cboe GitHub artifacts.
+def esci():
+    st.session_state.clear()
+
 try:
-    cache_day_changed = purge_expired()
+    password_configurata = st.secrets.get("APP_PASSWORD")
+except FileNotFoundError:
+    password_configurata = None
+if not isinstance(password_configurata, str) or not password_configurata.strip():
+    st.error("Configura APP_PASSWORD nei Secrets di Streamlit per abilitare l’accesso.")
+    st.stop()
+if not st.session_state.get("accesso"):
+    st.title("Serafini · Accesso")
+    with st.form("login"):
+        st.text_input("Password", type="password", key="password_input")
+        st.form_submit_button("Accedi", on_click=verifica_password)
+    if st.session_state.get("accesso") is False:
+        st.error("Password errata.")
+    st.stop()
+st.sidebar.button("Esci", on_click=esci)
+from csv_market import MARKETS, render_market
+from offline_snapshot import load_local_snapshot, InvalidLocalSnapshot
+from cboe_csv_import import InvalidCboeCSV, csv_coverage_warning
+from gamma_section import render
+from spx_massive_day_cache import purge_expired
+try:
+    if purge_expired():
+        from daily_volatility import _fetch_massive_es
+        _fetch_massive_es.clear()
 except OSError:
-    cache_day_changed = False  # Read-through if host temp disk unavailable.
-if invalidate_ratio_sessions(st.session_state) or cache_day_changed:
-    # Streamlit's separate 1h Daily/NQ caches must not outlive Rome midnight.
-    st.cache_data.clear()
-    from future_ratio import _cl_cached_json
-    _cl_cached_json.cache_clear()
+    pass
 
-# Same SPX-style wide interface and reserved access, but separate credentials.
-st.markdown(PAGE_STYLE, unsafe_allow_html=True)
-st.title("Serafini · Multi-Market — NET GAMMA")
-
-def _secret(name):
-    try:
-        return str(st.secrets.get(name, "")).strip()
-    except Exception:
-        return ""
-
-admin_password = _secret("V2_ADMIN_PASSWORD")
-viewer_password = _secret("V2_FRIENDS_PASSWORD")
-if not admin_password or not viewer_password or hmac.compare_digest(
-        admin_password.encode(), viewer_password.encode()):
-    st.error("V2 in preparazione: configura nei Secrets della NUOVA app "
-             "V2_ADMIN_PASSWORD e V2_FRIENDS_PASSWORD (distinte). "
-             "Non riutilizzare o copiare le chiavi Supabase della SPX.")
-    st.stop()
-
-@st.cache_resource
-def login_limiter():
-    return {"failures": {}, "lock": threading.Lock()}
+st.title("Serafini · Analisi CSV")
+st.markdown("""
+<style>
+[data-testid="stMainBlockContainer"],
+[data-testid="stAppViewContainer"] .block-container {
+    max-width: none !important;
+    width: 100% !important;
+    box-sizing: border-box;
+    padding-left: clamp(1rem, 2vw, 3rem);
+    padding-right: clamp(1rem, 2vw, 3rem);
+}
+</style>
+""", unsafe_allow_html=True)
 
 
-def check_password(candidate, expected):
-    return hmac.compare_digest(candidate.encode("utf-8"),
-                               expected.encode("utf-8"))
-
-
-if st.session_state.get("v2_role") not in ("admin", "friend"):
-    st.subheader("Accesso riservato")
-    with st.form("v2_auth", clear_on_submit=True):
-        password = st.text_input("Password", type="password")
-        submitted = st.form_submit_button("Accedi")
-    if submitted:
-        limiter = login_limiter()
-        if "v2_login_id" not in st.session_state:
-            import secrets
-            st.session_state["v2_login_id"] = secrets.token_hex(16)
-        key = st.session_state["v2_login_id"]
-        now = time.monotonic()
-        with limiter["lock"]:
-            n, deadline = limiter["failures"].get(key, (0, 0.0))
-            locked = now < deadline
-        if locked:
-            st.error("Troppi tentativi. Riprova più tardi.")
-        else:
-            role = ("admin" if check_password(password, admin_password) else
-                    "friend" if check_password(password, viewer_password) else None)
-            if role:
-                with limiter["lock"]:
-                    limiter["failures"].pop(key, None)
-                st.session_state["v2_role"] = role
-                st.rerun()
-            else:
-                with limiter["lock"]:
-                    n += 1
-                    limiter["failures"][key] = (n, now + 300 if n >= 5 else 0)
-                st.error("Password non corretta.")
-    st.stop()
-
-from cboe_acquisition_pause import CBOE_ACQUISITIONS_PAUSED, PAUSE_MESSAGE
-role = st.session_state["v2_role"]
-with st.sidebar:
-    st.write("**Accesso:** " + ("Amministratore" if role == "admin" else "Lettore"))
-    # Identico a Serafini SPX: entrambi i ruoli autorizzati possono rileggere
-    # le fonti senza uscire o perdere password, selezioni e fotografie manuali.
-    if st.button("🔄 Aggiorna dati", key="v2_sidebar_refresh",
-                 use_container_width=True,
-                 help="Aggiorna archivi, dati recenti e Pine UNICO senza nuovo login o download Cboe."):
-        from v2_refresh import refresh_multimarket_data
-        refresh_multimarket_data(st.session_state)
-        st.toast("Aggiornamento richiesto: ricarico i dati disponibili.", icon="🔄")
-    if st.button("Esci", key="v2_logout"):
-        st.session_state.pop("v2_role", None)
-        st.rerun()
-
-if CBOE_ACQUISITIONS_PAUSED:
-    st.info(PAUSE_MESSAGE)
-
-st.subheader("01 · MERCATI PRINCIPALI")
-st.caption("NDX / NQ · RUT / RTY · DJX / YM · GLD / GC · USO / CL · 0DTE / Weekly")
-
-# Two independent functional areas. The market selector controls only
-# NDX/GLD/USO panels; the universal CBOE tool has its own ticker input.
-with st.container(border=True):
-    st.caption("Seleziona il mercato. Analisi, differenziale ed export riguardano solo lo strumento scelto.")
-    col_market, col_info = st.columns([1.2, 2.8], gap="medium",
-                                      vertical_alignment="bottom")
-    with col_market:
-        market_key = st.selectbox(
-            "Mercato da analizzare", list(MARKETS),
-            format_func=lambda key: MARKETS[key].label,
-            key="v2_market_selected",
-        )
-    with col_info:
-        market = MARKETS[market_key]
-        st.caption(f"Opzioni: {market.options} · Futuro: {market.futures} · "
-                   f"Metodo: {market.basis}")
-    
-    # The emergency controls are below the main analysis, so their callbacks
-    # cannot modify main widgets after those widgets have been instantiated.
-    # Apply pending manual Cboe capture at the START of the next rerun.
-    symbol_for_market = {"NASDAQ": "NDX", "GOLD": "GLD", "WTI": "USO", "RUSSELL": "RUT", "DOW": "DJX"}[market_key]
-    activation_key = f"v2_emergency_pending_activation_{symbol_for_market}"
-    pending = st.session_state.pop(activation_key, None) if market_key in ("NASDAQ", "GOLD", "WTI") else None
-    if pending is not None:
+context_slot = st.empty()
+photo_day = None
+valid_snapshot = False
+upload = None
+store = None
+with st.expander("ANALISI NET GAMMA", expanded=True):
+    st.header("NET GAMMA · formula Serafini")
+    market = st.selectbox("Mercato", list(MARKETS))
+    equity = market == "Azioni"
+    symbol = st.text_input("Ticker azione", value="AAPL").strip().upper() if equity else MARKETS[market]
+    st.subheader(f"Fotografia opzioni Cboe · {symbol}")
+    upload = st.file_uploader("Carica il CSV della catena opzioni Cboe", type=["csv"], key=f"csv_{market}_{symbol}")
+    if upload is not None:
         try:
-            from v2_emergency_acquisition import activate_for_analysis
-            activate_for_analysis(symbol_for_market, pending)
-        except (ValueError, KeyError, TypeError, OSError) as exc:
-            from v2_emergency_acquisition import STORE_PREFIX
-            st.session_state.pop(STORE_PREFIX + symbol_for_market, None)
-            st.session_state[f"v2_emergency_activation_error_{symbol_for_market}"] = str(exc)[:260]
-    
-    # Preserve CONTEXTO above NET GAMMA visually, but execute its optional
-    # Massive requests AFTER Gamma's reference mapping. A collapsed expander still
-    # runs all its code in Streamlit; this ordering prioritizes the trading panel.
-    context_slot = st.empty()
-    context_initial = False
-    
-    with st.expander("ANALISI NET GAMMA", expanded=False):
-        st.header("NET GAMMA · formula Serafini")
-        with st.expander("Note metodologiche · differenze rispetto alla SPX",
-                         expanded=False):
-            if market_key == "NASDAQ":
-                st.caption("Opzioni NDX/NDXP · proiezione indicativa su NQ/MNQ mediante "
-                           "differenziale NQ−NDX. Formula Call/Put invariata.")
-            elif market_key in ("RUSSELL", "DOW"):
-                st.caption(
-                    "Opzioni originali " + ("RUT/RUTW" if market_key == "RUSSELL" else "DJX/DJXW") +
-                    " · differenziale future/indice verificato. "
-                    "DJX: conversione strike ×100 prima del differenziale YM−DJIA. "
-                    "NET GAMMA CBOE invariato, non rappresenta opzioni sui futures.")
+            if equity and not re.fullmatch(r"[A-Z][A-Z0-9.-]{0,14}", symbol):
+                raise ValueError("Ticker azione non valido.")
+            if market == "SP500":
+                store = load_local_snapshot(upload.name, upload.getvalue())
+                warning = csv_coverage_warning(store.import_provenance)
+                if warning:
+                    st.warning(warning)
+                valid_snapshot = True
+                week = store.week
+                snaps = store.list(f"{week}/snapshots/")
+                st.session_state[f"serafini_selected_snapshot_{week}"] = store.filename
+                render(store, week, snaps, [], show_heading=False, selector_external=True)
             else:
-                st.caption("Opzioni ETF " + ("GLD" if market_key == "GOLD" else "USO")
-                           + " · profili Gamma sui veri strike dell'ETF. "
-                           "La mappatura percentuale su future è indicativa e NON "
-                           "trasforma queste opzioni in opzioni su GC o CL.")
-            st.caption("0DTE e Weekly: stesso criterio grafico della Serafini SPX; "
-                       "Gamma da (OI + Volume) × Gamma, non GEX monetario. "
-                       "Le proporzioni 60%/23% citate per SPX non sono "
-                       "automaticamente valide per NDX, GLD e USO.")
-        render_selected_market(market_key)
-    
-    # A collapsed Streamlit expander still executes its body. External macro,
-    # Yahoo and Massive requests run only when this market's context is enabled.
-    # The shared Daily caches and Roma-midnight invalidation remain unchanged.
-    with context_slot.container():
-        context_key = f"v2_context_requested_{market_key}"
-        if market_key in ("RUSSELL", "DOW"):
-            with st.expander("ANALISI DEL CONTESTO — News macro USA",
-                             expanded=context_initial):
-                if st.toggle("Carica calendario macro USA",
-                             key=context_key, value=False,
-                             help="Disattiva per evitare richieste esterne nei successivi aggiornamenti della pagina."):
-                    from macro_calendar import render as render_macro_calendar
-                    render_macro_calendar()
-                    st.caption("Trend e volatilità specifici di Russell/Dow non ancora verificati; "
-                               "nessun dato di un altro mercato viene attribuito a questi indici.")
-                else:
-                    st.caption("Calendario in pausa: attiva il caricamento quando serve.")
-        else:
-            with st.expander("ANALISI DEL CONTESTO — News · Volatilità · Trend Daily",
-                             expanded=context_initial):
-                if st.toggle("Carica News · Volatilità · Trend Daily",
-                             key=context_key, value=False,
-                             help="Disattiva per sospendere le richieste Massive, Yahoo e macro quando la sezione non serve."):
-                    from v2_context import render as render_market_context
-                    render_market_context(market_key)
-                else:
-                    st.caption("Contesto in pausa: attiva il caricamento quando serve.")
+                photo_day = render_market(upload, symbol, equity)
+                valid_snapshot = True
+        except (InvalidLocalSnapshot, InvalidCboeCSV, ValueError) as exc:
+            st.error(str(exc))
 
-    # One shared snapshot per market: the emergency export reuses the same
-    # session-state photograph; no redundant download/import widgets.
-    if market_key in ("NASDAQ", "GOLD", "WTI"):
-        from v2_emergency_pine import render as render_v2_emergency_pine
-        render_v2_emergency_pine(market_key)
-    else:
-        st.caption("Pine dedicato Russell/Dow disponibile nella sezione Analisi Net Gamma dopo aver verificato il basis.")
+with context_slot.container():
+    with st.expander("ANALISI DEL CONTESTO — News · Volatilità · Trend Daily", expanded=False):
+        left, middle, right = st.columns([2.2, 1, 1], gap="medium", vertical_alignment="bottom")
+        iso = (photo_day or datetime.now(ZoneInfo("Europe/Rome")).date()).isocalendar()
+        left.text_input("Settimana ISO (AAAA-WNN)", value=store.week if store else f"{iso.year}-W{iso.week:02d}", disabled=True)
+        middle.metric("Snapshot distinti", int(valid_snapshot))
+        right.metric("Registri", 0)
+        context_details_slot = st.empty()
+with context_details_slot.container():
+    # L'analisi viene visualizzata automaticamente; il download Massive ES
+    # viene gestito dalla cache condivisa giornaliera. Anche con expander
+    # chiuso il codice esegue, ma i dati Massive già letti non si riscaricano.
+    st.markdown('#### News e calendario macroeconomico')
+    from macro_calendar import render as render_macro_calendar
+    render_macro_calendar()
+    st.divider()
 
-st.write("")
-# Independent 07:30 experimental unified export. No changes to the
-# five existing per-market Pine export sections or gamma engines.
-from v2_unified_pine import render as render_unified_0730
-render_unified_0730()
-
-st.subheader("02 · NET GAMMA UNIVERSALE — CBOE")
-st.caption("Strumento indipendente: inserisci qualsiasi ticker CBOE supportato, senza cambiare il mercato principale.")
-
-# Independent ticker-input CBOE engine; never touches selected market state.
-from v2_universal_cboe import render as render_universal_cboe
-render_universal_cboe()
-
-# No GEX EDGE, REPLAY E CONFRONTO, or REPORT GIORNALIERO AI.
-# Cboe snapshot management stays inside the market-specific gamma analysis
-# via v2_storage_off.archive_panel, not via Supabase.
+    # Il quadro VX e il Daily usano le proprie fonti CBOE/Massive.
+    # La data corrente italiana non dipende dalla presenza di snapshot
+    # Supabase, dal numero di registri o dal file CBOE selezionato.
+    from vix_regime import render as render_vix_context
+    trend_day = datetime.now(ZoneInfo('Europe/Rome')).date()
+    es_daily_context = None
+    daily_error = None
+    try:
+        context_data = render_vix_context(trend_day, return_context=True)
+        es_daily_context = context_data.get('previous_daily_range')
+    except Exception:
+        st.info('Il quadro volatilità VX non è disponibile per la giornata corrente.')
+        # Il Trend Daily conserva la sua fonte Massive anche se la
+        # lettura dei settlement CBOE fallisce.
+        try:
+            from daily_volatility import previous_es_daily_range
+            es_daily_context = previous_es_daily_range(trend_day)
+        except Exception:
+            daily_error = 'Massive ES non disponibile: verificare Secrets e contratto.'
+    st.divider()
+    from trend_daily_section import render as render_trend_daily
+    es_daily_context = es_daily_context or {}
+    render_trend_daily(reference_day=trend_day,
+                       daily_bars=es_daily_context.get('daily_bars'),
+                       contract=es_daily_context.get('ticker'),
+                       daily_error=daily_error,
+                       modeled_gex=None)
