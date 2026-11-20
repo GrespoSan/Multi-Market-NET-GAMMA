@@ -2,6 +2,7 @@
 import gzip
 import json
 import unittest
+from unittest.mock import patch
 from datetime import date
 
 from gld_cboe import (GLD_URL, download_gld, read_gld, parse_contract, expirations,
@@ -19,6 +20,7 @@ def sample(symbol="GLD"):
             "data": {"prev_day_close": 366.1, "current_price": 366.8, "options": items}}
 
 
+@patch("cboe_acquisition_pause.CBOE_ACQUISITIONS_PAUSED", False)
 class TestCboeGold(unittest.TestCase):
     def test_read_original_json_and_gzip(self):
         blob = json.dumps(sample()).encode()
