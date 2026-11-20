@@ -2,6 +2,7 @@
 import json
 import tempfile
 import unittest
+from unittest.mock import patch
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -52,6 +53,7 @@ class FakeResponse:
         yield self.data
 
 
+@patch("cboe_acquisition_pause.CBOE_ACQUISITIONS_PAUSED", False)
 class ScheduledTests(unittest.TestCase):
     def test_all_three_slots_cet_weekdays(self):
         for slot, hour, minute in [("07:30",6,30),("15:50",14,50),("20:30",19,30)]:
