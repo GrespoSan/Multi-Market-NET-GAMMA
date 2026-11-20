@@ -34,6 +34,10 @@ concurrency:
 
 jobs:
   capture_v2:
+    # STOP TEMPORANEO CBOE 20/11/2026: richieste sospese per scelta utente.
+    # Anche workflow_dispatch da cron-job.org viene SKIPPED senza HTTP a Cboe.
+    # Archivio e tutti i dati preesistenti rimangono intatti.
+    if: ${{ false }}
     # All 07:30 Rome, 09:16 Chicago and 10:46 Chicago captures are
     # initiated through cron-job.org. External 20:30 is rejected.
     # Five NDX, RUT, DJX, GLD and USO captures per successful dispatch.
